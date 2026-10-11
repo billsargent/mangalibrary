@@ -10,6 +10,8 @@ export interface Config {
   databaseFile: string
   host: string
   port: number
+  /** Port asked for by the environment or the config file, when one was. */
+  configuredPort: number | null
   logLevel: string
   sessionTtlMs: number
 }
@@ -53,11 +55,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const configDir = resolve(env.KOMGA_CONFIG_DIR ?? join(homedir(), '.komga'))
   const fileConfig = readFileConfig(join(configDir, 'config.json'))
 
-  const port = toNumber(env.SERVER_PORT ?? env.PORT, fileConfig.port ?? DEFAULT_PORT, 'port')
+  const configuredPort = env.SERVER_PORT ?? env.PORT ?? fileConfig.port?.toString()
+  const port = toNumber(configuredPort, DEFAULT_PORT, 'port')
   const host = env.SERVER_HOST ?? fileConfig.host ?? DEFAULT_HOST
   const logLevel = env.LOG_LEVEL ?? fileConfig.logLevel ?? DEFAULT_LOG_LEVEL
   const sessionTtlMs = toNumber(env.KOMGA_SESSION_TTL_MS, DEFAULT_SESSION_TTL_MS, 'session TTL')
   const databaseFile = resolve(env.KOMGA_DATABASE_FILE ?? fileConfig.databaseFile ?? join(configDir, 'database.sqlite'))
 
-  return { configDir, databaseFile, host, port, logLevel, sessionTtlMs }
+  return {
+    configDir,
+    databaseFile,
+    host,
+    port,
+    configuredPort: configuredPort === undefined || configuredPort === '' ? null : port,
+    logLevel,
+    sessionTtlMs,
+  }
 }

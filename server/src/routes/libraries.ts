@@ -9,6 +9,10 @@ import { toLibraryDto, type LibraryDto, type LibraryRow } from './dto.js'
 
 export interface RouteOptions {
   db: Kysely<DB>
+  /** Port the server is listening on, as reported by the settings endpoint. */
+  port?: number
+  /** Port the configuration asks for, when it asks for one at all. */
+  configuredPort?: number | null
 }
 
 const BOOLEAN_FIELDS: Record<string, keyof LibraryRow> = {
