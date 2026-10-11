@@ -15,6 +15,7 @@ export interface DB {
 
   // Identity
   users: UsersTable
+  user_sharing: UserSharingTable
   user_library_sharing: UserLibrarySharingTable
   user_api_keys: UserApiKeysTable
   authentication_activity: AuthenticationActivityTable
@@ -93,9 +94,16 @@ export interface UsersTable {
   roles: Generated<string>
   shared_all_libraries: Generated<number>
   age_restriction: number | null
-  sharing_labels: Generated<string>
+  age_restriction_allow_only: number | null
   created_date: string
   last_modified_date: string
+}
+
+export interface UserSharingTable {
+  user_id: string
+  /** 1 = allow-list, 0 = exclude-list. */
+  allow: number
+  label: string
 }
 
 export interface UserLibrarySharingTable {

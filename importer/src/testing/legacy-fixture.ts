@@ -24,12 +24,13 @@ export function createLegacyFixture(file: string): void {
     create table USER (
       ID text primary key, EMAIL text not null, PASSWORD text not null,
       SHARED_ALL_LIBRARIES integer not null default 1, AGE_RESTRICTION integer null,
+      AGE_RESTRICTION_ALLOW_ONLY integer null,
       CREATED_DATE datetime not null default current_timestamp,
       LAST_MODIFIED_DATE datetime not null default current_timestamp
     );
     create table USER_ROLE (USER_ID text not null, ROLE text not null);
     create table USER_LIBRARY_SHARING (USER_ID text not null, LIBRARY_ID text not null);
-    create table USER_SHARING (USER_ID text not null, LABEL text not null);
+    create table USER_SHARING (USER_ID text not null, ALLOW integer not null, LABEL text not null);
     create table SERIES (
       ID text primary key, LIBRARY_ID text not null, NAME text not null, URL text not null,
       FILE_LAST_MODIFIED datetime not null,
@@ -125,17 +126,23 @@ export function createLegacyFixture(file: string): void {
 
   insert('insert into LIBRARY (ID, NAME, ROOT) values (?, ?, ?)', [['L1', 'Library', '/library']])
   insert('insert into LIBRARY_EXCLUSIONS (LIBRARY_ID, EXCLUSION) values (?, ?)', [['L1', '#recycle']])
-  insert('insert into USER (ID, EMAIL, PASSWORD, SHARED_ALL_LIBRARIES, AGE_RESTRICTION) values (?, ?, ?, ?, ?)', [
-    ['U1', 'admin@example.com', '$2a$10$abcdefghijklmnopqrstuv', 1, null],
-    ['U2', 'kid@example.com', '$2a$10$zyxwvutsrqponmlkjihgfe', 0, 12],
-  ])
+  insert(
+    'insert into USER (ID, EMAIL, PASSWORD, SHARED_ALL_LIBRARIES, AGE_RESTRICTION, AGE_RESTRICTION_ALLOW_ONLY) values (?, ?, ?, ?, ?, ?)',
+    [
+      ['U1', 'admin@example.com', '$2a$10$abcdefghijklmnopqrstuv', 1, null, null],
+      ['U2', 'kid@example.com', '$2a$10$zyxwvutsrqponmlkjihgfe', 0, 12, 1],
+    ],
+  )
   insert('insert into USER_ROLE (USER_ID, ROLE) values (?, ?)', [
     ['U1', 'ADMIN'],
     ['U1', 'FILE_DOWNLOAD'],
     ['U2', 'PAGE_STREAMING'],
   ])
   insert('insert into USER_LIBRARY_SHARING (USER_ID, LIBRARY_ID) values (?, ?)', [['U2', 'L1']])
-  insert('insert into USER_SHARING (USER_ID, LABEL) values (?, ?)', [['U2', 'mature']])
+  insert('insert into USER_SHARING (USER_ID, ALLOW, LABEL) values (?, ?, ?)', [
+    ['U2', 0, 'mature'],
+    ['U2', 1, 'kids'],
+  ])
   insert('insert into SERIES (ID, LIBRARY_ID, NAME, URL, FILE_LAST_MODIFIED) values (?, ?, ?, ?, ?)', [
     ['S1', 'L1', 'Akira', 'akira', '2024-01-01 10:00:00'],
   ])

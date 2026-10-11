@@ -7,6 +7,7 @@ import { migrations } from './migrations/index.js'
 const EXPECTED_TABLES = [
   // identity
   'users',
+  'user_sharing',
   'user_library_sharing',
   'user_api_keys',
   'authentication_activity',

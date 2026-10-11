@@ -33,9 +33,15 @@ describe('komga-import', () => {
       const users = await database.db.selectFrom('users').selectAll().orderBy('email').execute()
       expect(users.map((user) => user.email)).toEqual(['admin@example.com', 'kid@example.com'])
       expect(JSON.parse(users[0]!.roles)).toEqual(['ADMIN', 'FILE_DOWNLOAD'])
-      expect(JSON.parse(users[1]!.sharing_labels)).toEqual(['mature'])
       expect(users[1]!.age_restriction).toBe(12)
+      expect(users[1]!.age_restriction_allow_only).toBe(1)
       expect(users[1]!.shared_all_libraries).toBe(0)
+
+      const labelSharing = await database.db.selectFrom('user_sharing').selectAll().orderBy('allow').execute()
+      expect(labelSharing).toEqual([
+        { user_id: 'U2', allow: 0, label: 'mature' },
+        { user_id: 'U2', allow: 1, label: 'kids' },
+      ])
 
       const sharing = await database.db.selectFrom('user_library_sharing').selectAll().execute()
       expect(sharing).toEqual([{ user_id: 'U2', library_id: 'L1' }])
