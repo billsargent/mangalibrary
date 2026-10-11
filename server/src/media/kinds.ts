@@ -30,6 +30,28 @@ export function containerFor(fileName: string): ContainerKind | null {
   return BY_EXTENSION[extension] ?? null
 }
 
+/**
+ * The reading profile of an analysed book, from its recorded media type.
+ *
+ * A ZIP or RAR of images is what the reference calls the Divina profile, and it
+ * is served the same way as a PDF: one page at a time. `null` means the media
+ * type is not one this server can read, which is what analysis left behind for a
+ * book it could not open.
+ */
+export function profileFor(mediaType: string | null): 'DIVINA' | 'PDF' | 'EPUB' | null {
+  switch (mediaType) {
+    case 'application/zip':
+    case 'application/x-rar-compressed':
+      return 'DIVINA'
+    case 'application/pdf':
+      return 'PDF'
+    case 'application/epub+zip':
+      return 'EPUB'
+    default:
+      return null
+  }
+}
+
 const MEDIA_TYPE_BY_EXTENSION: Record<string, string> = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
