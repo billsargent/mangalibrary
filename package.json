@@ -1,0 +1,25 @@
+{
+  "name": "mangalibrary",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A Java-free, TypeScript media server for comics and manga (Komga-compatible REST API).",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "server",
+    "importer"
+  ],
+  "scripts": {
+    "type-check": "npm run type-check --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "prettier": "prettier --check .",
+    "prettier:fix": "prettier --write ."
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  }
+}

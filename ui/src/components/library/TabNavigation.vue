@@ -1,0 +1,154 @@
+<template>
+  <v-app-bar>
+    <template #prepend>
+      <LibraryHeader
+        v-if="isSingle"
+        :library="librarySingle!"
+        class="ms-4"
+      />
+
+      <v-menu v-if="!isSingle">
+        <template #activator="{ props: activatorProps }">
+          <v-btn
+            class="text-title-large"
+            height="100%"
+            rounded="0"
+            variant="text"
+            v-bind="activatorProps"
+            append-icon="i-mdi:menu-down"
+            :text="selectedLibType?.title"
+          />
+        </template>
+
+        <v-list>
+          <v-list-item
+            v-for="route in libTypes"
+            :key="route.value"
+            :title="route.title"
+            :to="route.to"
+          />
+        </v-list>
+      </v-menu>
+    </template>
+
+    <template
+      v-if="display.mdAndUp.value"
+      #default
+    >
+      <v-tabs
+        :items="routes"
+        center-active
+      >
+        <template #tab="{ item: route }">
+          <v-tab
+            :text="route.title"
+            :to="route.to"
+            rounded="0"
+            :exact="route.to?.name === '/libraries/[viewId]/overview'"
+          />
+        </template>
+      </v-tabs>
+    </template>
+
+    <template #append>
+      <!-- Empty slot effectively centers the tabs   -->
+      <v-menu v-if="display.smAndDown.value">
+        <template #activator="{ props: activatorProps }">
+          <v-btn
+            class="text-title-large"
+            height="100%"
+            rounded="0"
+            variant="text"
+            v-bind="activatorProps"
+            append-icon="i-mdi:menu-down"
+            :text="selectedRoute?.title"
+          />
+        </template>
+
+        <v-list>
+          <v-list-item
+            v-for="route in routes"
+            :key="route.title"
+            :title="route.title"
+            :to="route.to"
+          />
+        </v-list>
+      </v-menu>
+
+      <div
+        id="navbar-append-teleport-target"
+        class="d-flex flex-shrink-0 ga-4 align-center justify-end"
+        :style="{ width: display.mdAndUp.value ? '120px' : 'auto' }"
+      />
+    </template>
+  </v-app-bar>
+</template>
+
+<script setup lang="ts">
+import type { LibraryViewId } from '@/types/libraries'
+import { useGetLibrariesByViewId, useUserLibraries } from '@/composables/libraries'
+import { useIntl } from 'vue-intl'
+import { useDisplay } from 'vuetify/framework'
+import { commonMessages } from '@/utils/i18n/common-messages'
+import type { LibrarySubRoute } from '@/types/librarySubRoute'
+import type { RouteLocationObject } from '@/types/route'
+
+const props = defineProps<{
+  routes: LibrarySubRoute[]
+  libraryViewId: LibraryViewId
+}>()
+
+const intl = useIntl()
+const display = useDisplay()
+const currentRoute = useRoute()
+const router = useRouter()
+
+const { anyPinned, anyUnpinned } = useUserLibraries()
+const { isSingle, library: librarySingle } = useGetLibrariesByViewId(props.libraryViewId)
+
+type LibRouteItem = {
+  title: string
+  value: LibraryViewId
+  to: RouteLocationObject
+}
+const libTypes = computed(
+  () =>
+    [
+      ...(anyPinned.value
+        ? [
+            {
+              title: intl.formatMessage(commonMessages.libraryPinned),
+              value: 'pinned',
+              to: { name: currentRoute?.name, params: { viewId: 'pinned' } },
+            },
+          ]
+        : []),
+      {
+        title: intl.formatMessage(commonMessages.libraryAll),
+        value: 'all',
+        to: { name: currentRoute?.name, params: { viewId: 'all' } },
+      },
+      ...(anyUnpinned.value
+        ? [
+            {
+              title: intl.formatMessage(commonMessages.libraryUnpinned),
+              value: 'unpinned',
+              to: { name: currentRoute?.name, params: { viewId: 'unpinned' } },
+            },
+          ]
+        : []),
+    ] as LibRouteItem[],
+)
+const selectedLibType = computed(() =>
+  libTypes.value.find((it) => it.value === props.libraryViewId),
+)
+
+const selectedRoute = computed(() =>
+  props.routes.find((it) => {
+    const routeName = router?.resolve(it.to).name
+    return currentRoute?.matched.find((record) => record.name === routeName)
+  }),
+)
+</script>
+
+<style scoped></style>
