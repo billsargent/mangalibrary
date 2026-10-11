@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify'
 import { registerAuth } from './auth/session.js'
 import type { Config } from './config.js'
 import type { Database } from './db/index.js'
+import { registerRoutes } from './routes/index.js'
 
 export const APP_VERSION = '0.0.0'
 
@@ -23,6 +24,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.get('/health', async () => ({ status: 'ok', version: APP_VERSION }))
 
   await registerAuth(app, { db: deps.database.db, sessionTtlMs: deps.config.sessionTtlMs })
+  await registerRoutes(app, deps.database.db)
 
   // Closing the server releases the database handle.
   app.addHook('onClose', async () => {
