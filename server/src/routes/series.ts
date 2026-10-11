@@ -24,7 +24,7 @@ import { applySort, booleanParam, isRegex, likeAny, paging, parseSort, toArray, 
  * case - the whole thing stays in SQL and only the requested page is read.
  */
 
-const SERIES_SORTS: Record<string, string> = {
+export const SERIES_SORTS: Record<string, string> = {
   name: 'series.name',
   url: 'series.url',
   created: 'series.created_date',
@@ -35,7 +35,7 @@ const SERIES_SORTS: Record<string, string> = {
   'booksMetadata.releaseDate': 'book_metadata_aggregation.release_date',
 }
 
-const SERIES_DEFAULT_SORT: SortSpec[] = [
+export const SERIES_DEFAULT_SORT: SortSpec[] = [
   { column: 'series_metadata.title_sort', direction: 'asc' },
   { column: 'series.id', direction: 'asc' },
 ]
@@ -330,13 +330,28 @@ export async function findSeries(
   return { rows: await loadSeriesRows(db, window), total }
 }
 
+/** Shared listing entry point, so nested listings behave exactly like `/series`. */
+export async function seriesPage(
+  db: Kysely<DB>,
+  context: ContentContext,
+  filters: SeriesFilters,
+  sorts: readonly SortSpec[],
+  page: number,
+  size: number,
+  unpaged: boolean,
+) {
+  const { rows, total } = await findSeries(db, context, filters, sorts, page, size, unpaged)
+  const dtos = await buildSeriesDtos(db, rows, context.user.id)
+  return springPage(dtos, page, unpaged ? total : size, total)
+}
+
 function integerParams(value: unknown): number[] {
   return toArray(value)
     .map((entry) => Number.parseInt(entry, 10))
     .filter((entry) => Number.isFinite(entry))
 }
 
-function filtersFrom(
+export function filtersFrom(
   context: ContentContext,
   query: Record<string, unknown>,
   body: Record<string, unknown> = {},
@@ -403,9 +418,7 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
     }
 
     const sorts = parseSort(query.sort, SERIES_SORTS, SERIES_DEFAULT_SORT)
-    const { rows, total } = await findSeries(db, context, filters, sorts, page, size, unpaged)
-    const dtos = await buildSeriesDtos(db, rows, context.user.id)
-    return springPage(dtos, page, unpaged ? total : size, total)
+    return seriesPage(db, context, filters, sorts, page, size, unpaged)
   }
 
   app.get('/api/v1/series', { preHandler: requireAuth }, async (req, reply) => list(req, reply, {}))

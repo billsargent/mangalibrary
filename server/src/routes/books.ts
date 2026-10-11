@@ -113,7 +113,7 @@ export interface BooksPage {
   total: number
 }
 
-interface ReadStatus {
+export interface ReadStatus {
   read: Set<string>
   inProgress: Set<string>
 }
@@ -125,7 +125,7 @@ interface ReadStatus {
  * whole library, and it keeps the "unread" test - which is about books with no
  * progress row at all - expressible here at all.
  */
-async function loadReadStatus(db: Kysely<DB>, userId: string): Promise<ReadStatus> {
+export async function loadReadStatus(db: Kysely<DB>, userId: string): Promise<ReadStatus> {
   const rows = await db
     .selectFrom('read_progress')
     .select(['book_id', 'completed'])
@@ -140,7 +140,7 @@ async function loadReadStatus(db: Kysely<DB>, userId: string): Promise<ReadStatu
   return status
 }
 
-function matchesReadStatus(status: ReadStatus, wanted: readonly string[], bookId: string): boolean {
+export function matchesReadStatus(status: ReadStatus, wanted: readonly string[], bookId: string): boolean {
   const read = status.read.has(bookId)
   const started = status.inProgress.has(bookId)
   if (wanted.includes('READ') && read) return true
@@ -202,7 +202,7 @@ function searchTerm(query: Record<string, unknown>, body: Record<string, unknown
   return typeof fullText === 'string' && fullText !== '' ? fullText : undefined
 }
 
-async function bookById(
+export async function bookById(
   db: Kysely<DB>,
   context: ContentContext,
   bookId: string,
@@ -219,7 +219,7 @@ async function bookById(
 }
 
 /** Compose the book DTO response for one id, honouring visibility. */
-async function sendBook(
+export async function sendBook(
   db: Kysely<DB>,
   context: ContentContext,
   bookId: string,

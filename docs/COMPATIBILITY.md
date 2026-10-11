@@ -53,6 +53,9 @@ Komga leaves room for interpretation. Clients see the same shape either way.
 | `SeriesDto.booksMetadata.summaryNumber` | Present but empty: the schema does not record which book's metadata won the aggregation. |
 | `MediaDto.epubDivinaCompatible` | Always `false` until the analysis job inspects archives and EPUBs. |
 | `CollectionDto.filtered` / `ReadListDto.filtered` | Always `false`: saved searches (dynamic collections and read lists) are not modelled; the id lists are authoritative. |
+| Collections and read lists | Global resources, and visibility is derived from their members: one is listed when at least one member is visible, and `seriesIds` / `bookIds` is trimmed to what the caller may see. An empty collection is therefore visible only to an admin. |
+| `POST /collections` and `POST /readlists` | Return `200` with the created DTO, as the spec documents, and create the resource immediately. `PATCH` replaces `seriesIds` / `bookIds` wholesale and sets their order. |
+| `POST /readlists/match/comicrack` | Matches only: it creates nothing and stores nothing, leaving the client to confirm and then create the read list. Series are matched on title (or name) ignoring case, then books on number; unmatched entries come back with an empty `matches` array. Reading lists are parsed directly rather than by taking on an XML dependency, since a `.cbl` is a fixed, tiny subset of XML. |
 | `PATCH .../metadata` | Writes the fields present in the body and records the requested lock state. A lock does not block a PATCH - it stops scanning and metadata refresh from overwriting a hand-edited field. Non-nullable columns (`title`, `summary`, ...) cannot be unset, so an explicit null is ignored for them. |
 
 ## Not in scope (yet)
