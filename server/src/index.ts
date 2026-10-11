@@ -1,29 +1,36 @@
-import Fastify from 'fastify'
+import { buildServer } from './app.js'
+import { loadConfig } from './config.js'
+import { createDatabase } from './db/index.js'
+import { migrate } from './db/migrate.js'
+import { migrations } from './db/migrations/index.js'
 
-/**
- * MangaLibrary server entrypoint.
- *
- * At this stage this is only a health stub used to validate the skeleton; the
- * real API, config, database and auth layers are added under their own issues.
- */
-export function buildServer() {
-  const app = Fastify({ logger: true })
+async function main(): Promise<void> {
+  const config = loadConfig()
+  const database = createDatabase(config.databaseFile)
 
-  app.get('/health', async () => ({ status: 'ok', version: '0.0.0' }))
+  const { applied } = await migrate(database.db, migrations)
 
-  return app
+  const app = buildServer({ config, database })
+  if (applied.length > 0) app.log.info({ applied }, 'applied migrations')
+
+  const shutdown = (signal: string) => {
+    app.log.info(`received ${signal}, shutting down`)
+    app
+      .close()
+      .then(() => process.exit(0))
+      .catch((err) => {
+        app.log.error(err)
+        process.exit(1)
+      })
+  }
+  process.on('SIGINT', () => shutdown('SIGINT'))
+  process.on('SIGTERM', () => shutdown('SIGTERM'))
+
+  const address = await app.listen({ port: config.port, host: config.host })
+  app.log.info(`MangaLibrary listening on ${address}`)
 }
 
-const isMain = process.argv[1] !== undefined && import.meta.url.endsWith(process.argv[1].replaceAll('\\', '/'))
-
-if (isMain) {
-  const app = buildServer()
-  const port = Number.parseInt(process.env.SERVER_PORT ?? process.env.PORT ?? '25600', 10)
-  app
-    .listen({ port, host: '0.0.0.0' })
-    .then((address) => app.log.info(`MangaLibrary listening on ${address}`))
-    .catch((err) => {
-      app.log.error(err)
-      process.exit(1)
-    })
-}
+main().catch((err) => {
+  console.error(err)
+  process.exit(1)
+})
