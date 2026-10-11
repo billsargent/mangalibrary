@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "komga-import CLI — migrate a legacy Komga database to MangaLibrary.",
+  "description": "komga-import CLI - migrate a legacy Komga database to MangaLibrary.",
   "bin": {
     "komga-import": "dist/cli.js"
   },
