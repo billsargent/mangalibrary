@@ -9,6 +9,7 @@ import { migration0007ProgressOrganisation } from './0007_progress_organisation.
 import { migration0008Maintenance } from './0008_maintenance.js'
 import { migration0009Search } from './0009_search.js'
 import { migration0010UserRestrictions } from './0010_user_restrictions.js'
+import { migration0011MetadataLocks } from './0011_metadata_locks.js'
 
 /**
  * Ordered migration registry, applied in id order by the runner.
@@ -28,4 +29,5 @@ export const migrations: Migration[] = [
   migration0008Maintenance,
   migration0009Search,
   migration0010UserRestrictions,
+  migration0011MetadataLocks,
 ]

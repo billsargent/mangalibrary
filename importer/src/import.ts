@@ -270,6 +270,12 @@ function mapSeriesMetadata(legacy: LegacyDatabase, timestamp: string): Record<st
     summary: text(row.SUMMARY, ''),
     summary_lock: bool(row.SUMMARY_LOCK, 0),
     total_book_count: row.TOTAL_BOOK_COUNT === null || row.TOTAL_BOOK_COUNT === undefined ? null : number(row.TOTAL_BOOK_COUNT),
+    total_book_count_lock: bool(row.TOTAL_BOOK_COUNT_LOCK, 0),
+    sharing_labels_lock: bool(row.SHARING_LABELS_LOCK, 0),
+    tags_lock: bool(row.TAGS_LOCK, 0),
+    genres_lock: bool(row.GENRES_LOCK, 0),
+    links_lock: bool(row.LINKS_LOCK, 0),
+    alternate_titles_lock: bool(row.ALTERNATE_TITLES_LOCK, 0),
     created_date: isoDate(row.CREATED_DATE, timestamp),
     last_modified_date: isoDate(row.LAST_MODIFIED_DATE, timestamp),
   }))
@@ -357,6 +363,7 @@ function mapBookMetadata(legacy: LegacyDatabase, timestamp: string): Record<stri
     reading_direction_lock: bool(row.READING_DIRECTION_LOCK, 0),
     authors_lock: bool(row.AUTHORS_LOCK, 0),
     tags_lock: bool(row.TAGS_LOCK, 0),
+    links_lock: bool(row.LINKS_LOCK, 0),
     created_date: isoDate(row.CREATED_DATE, timestamp),
     last_modified_date: isoDate(row.LAST_MODIFIED_DATE, timestamp),
   }))

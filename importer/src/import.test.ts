@@ -53,6 +53,10 @@ describe('komga-import', () => {
       expect(seriesMetadata[0]?.status).toBe('ENDED')
       expect(seriesMetadata[0]?.title_lock).toBe(1)
       expect(seriesMetadata[0]?.publisher).toBe('Kodansha')
+      // Locks for the list-valued fields are columns too, and a locked field must
+      // survive the move or a later scan would overwrite hand-edited metadata.
+      expect(seriesMetadata[0]?.tags_lock).toBe(1)
+      expect(seriesMetadata[0]?.genres_lock).toBe(0)
 
       expect((await database.db.selectFrom('series_metadata_author').selectAll().execute()).length).toBe(1)
       expect((await database.db.selectFrom('series_metadata_sharing').selectAll().execute()).length).toBe(1)
@@ -64,6 +68,8 @@ describe('komga-import', () => {
       const bookMetadata = await database.db.selectFrom('book_metadata').selectAll().orderBy('book_id').execute()
       expect(bookMetadata[0]?.title).toBe('Akira Volume One')
       expect(bookMetadata[0]?.number_sort).toBe(1)
+      expect(bookMetadata[0]?.links_lock).toBe(1)
+      expect(bookMetadata[1]?.links_lock).toBe(0)
 
       expect((await database.db.selectFrom('media').selectAll().execute()).length).toBe(2)
       const pages = await database.db.selectFrom('media_page').selectAll().execute()

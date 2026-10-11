@@ -1,0 +1,831 @@
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import type { FastifyInstance } from 'fastify'
+import { describe, expect, it } from 'vitest'
+import { buildServer } from '../app.js'
+import { hashPassword } from '../auth/passwords.js'
+import { loadConfig } from '../config.js'
+import { createDatabase, type Database } from '../db/index.js'
+import { migrate } from '../db/migrate.js'
+import { migrations } from '../db/migrations/index.js'
+
+const ADMIN_KEY = 'admin-key'
+const READER_KEY = 'reader-key'
+const admin = { 'x-api-key': ADMIN_KEY }
+const reader = { 'x-api-key': READER_KEY }
+
+/**
+ * Fixture:
+ *
+ * - L1 "Main" (S1 Akira age 12, S2 Berserk age 18), L2 "Secret" (S3) - the reader
+ *   may only see L1 and has an ALLOW_ONLY 12 age restriction, so S2 is invisible.
+ * - S1 has two books; the reader has finished B1, which puts S1 in progress and
+ *   leaves B2 as the next thing to read.
+ */
+async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
+  const config = loadConfig({
+    KOMGA_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'ml-content-')),
+    LOG_LEVEL: 'silent',
+  } as NodeJS.ProcessEnv)
+
+  const database = createDatabase(':memory:')
+  await migrate(database.db, migrations)
+  const now = new Date().toISOString()
+  const db = database.db
+
+  await db
+    .insertInto('users')
+    .values([
+      {
+        id: 'U1',
+        email: 'admin@example.com',
+        password: hashPassword('admin-pass'),
+        roles: JSON.stringify(['ADMIN']),
+        shared_all_libraries: 1,
+        age_restriction: null,
+        age_restriction_allow_only: null,
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        id: 'U2',
+        email: 'reader@example.com',
+        password: hashPassword('reader-pass'),
+        roles: JSON.stringify(['PAGE_STREAMING']),
+        shared_all_libraries: 0,
+        age_restriction: 12,
+        age_restriction_allow_only: 1,
+        created_date: now,
+        last_modified_date: now,
+      },
+    ])
+    .execute()
+
+  await db
+    .insertInto('user_api_keys')
+    .values([
+      { id: 'K1', user_id: 'U1', key: ADMIN_KEY, comment: 'admin', created_date: now, last_modified_date: now },
+      { id: 'K2', user_id: 'U2', key: READER_KEY, comment: 'reader', created_date: now, last_modified_date: now },
+    ])
+    .execute()
+
+  await db
+    .insertInto('libraries')
+    .values([
+      { id: 'L1', name: 'Main', root: '/library', created_date: now, last_modified_date: now },
+      { id: 'L2', name: 'Secret', root: '/secret', created_date: now, last_modified_date: now },
+    ])
+    .execute()
+  await db.insertInto('user_library_sharing').values({ user_id: 'U2', library_id: 'L1' }).execute()
+
+  await db
+    .insertInto('series')
+    .values([
+      { id: 'S1', library_id: 'L1', name: 'Akira', url: 'akira', file_last_modified: now, created_date: now, last_modified_date: now },
+      { id: 'S2', library_id: 'L1', name: 'Berserk', url: 'berserk', file_last_modified: now, created_date: now, last_modified_date: now },
+      { id: 'S3', library_id: 'L2', name: 'Secret Series', url: 'secret', file_last_modified: now, created_date: now, last_modified_date: now },
+    ])
+    .execute()
+
+  await db
+    .insertInto('series_metadata')
+    .values([
+      {
+        series_id: 'S1',
+        status: 'ONGOING',
+        title: 'Akira',
+        title_sort: 'Akira',
+        publisher: 'Kodansha',
+        language: 'en',
+        age_rating: 12,
+        total_book_count: 2,
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        series_id: 'S2',
+        status: 'ENDED',
+        title: 'Berserk',
+        title_sort: 'Berserk',
+        publisher: 'Hakusensha',
+        language: 'en',
+        age_rating: 18,
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        series_id: 'S3',
+        status: 'ONGOING',
+        title: 'Secret Series',
+        title_sort: 'Secret Series',
+        publisher: 'Unknown',
+        language: 'fr',
+        age_rating: 6,
+        created_date: now,
+        last_modified_date: now,
+      },
+    ])
+    .execute()
+
+  await db.insertInto('series_metadata_author').values({ series_id: 'S1', name: 'Katsuhiro Otomo', role: 'writer' }).execute()
+  await db.insertInto('series_metadata_tag').values({ series_id: 'S1', tag: 'cyberpunk' }).execute()
+  await db.insertInto('series_metadata_genre').values({ series_id: 'S1', genre: 'Science Fiction' }).execute()
+  await db.insertInto('series_metadata_sharing').values({ series_id: 'S1', label: 'mature' }).execute()
+
+  await db
+    .insertInto('book_metadata_aggregation')
+    .values({
+      series_id: 'S1',
+      title: 'Akira',
+      title_sort: 'Akira',
+      summary: 'Neo-Tokyo',
+      release_date: '1982-12-20',
+      created_date: now,
+      last_modified_date: now,
+    })
+    .execute()
+
+  await db
+    .insertInto('books')
+    .values([
+      {
+        id: 'B1',
+        series_id: 'S1',
+        library_id: 'L1',
+        name: 'Volume 1',
+        url: 'v1.cbz',
+        file_last_modified: now,
+        file_size: 1024,
+        file_hash: 'HASH1',
+        number: 1,
+        created_date: '2023-01-01T00:00:00.000Z',
+        last_modified_date: now,
+      },
+      {
+        id: 'B2',
+        series_id: 'S1',
+        library_id: 'L1',
+        name: 'Volume 2',
+        url: 'v2.cbz',
+        file_last_modified: now,
+        file_size: 2048,
+        file_hash: 'HASH1',
+        number: 2,
+        created_date: '2023-02-01T00:00:00.000Z',
+        last_modified_date: now,
+      },
+      {
+        id: 'B3',
+        series_id: 'S2',
+        library_id: 'L1',
+        name: 'Volume 1',
+        url: 'b1.cbz',
+        file_last_modified: now,
+        file_size: 4096,
+        file_hash: 'HASH2',
+        number: 1,
+        created_date: '2023-03-01T00:00:00.000Z',
+        last_modified_date: now,
+      },
+    ])
+    .execute()
+
+  await db
+    .insertInto('book_metadata')
+    .values([
+      { book_id: 'B1', title: 'Akira Volume One', number: '1', number_sort: 1, release_date: '1982-12-20', created_date: now, last_modified_date: now },
+      { book_id: 'B2', title: 'Akira Volume Two', number: '2', number_sort: 2, release_date: '1985-01-15', created_date: now, last_modified_date: now },
+      { book_id: 'B3', title: 'Berserk Volume One', number: '1', number_sort: 1, release_date: '1989-11-01', created_date: now, last_modified_date: now },
+    ])
+    .execute()
+  await db.insertInto('book_metadata_tag').values({ book_id: 'B1', tag: 'classic' }).execute()
+
+  await db
+    .insertInto('media')
+    .values([
+      { book_id: 'B1', media_type: 'application/vnd.comicbook+zip', status: 'READY', page_count: 200, created_date: now, last_modified_date: now },
+      { book_id: 'B2', media_type: 'application/vnd.comicbook+zip', status: 'READY', page_count: 0, created_date: now, last_modified_date: now },
+      { book_id: 'B3', media_type: 'application/pdf', status: 'READY', page_count: 100, created_date: now, last_modified_date: now },
+    ])
+    .execute()
+
+  await db
+    .insertInto('read_progress')
+    .values({ user_id: 'U2', book_id: 'B1', page: 200, completed: 1, read_date: now, created_date: now, last_modified_date: now })
+    .execute()
+
+  await db
+    .insertInto('readlists')
+    .values({ id: 'RL1', name: 'Favourites', created_date: now, last_modified_date: now })
+    .execute()
+  await db.insertInto('readlist_book').values({ readlist_id: 'RL1', book_id: 'B1' }).execute()
+  await db
+    .insertInto('collections')
+    .values({ id: 'C1', name: 'Classics', created_date: now, last_modified_date: now })
+    .execute()
+  await db.insertInto('collection_series').values({ collection_id: 'C1', series_id: 'S1' }).execute()
+
+  const app = await buildServer({ config, database })
+  await app.ready()
+  return { app, database }
+}
+
+describe('series listing', () => {
+  it('returns a Spring page of the documented SeriesDto shape', async () => {
+    const { app } = await setup()
+    const res = await app.inject({ method: 'GET', url: '/api/v1/series', headers: reader })
+    expect(res.statusCode).toBe(200)
+
+    const page = res.json() as { content: Record<string, unknown>[]; totalElements: number; size: number }
+    expect(page.totalElements).toBe(1)
+    const dto = page.content[0]!
+
+    for (const key of [
+      'id',
+      'libraryId',
+      'name',
+      'url',
+      'oneshot',
+      'booksCount',
+      'booksReadCount',
+      'booksUnreadCount',
+      'booksInProgressCount',
+      'deleted',
+      'created',
+      'lastModified',
+      'fileLastModified',
+      'metadata',
+      'booksMetadata',
+    ]) {
+      expect(dto, `missing ${key}`).toHaveProperty(key)
+    }
+
+    const metadata = dto.metadata as Record<string, unknown>
+    for (const key of [
+      'status',
+      'title',
+      'titleSort',
+      'publisher',
+      'language',
+      'ageRating',
+      'readingDirection',
+      'summary',
+      'totalBookCount',
+      'sharingLabels',
+      'tags',
+      'genres',
+      'links',
+      'alternateTitles',
+      'created',
+      'lastModified',
+    ]) {
+      expect(metadata, `missing metadata.${key}`).toHaveProperty(key)
+    }
+    expect(metadata.titleLock).toBe(false)
+    expect(metadata.tags).toEqual(['cyberpunk'])
+    expect(metadata.sharingLabels).toEqual(['mature'])
+    expect(dto.booksCount).toBe(2)
+    expect(dto.booksReadCount).toBe(1)
+    expect(dto.booksInProgressCount).toBe(0)
+    expect(dto.booksUnreadCount).toBe(1)
+    await app.close()
+  })
+
+  it('hides series the caller cannot reach, by library and by age restriction', async () => {
+    const { app } = await setup()
+    const mine = await app.inject({ method: 'GET', url: '/api/v1/series', headers: reader })
+    expect((mine.json() as { content: { id: string }[] }).content.map((s) => s.id)).toEqual(['S1'])
+
+    const all = await app.inject({ method: 'GET', url: '/api/v1/series', headers: admin })
+    expect((all.json() as { totalElements: number }).totalElements).toBe(3)
+
+    expect((await app.inject({ method: 'GET', url: '/api/v1/series/S2', headers: reader })).statusCode).toBe(403)
+    expect((await app.inject({ method: 'GET', url: '/api/v1/series/S3', headers: reader })).statusCode).toBe(403)
+    expect((await app.inject({ method: 'GET', url: '/api/v1/series/NOPE', headers: admin })).statusCode).toBe(404)
+    await app.close()
+  })
+
+  it('honours filters, sorting and paging', async () => {
+    const { app } = await setup()
+
+    const byTag = await app.inject({ method: 'GET', url: '/api/v1/series?tag=cyberpunk', headers: admin })
+    expect((byTag.json() as { content: { id: string }[] }).content.map((s) => s.id)).toEqual(['S1'])
+
+    const byAuthor = await app.inject({
+      method: 'GET',
+      url: '/api/v1/series?author=Katsuhiro%20Otomo',
+      headers: admin,
+    })
+    expect((byAuthor.json() as { totalElements: number }).totalElements).toBe(1)
+
+    const byPublisher = await app.inject({ method: 'GET', url: '/api/v1/series?publisher=Hakusensha', headers: admin })
+    expect((byPublisher.json() as { content: { id: string }[] }).content.map((s) => s.id)).toEqual(['S2'])
+
+    const byStatus = await app.inject({ method: 'GET', url: '/api/v1/series?status=ENDED', headers: admin })
+    expect((byStatus.json() as { content: { id: string }[] }).content.map((s) => s.id)).toEqual(['S2'])
+
+    const released = await app.inject({ method: 'GET', url: '/api/v1/series?release_year=1982', headers: admin })
+    expect((released.json() as { content: { id: string }[] }).content.map((s) => s.id)).toEqual(['S1'])
+
+    const descending = await app.inject({
+      method: 'GET',
+      url: '/api/v1/series?sort=metadata.titleSort,desc',
+      headers: admin,
+    })
+    expect(
+      (descending.json() as { content: { metadata: { titleSort: string } }[] }).content.map((s) => s.metadata.titleSort),
+    ).toEqual(['Secret Series', 'Berserk', 'Akira'])
+
+    const first = await app.inject({ method: 'GET', url: '/api/v1/series?page=0&size=2', headers: admin })
+    const firstPage = first.json() as { content: { id: string }[]; totalElements: number; totalPages: number }
+    expect(firstPage.content.map((s) => s.id)).toEqual(['S1', 'S2'])
+    expect(firstPage.totalElements).toBe(3)
+    expect(firstPage.totalPages).toBe(2)
+
+    const second = await app.inject({ method: 'GET', url: '/api/v1/series?page=1&size=2', headers: admin })
+    expect((second.json() as { content: { id: string }[] }).content.map((s) => s.id)).toEqual(['S3'])
+    await app.close()
+  })
+
+  it('filters by read status and by full text search', async () => {
+    const { app } = await setup()
+
+    const inProgress = await app.inject({
+      method: 'GET',
+      url: '/api/v1/series?read_status=IN_PROGRESS',
+      headers: reader,
+    })
+    expect((inProgress.json() as { content: { id: string }[] }).content.map((s) => s.id)).toEqual(['S1'])
+
+    const unread = await app.inject({ method: 'GET', url: '/api/v1/series?read_status=UNREAD', headers: reader })
+    expect((unread.json() as { totalElements: number }).totalElements).toBe(0)
+
+    const searched = await app.inject({ method: 'GET', url: '/api/v1/series?search=akir', headers: admin })
+    expect((searched.json() as { content: { id: string }[] }).content.map((s) => s.id)).toEqual(['S1'])
+
+    const regex = await app.inject({ method: 'GET', url: '/api/v1/series?search_regex=%5Eber', headers: admin })
+    expect((regex.json() as { content: { id: string }[] }).content.map((s) => s.id)).toEqual(['S2'])
+
+    const badRegex = await app.inject({ method: 'GET', url: '/api/v1/series?search_regex=%5B', headers: admin })
+    expect(badRegex.statusCode).toBe(400)
+    await app.close()
+  })
+
+  it('supports the POST search endpoints', async () => {
+    const { app } = await setup()
+
+    const listed = await app.inject({
+      method: 'POST',
+      url: '/api/v1/series/list',
+      headers: admin,
+      payload: { fullTextSearch: 'berserk' },
+    })
+    expect((listed.json() as { content: { id: string }[] }).content.map((s) => s.id)).toEqual(['S2'])
+
+    const groups = await app.inject({
+      method: 'POST',
+      url: '/api/v1/series/list/alphabetical-groups',
+      headers: admin,
+      payload: {},
+    })
+    expect((groups.json() as { group: string }[]).map((entry) => entry.group)).toEqual(['A', 'B', 'S'])
+    await app.close()
+  })
+
+  it('groups series alphabetically and lists release dates', async () => {
+    const { app } = await setup()
+
+    const groups = await app.inject({ method: 'GET', url: '/api/v1/series/alphabetical-groups', headers: admin })
+    expect(groups.json()).toEqual([
+      { group: 'A', count: 1 },
+      { group: 'B', count: 1 },
+      { group: 'S', count: 1 },
+    ])
+
+    const dates = await app.inject({ method: 'GET', url: '/api/v1/series/release-dates', headers: admin })
+    expect(dates.json()).toEqual(['1982', '1985', '1989'])
+    await app.close()
+  })
+
+  it('lists the collections a series belongs to', async () => {
+    const { app } = await setup()
+    const res = await app.inject({ method: 'GET', url: '/api/v1/series/S1/collections', headers: reader })
+    expect(res.statusCode).toBe(200)
+    const collections = res.json() as { id: string; seriesIds: string[]; filtered: boolean }[]
+    expect(collections).toHaveLength(1)
+    const [collection] = collections
+    expect(collection!.id).toBe('C1')
+    expect(collection!.seriesIds).toEqual(['S1'])
+    expect(collection!.filtered).toBe(false)
+    await app.close()
+  })
+
+  it('returns the recent listings', async () => {
+    const { app } = await setup()
+    for (const path of ['latest', 'new', 'updated']) {
+      const res = await app.inject({ method: 'GET', url: `/api/v1/series/${path}`, headers: reader })
+      expect(res.statusCode, path).toBe(200)
+      expect((res.json() as { content: { id: string }[] }).content.map((s) => s.id)).toEqual(['S1'])
+    }
+    await app.close()
+  })
+
+  it('queues analysis and metadata refresh as jobs', async () => {
+    const { app, database } = await setup()
+
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/v1/series/S1/analyze', headers: admin })).statusCode,
+    ).toBe(202)
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/v1/series/S1/metadata/refresh', headers: admin })).statusCode,
+    ).toBe(202)
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/v1/series/S1/analyze', headers: reader })).statusCode,
+    ).toBe(403)
+
+    const jobs = await database.db.selectFrom('jobs').select(['type']).orderBy('type').execute()
+    expect(jobs.map((job) => job.type)).toEqual(['AnalyzeSeries', 'RefreshSeriesMetadata'])
+    await app.close()
+  })
+})
+
+describe('series metadata', () => {
+  it('writes values, locks and list fields', async () => {
+    const { app } = await setup()
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/series/S1/metadata',
+      headers: admin,
+      payload: {
+        title: 'Akira Deluxe',
+        titleLock: true,
+        status: 'ENDED',
+        ageRating: 16,
+        readingDirection: 'RIGHT_TO_LEFT',
+        totalBookCount: 3,
+        tags: ['cyberpunk', 'classic'],
+        genres: ['Science Fiction'],
+        sharingLabels: [],
+        links: [{ label: 'Wikipedia', url: 'https://example.org/akira' }],
+        alternateTitles: [{ label: 'ja', title: 'アキラ' }],
+        genresLock: true,
+      },
+    })
+    expect(res.statusCode).toBe(204)
+
+    const dto = (
+      await app.inject({ method: 'GET', url: '/api/v1/series/S1', headers: admin })
+    ).json() as { metadata: Record<string, unknown> }
+
+    expect(dto.metadata.title).toBe('Akira Deluxe')
+    expect(dto.metadata.titleLock).toBe(true)
+    expect(dto.metadata.status).toBe('ENDED')
+    expect(dto.metadata.ageRating).toBe(16)
+    expect(dto.metadata.readingDirection).toBe('RIGHT_TO_LEFT')
+    expect(dto.metadata.totalBookCount).toBe(3)
+    expect(dto.metadata.tags).toEqual(['classic', 'cyberpunk'])
+    expect(dto.metadata.genresLock).toBe(true)
+    expect(dto.metadata.sharingLabels).toEqual([])
+    expect(dto.metadata.links).toEqual([{ label: 'Wikipedia', url: 'https://example.org/akira' }])
+    expect(dto.metadata.alternateTitles).toEqual([{ label: 'ja', title: 'アキラ' }])
+    await app.close()
+  })
+
+  it('leaves omitted fields alone and rejects invalid values', async () => {
+    const { app } = await setup()
+
+    await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/series/S1/metadata',
+      headers: admin,
+      payload: { summary: 'Kept' },
+    })
+    const after = (
+      await app.inject({ method: 'GET', url: '/api/v1/series/S1', headers: admin })
+    ).json() as { metadata: { summary: string; title: string } }
+    expect(after.metadata.summary).toBe('Kept')
+    expect(after.metadata.title).toBe('Akira')
+
+    const invalid = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/series/S1/metadata',
+      headers: admin,
+      payload: { status: 'NONSENSE', ageRating: 'old' },
+    })
+    expect(invalid.statusCode).toBe(400)
+    expect(Object.keys((invalid.json() as { validationErrors: Record<string, string> }).validationErrors).sort()).toEqual([
+      'ageRating',
+      'status',
+    ])
+
+    expect(
+      (
+        await app.inject({
+          method: 'PATCH',
+          url: '/api/v1/series/S1/metadata',
+          headers: reader,
+          payload: { title: 'Nope' },
+        })
+      ).statusCode,
+    ).toBe(403)
+    expect(
+      (
+        await app.inject({
+          method: 'PATCH',
+          url: '/api/v1/series/NOPE/metadata',
+          headers: admin,
+          payload: { title: 'Nope' },
+        })
+      ).statusCode,
+    ).toBe(404)
+    await app.close()
+  })
+})
+
+describe('series read progress', () => {
+  it('marks a series read and unread again', async () => {
+    const { app, database } = await setup()
+
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/v1/series/S1/read-progress', headers: reader })).statusCode,
+    ).toBe(204)
+
+    const rows = await database.db
+      .selectFrom('read_progress')
+      .select(['book_id', 'completed'])
+      .where('user_id', '=', 'U2')
+      .orderBy('book_id')
+      .execute()
+    expect(rows).toEqual([
+      { book_id: 'B1', completed: 1 },
+      { book_id: 'B2', completed: 1 },
+    ])
+
+    const readStatus = await app.inject({ method: 'GET', url: '/api/v1/series?read_status=READ', headers: reader })
+    expect((readStatus.json() as { content: { id: string }[] }).content.map((s) => s.id)).toEqual(['S1'])
+
+    expect(
+      (await app.inject({ method: 'DELETE', url: '/api/v1/series/S1/read-progress', headers: reader })).statusCode,
+    ).toBe(204)
+    const remaining = await database.db
+      .selectFrom('read_progress')
+      .select('book_id')
+      .where('user_id', '=', 'U2')
+      .execute()
+    expect(remaining).toEqual([])
+    await app.close()
+  })
+})
+
+describe('books', () => {
+  it('returns pages of books scoped to the caller', async () => {
+    const { app } = await setup()
+
+    const res = await app.inject({ method: 'GET', url: '/api/v1/books', headers: reader })
+    expect(res.statusCode).toBe(200)
+    const page = res.json() as { content: Record<string, unknown>[]; totalElements: number }
+    expect(page.totalElements).toBe(2)
+
+    const dto = page.content[0]!
+    for (const key of [
+      'id',
+      'seriesId',
+      'seriesTitle',
+      'libraryId',
+      'name',
+      'url',
+      'number',
+      'oneshot',
+      'deleted',
+      'created',
+      'lastModified',
+      'fileLastModified',
+      'fileHash',
+      'size',
+      'sizeBytes',
+      'media',
+      'metadata',
+    ]) {
+      expect(dto, `missing ${key}`).toHaveProperty(key)
+    }
+    expect(dto.seriesTitle).toBe('Akira')
+    expect(dto.sizeBytes).toBe(1024)
+    expect(dto.size).toBe('1 KB')
+    expect((dto.media as Record<string, unknown>).mediaProfile).toBe('DIVINA')
+    expect((dto.media as Record<string, unknown>).pagesCount).toBe(200)
+    expect((dto.metadata as Record<string, unknown>).tags).toEqual(['classic'])
+    expect((dto.readProgress as Record<string, unknown>).completed).toBe(true)
+    await app.close()
+  })
+
+  it('filters by read status, tag and paging state', async () => {
+    const { app } = await setup()
+
+    const read = await app.inject({ method: 'GET', url: '/api/v1/books?read_status=READ', headers: reader })
+    expect((read.json() as { content: { id: string }[] }).content.map((b) => b.id)).toEqual(['B1'])
+
+    const unread = await app.inject({ method: 'GET', url: '/api/v1/books?read_status=UNREAD', headers: reader })
+    expect((unread.json() as { content: { id: string }[] }).content.map((b) => b.id)).toEqual(['B2'])
+
+    const tagged = await app.inject({ method: 'GET', url: '/api/v1/books?tag=classic', headers: reader })
+    expect((tagged.json() as { totalElements: number }).totalElements).toBe(1)
+
+    const unpaged = await app.inject({ method: 'GET', url: '/api/v1/books?unpaged=true', headers: reader })
+    expect((unpaged.json() as { content: { id: string }[] }).content.map((b) => b.id)).toEqual(['B2'])
+
+    const released = await app.inject({
+      method: 'GET',
+      url: '/api/v1/books?released_after=1983-01-01',
+      headers: admin,
+    })
+    expect((released.json() as { content: { id: string }[] }).content.map((b) => b.id)).toEqual(['B3', 'B2'])
+    await app.close()
+  })
+
+  it('lists books of one series, latest books and duplicates', async () => {
+    const { app } = await setup()
+
+    const seriesBooks = await app.inject({ method: 'GET', url: '/api/v1/series/S1/books', headers: reader })
+    expect((seriesBooks.json() as { content: { id: string }[] }).content.map((b) => b.id)).toEqual(['B1', 'B2'])
+
+    const latest = await app.inject({ method: 'GET', url: '/api/v1/books/latest', headers: reader })
+    expect((latest.json() as { content: { id: string }[] }).content.map((b) => b.id)).toEqual(['B2', 'B1'])
+
+    const duplicates = await app.inject({ method: 'GET', url: '/api/v1/books/duplicates', headers: reader })
+    expect((duplicates.json() as { content: { id: string }[] }).content.map((b) => b.id)).toEqual(['B1', 'B2'])
+    await app.close()
+  })
+
+  it('suggests the next book to read', async () => {
+    const { app } = await setup()
+    const ondeck = await app.inject({ method: 'GET', url: '/api/v1/books/ondeck', headers: reader })
+    expect((ondeck.json() as { content: { id: string }[] }).content.map((b) => b.id)).toEqual(['B2'])
+    await app.close()
+  })
+
+  it('walks to the next and previous book of a series', async () => {
+    const { app } = await setup()
+
+    const next = await app.inject({ method: 'GET', url: '/api/v1/books/B1/next', headers: reader })
+    expect((next.json() as { id: string }).id).toBe('B2')
+    expect((await app.inject({ method: 'GET', url: '/api/v1/books/B2/next', headers: reader })).statusCode).toBe(404)
+
+    const previous = await app.inject({ method: 'GET', url: '/api/v1/books/B2/previous', headers: reader })
+    expect((previous.json() as { id: string }).id).toBe('B1')
+    expect((await app.inject({ method: 'GET', url: '/api/v1/books/B1/previous', headers: reader })).statusCode).toBe(404)
+    await app.close()
+  })
+
+  it('lists the read lists a book appears in', async () => {
+    const { app } = await setup()
+    const res = await app.inject({ method: 'GET', url: '/api/v1/books/B1/readlists', headers: reader })
+    const lists = res.json() as { id: string; bookIds: string[] }[]
+    expect(lists).toHaveLength(1)
+    const [list] = lists
+    expect(list!.id).toBe('RL1')
+    expect(list!.bookIds).toEqual(['B1'])
+    await app.close()
+  })
+
+  it('stores and returns reading progression', async () => {
+    const { app } = await setup()
+
+    const before = await app.inject({ method: 'GET', url: '/api/v1/books/B2/progression', headers: reader })
+    expect(before.statusCode).toBe(200)
+    const start = before.json() as { locator: { href: string } }
+    expect(start.locator.href).toBe('/B2')
+
+    const locator = { href: '/B2#page=7', type: 'image/png', locations: { position: 7, progression: 0.35 } }
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/books/B2/progression',
+      headers: reader,
+      payload: { device: { id: 'device-1', name: 'Phone' }, locator },
+    })
+    expect(put.statusCode).toBe(204)
+
+    const after = await app.inject({ method: 'GET', url: '/api/v1/books/B2/progression', headers: reader })
+    const progression = after.json() as { device: { id: string; name: string }; locator: Record<string, unknown> }
+    expect(progression.device).toEqual({ id: 'device-1', name: 'Phone' })
+    expect(progression.locator).toEqual(locator)
+    await app.close()
+  })
+
+  it('updates and clears read progress', async () => {
+    const { app, database } = await setup()
+
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/books/B2/read-progress',
+      headers: reader,
+      payload: { page: 12 },
+    })
+    expect(patch.statusCode).toBe(204)
+
+    let row = await database.db
+      .selectFrom('read_progress')
+      .select(['page', 'completed'])
+      .where('book_id', '=', 'B2')
+      .where('user_id', '=', 'U2')
+      .executeTakeFirstOrThrow()
+    expect(row).toEqual({ page: 12, completed: 0 })
+
+    await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/books/B2/read-progress',
+      headers: reader,
+      payload: { completed: true },
+    })
+    row = await database.db
+      .selectFrom('read_progress')
+      .select(['page', 'completed'])
+      .where('book_id', '=', 'B2')
+      .where('user_id', '=', 'U2')
+      .executeTakeFirstOrThrow()
+    expect(row.completed).toBe(1)
+    expect(row.page).toBe(12)
+
+    expect(
+      (await app.inject({ method: 'DELETE', url: '/api/v1/books/B2/read-progress', headers: reader })).statusCode,
+    ).toBe(204)
+    expect(
+      await database.db
+        .selectFrom('read_progress')
+        .select('book_id')
+        .where('book_id', '=', 'B2')
+        .where('user_id', '=', 'U2')
+        .executeTakeFirst(),
+    ).toBeUndefined()
+    await app.close()
+  })
+
+  it('updates metadata singly and in bulk', async () => {
+    const { app } = await setup()
+
+    const single = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/books/B1/metadata',
+      headers: admin,
+      payload: { title: 'Akira v1', authorsLock: true, authors: [{ name: 'Otomo', role: 'writer' }] },
+    })
+    expect(single.statusCode).toBe(204)
+
+    const bulk = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/books/metadata',
+      headers: admin,
+      payload: { B2: { title: 'Akira v2', tags: ['reprint'] } },
+    })
+    expect(bulk.statusCode).toBe(200)
+
+    const first = (
+      await app.inject({ method: 'GET', url: '/api/v1/books/B1', headers: admin })
+    ).json() as { metadata: Record<string, unknown> }
+    expect(first.metadata.title).toBe('Akira v1')
+    expect(first.metadata.authorsLock).toBe(true)
+    expect(first.metadata.authors).toEqual([{ name: 'Otomo', role: 'writer' }])
+
+    const second = (
+      await app.inject({ method: 'GET', url: '/api/v1/books/B2', headers: admin })
+    ).json() as { metadata: Record<string, unknown> }
+    expect(second.metadata.title).toBe('Akira v2')
+    expect(second.metadata.tags).toEqual(['reprint'])
+
+    const unknown = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/books/metadata',
+      headers: admin,
+      payload: { NOPE: { title: 'x' } },
+    })
+    expect(unknown.statusCode).toBe(400)
+
+    expect(
+      (
+        await app.inject({
+          method: 'PATCH',
+          url: '/api/v1/books/B1/metadata',
+          headers: reader,
+          payload: { title: 'no' },
+        })
+      ).statusCode,
+    ).toBe(403)
+    await app.close()
+  })
+
+  it('queues book analysis as a job', async () => {
+    const { app, database } = await setup()
+    expect((await app.inject({ method: 'POST', url: '/api/v1/books/B1/analyze', headers: admin })).statusCode).toBe(202)
+    const jobs = await database.db.selectFrom('jobs').select(['type', 'unique_key']).execute()
+    expect(jobs).toEqual([{ type: 'AnalyzeBook', unique_key: 'ANALYZE_BOOK_B1' }])
+    await app.close()
+  })
+
+  it('forbids access to books the caller cannot see', async () => {
+    const { app } = await setup()
+    expect((await app.inject({ method: 'GET', url: '/api/v1/books/B3', headers: reader })).statusCode).toBe(403)
+    expect((await app.inject({ method: 'GET', url: '/api/v1/books/NOPE', headers: reader })).statusCode).toBe(404)
+    await app.close()
+  })
+})
