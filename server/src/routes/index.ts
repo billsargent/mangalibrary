@@ -13,6 +13,7 @@ import { registerSettingsRoutes } from './settings.js'
 import { registerSseRoutes } from './sse.js'
 import { registerSystemRoutes } from './system.js'
 import { registerThumbnailRoutes } from './thumbnails.js'
+import { registerTransientBookRoutes } from './transient-books.js'
 import { registerUserRoutes } from './users.js'
 
 /** Registers every REST route group implemented so far. */
@@ -32,4 +33,5 @@ export async function registerRoutes(app: FastifyInstance, opts: RouteOptions): 
   await registerMaintenanceRoutes(app, opts)
   await registerSseRoutes(app, opts)
   await registerFontRoutes(app, opts)
+  await registerTransientBookRoutes(app, opts)
 }
