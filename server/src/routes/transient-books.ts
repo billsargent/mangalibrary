@@ -6,11 +6,9 @@ import { openBook } from '../media/index.js'
 import { SCAN_ERRORS, ScanError, insideRoot, scanFolder } from '../media/scan.js'
 import { TransientBookStore, type TransientBook } from '../media/transient.js'
 import { nextTsid } from '../tsid.js'
+import { cacheHeaders, isNotModified } from './cache-headers.js'
 import { humanSize } from './content-dto.js'
 import type { RouteOptions } from './libraries.js'
-
-/** The reference's cache directive for a book page: never cached on its own. */
-const PAGE_CACHE_CONTROL = 'max-age=0, private, must-revalidate'
 
 interface PageDto {
   number: number
@@ -150,19 +148,11 @@ export async function registerTransientBookRoutes(app: FastifyInstance, opts: Ro
       const page = Number.isInteger(pageNumber) ? book.pages[pageNumber - 1] : undefined
       if (!page) return reply.code(400).send({ message: 'Page number does not exist' })
 
-      const headers = {
-        'cache-control': PAGE_CACHE_CONTROL,
-        'last-modified': book.lastModified.toUTCString(),
-      }
-
-      const since = req.headers['if-modified-since']
-      if (typeof since === 'string') {
-        const parsed = Date.parse(since)
-        // The response only changes when the book is analysed again, so a client
-        // that already has it is told to keep what it has.
-        if (!Number.isNaN(parsed) && Math.floor(book.lastModified.getTime() / 1000) * 1000 <= parsed) {
-          return reply.headers(headers).code(304).send()
-        }
+      const headers = cacheHeaders(book.lastModified)
+      // The response only changes when the book is analysed again, so a client
+      // that already has it is told to keep what it has.
+      if (isNotModified(req, book.lastModified)) {
+        return reply.headers(headers).code(304).send()
       }
 
       let contents

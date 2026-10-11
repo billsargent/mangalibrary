@@ -3,23 +3,25 @@ import { stat } from 'node:fs/promises'
 import { basename, extname, isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { type Kysely } from 'kysely'
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
+import sharp from 'sharp'
 import { requireAdmin, requireRole } from '../auth/session.js'
 import type { DB } from '../db/schema.js'
 import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
+import { openBook } from '../media/index.js'
 import { insideRoot } from '../media/scan.js'
+import { cacheHeaders, isNotModified } from './cache-headers.js'
 import { humanSize } from './content-dto.js'
 import { contentContext, seriesAllowed, type ContentContext } from './context.js'
 import type { RouteOptions } from './libraries.js'
 
 /**
- * Media: the page list of a book, downloading a book's file, and the jobs that
- * remove or regenerate derived data.
+ * Media: the page list of a book, the image of a page, downloading a book's
+ * file, and the jobs that remove or regenerate derived data.
  *
- * Reading a page *image* means opening the archive or PDF, which the media layer
- * owns; those endpoints (`pages/{n}`, the manifests, `resource/{resource}`,
- * `file/*`) arrive with it. Everything here works from the database or from the
- * file already on disk.
+ * A page image is read by opening the archive or PDF, which the media layer
+ * owns. The manifests, `resource/{resource}`, `file/*` and the series and read
+ * list archives still belong to that layer and are not here yet.
  */
 
 /** Content type for a download, by extension. */
@@ -109,6 +111,142 @@ function bookAccess(context: ContentContext, book: BookRecord): boolean {
   return seriesAllowed(context, book.seriesId, book.libraryId)
 }
 
+/** The reading profile of a book, from the media type its analysis recorded. */
+function mediaProfile(mediaType: string | null): 'DIVINA' | 'PDF' | 'EPUB' | null {
+  switch (mediaType) {
+    case 'application/zip':
+    case 'application/x-rar-compressed':
+      return 'DIVINA'
+    case 'application/pdf':
+      return 'PDF'
+    case 'application/epub+zip':
+      return 'EPUB'
+    default:
+      return null
+  }
+}
+
+/** File extension for an image, for the inline `Content-Disposition`. */
+const PAGE_IMAGE_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': '.jpeg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/avif': '.avif',
+  'image/bmp': '.bmp',
+  'image/tiff': '.tiff',
+  'image/jxl': '.jxl',
+}
+
+/** A page thumbnail is resized to this many pixels on its longest edge. */
+const PAGE_THUMBNAIL_SIZE = 300
+
+interface PageMeta {
+  book: BookRecord
+  lastModified: Date
+  pageNumber: number
+  /** The page's own media type, before any conversion. */
+  mediaType: string
+}
+
+/**
+ * Resolve a book, its analysed media and one of its pages.
+ *
+ * Both page routes agree on what counts as missing, unanalysed, out of range or
+ * not streamable because it lives here: a page image is only served for a book
+ * this server can render one for - a ZIP or RAR of images, which the reference
+ * calls the Divina profile, or a PDF - so a text EPUB's markup is refused rather
+ * than sent as something a reader cannot show.
+ */
+async function pageFor(
+  db: Kysely<DB>,
+  req: FastifyRequest,
+  bookId: string,
+  rawPageNumber: string,
+  zeroBased: boolean,
+): Promise<{ code: number; message: string } | PageMeta> {
+  const context = await contentContext(db, req)
+  const book = await findBook(db, bookId)
+  if (!book) return { code: 404, message: 'Book not found' }
+  if (!bookAccess(context, book)) return { code: 403, message: 'Forbidden' }
+
+  const media = await db
+    .selectFrom('media')
+    .select(['status', 'media_type', 'last_modified_date'])
+    .where('book_id', '=', bookId)
+    .executeTakeFirst()
+  if (!media || media.status !== 'READY') return { code: 404, message: 'Book analysis failed' }
+
+  const profile = mediaProfile(media.media_type)
+  if (profile === null) return { code: 404, message: 'Book analysis failed' }
+
+  const requested = Number.parseInt(rawPageNumber, 10)
+  const pageNumber = (Number.isInteger(requested) ? requested : 0) + (zeroBased ? 1 : 0)
+  const page = await db
+    .selectFrom('media_page')
+    .select('media_type')
+    .where('book_id', '=', bookId)
+    .where('number', '=', pageNumber)
+    .executeTakeFirst()
+  if (!page) return { code: 400, message: 'Page number does not exist' }
+
+  // A text EPUB's pages are markup, and there is no image to render for them.
+  if (profile === 'EPUB' && !page.media_type.startsWith('image/')) {
+    return { code: 404, message: 'Book format is not supported' }
+  }
+
+  return { book, lastModified: new Date(media.last_modified_date), pageNumber, mediaType: page.media_type }
+}
+
+/** Read one page out of a book's file, reporting what a reader can act on. */
+async function readPage(
+  book: BookRecord,
+  pageNumber: number,
+): Promise<{ code: number; message: string } | { bytes: Buffer }> {
+  const path = await bookFile(book)
+  if (!path) return { code: 404, message: 'File not found, it may have moved' }
+
+  let contents
+  try {
+    contents = await openBook(path)
+  } catch {
+    return { code: 404, message: 'File not found, it may have moved' }
+  }
+  try {
+    return { bytes: await contents.readPage(pageNumber) }
+  } catch {
+    return { code: 400, message: 'Page number does not exist' }
+  } finally {
+    contents.close()
+  }
+}
+
+/** Re-encode an image to JPEG or PNG, or null when it cannot be read. */
+async function convertImage(bytes: Buffer, target: string): Promise<Buffer | null> {
+  try {
+    const image = sharp(bytes)
+    if (target === 'image/jpeg') return await image.flatten({ background: '#ffffff' }).jpeg().toBuffer()
+    return await image.png().toBuffer()
+  } catch {
+    return null
+  }
+}
+
+/** Shrink an image to fit inside a square, without enlarging it. */
+async function resizeImage(bytes: Buffer, mediaType: string, size: number): Promise<Buffer | null> {
+  try {
+    const metadata = await sharp(bytes).metadata()
+    const longest = Math.max(metadata.width ?? 0, metadata.height ?? 0)
+    // A JPEG that already fits is served as it is, as the reference does.
+    if (mediaType === 'image/jpeg' && longest > 0 && longest <= size) return bytes
+
+    const target = Math.min(longest > 0 ? longest : size, size)
+    return await sharp(bytes).resize(target, target, { fit: 'inside' }).jpeg().toBuffer()
+  } catch {
+    return null
+  }
+}
+
 export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptions): Promise<void> {
   const { db } = opts
 
@@ -138,6 +276,73 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
         sizeBytes: row.file_size,
         size: row.file_size === null ? '' : humanSize(row.file_size),
       }))
+    },
+  )
+
+  /**
+   * The image of one page.
+   *
+   * `zero_based` shifts the page number the way the reference's reader asks for
+   * it, and `convert` re-encodes the image when a client cannot read the stored
+   * format. The response is an inline attachment named after the book and page,
+   * so saving it produces a file that sorts with the rest of the book.
+   */
+  app.get<{
+    Params: { bookId: string; pageNumber: string }
+    Querystring: { convert?: string; zero_based?: string }
+  }>('/api/v1/books/:bookId/pages/:pageNumber', { preHandler: requireRole('PAGE_STREAMING') }, async (req, reply) => {
+    const resolved = await pageFor(db, req, req.params.bookId, req.params.pageNumber, req.query.zero_based === 'true')
+    if ('code' in resolved) return reply.code(resolved.code).send({ message: resolved.message })
+    const { book, lastModified, pageNumber, mediaType } = resolved
+
+    if (isNotModified(req, lastModified)) return reply.headers(cacheHeaders(lastModified)).code(304).send()
+
+    const convertTo = req.query.convert?.toLowerCase()
+    if (convertTo !== undefined && convertTo !== '' && convertTo !== 'jpeg' && convertTo !== 'png') {
+      return reply.code(400).send({ message: `Invalid conversion format: ${req.query.convert}` })
+    }
+
+    const page = await readPage(book, pageNumber)
+    if ('code' in page) return reply.code(page.code).send({ message: page.message })
+
+    let bytes = page.bytes
+    let type = mediaType
+    if (convertTo === 'jpeg' || convertTo === 'png') {
+      const target = convertTo === 'jpeg' ? 'image/jpeg' : 'image/png'
+      if (type !== target) {
+        const converted = await convertImage(bytes, target)
+        if (converted === null) return reply.code(404).send({ message: 'Image conversion failed' })
+        bytes = converted
+        type = target
+      }
+    }
+
+    const fileName = `${book.name}-${pageNumber}${PAGE_IMAGE_EXTENSIONS[type] ?? ''}`.replace(/"/g, "'")
+    return reply
+      .headers(cacheHeaders(lastModified))
+      .header('content-disposition', `inline; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`)
+      .type(type || 'application/octet-stream')
+      .send(bytes)
+  })
+
+  /** The image of one page, resized to a thumbnail, always as JPEG. */
+  app.get<{ Params: { bookId: string; pageNumber: string } }>(
+    '/api/v1/books/:bookId/pages/:pageNumber/thumbnail',
+    { preHandler: requireRole('PAGE_STREAMING') },
+    async (req, reply) => {
+      const resolved = await pageFor(db, req, req.params.bookId, req.params.pageNumber, false)
+      if ('code' in resolved) return reply.code(resolved.code).send({ message: resolved.message })
+      const { book, lastModified, pageNumber, mediaType } = resolved
+
+      if (isNotModified(req, lastModified)) return reply.headers(cacheHeaders(lastModified)).code(304).send()
+
+      const page = await readPage(book, pageNumber)
+      if ('code' in page) return reply.code(page.code).send({ message: page.message })
+
+      const thumbnail = await resizeImage(page.bytes, mediaType, PAGE_THUMBNAIL_SIZE)
+      if (thumbnail === null) return reply.code(404).send({ message: 'Image conversion failed' })
+
+      return reply.headers(cacheHeaders(lastModified)).type('image/jpeg').send(thumbnail)
     },
   )
 
