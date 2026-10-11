@@ -2,6 +2,7 @@ import sharp from 'sharp'
 import type { Kysely } from 'kysely'
 
 import type { DB } from '../db/schema.js'
+import { aggregateSeriesMetadata } from '../metadata/aggregation.js'
 import { refreshBookMetadata } from '../metadata/refresh.js'
 import { computePositions } from './epub.js'
 import { openBook } from './index.js'
@@ -226,6 +227,14 @@ export async function analyzeBook(
     // to do. A document that cannot be read is reported, never thrown, so it
     // cannot fail an analysis that otherwise worked.
     await refreshBookMetadata(db, bookId, { path })
+
+    // A book's metadata is what a series' booksMetadata is made of, so the series'
+    // view of its books is recomputed here. The reference does this through a task
+    // of its own, and also re-reads the series' documents; reading every book of
+    // the series again for each of its books analysed would be quadratic, so that
+    // part is left to a scan, which does it once per series.
+    const owner = await db.selectFrom('books').select('series_id').where('id', '=', bookId).executeTakeFirst()
+    if (owner) await aggregateSeriesMetadata(db, owner.series_id)
 
     return { status: 'READY', mediaType: inspection.mediaType, pageCount: inspection.pages.length, comment: null }
   }

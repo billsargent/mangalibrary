@@ -61,15 +61,8 @@ export interface SeriesMetadataDto {
 }
 
 export interface BookMetadataAggregationDto {
-  title: string
-  titleSort: string
   summary: string
   summaryNumber: string
-  publisher: string
-  language: string
-  ageRating: number | null
-  status: string | null
-  readingDirection: string | null
   releaseDate: string | null
   authors: AuthorDto[]
   tags: string[]
@@ -206,14 +199,8 @@ export interface SeriesMetadataRow {
 
 export interface BookMetadataAggregationRow {
   series_id: string
-  title: string
-  title_sort: string
   summary: string
-  publisher: string
-  language: string
-  age_rating: number | null
-  status: string | null
-  reading_direction: string | null
+  summary_number: string
   release_date: string | null
   created_date: string
   last_modified_date: string
@@ -346,17 +333,8 @@ export function toBookMetadataAggregationDto(
   tags: string[],
 ): BookMetadataAggregationDto {
   return {
-    title: row?.title ?? '',
-    titleSort: row?.title_sort ?? '',
     summary: row?.summary ?? '',
-    // Komga exposes the book number whose metadata won the aggregation. The
-    // schema does not keep it, so the field is present but empty.
-    summaryNumber: '',
-    publisher: row?.publisher ?? '',
-    language: row?.language ?? '',
-    ageRating: row?.age_rating ?? null,
-    status: row?.status ?? null,
-    readingDirection: row?.reading_direction ?? null,
+    summaryNumber: row?.summary_number ?? '',
     releaseDate: row?.release_date ?? null,
     authors,
     tags,

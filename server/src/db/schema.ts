@@ -317,14 +317,8 @@ export interface BookMetadataLinkTable {
 
 export interface BookMetadataAggregationTable {
   series_id: string
-  title: string
-  title_sort: string
   summary: Generated<string>
-  publisher: Generated<string>
-  language: Generated<string>
-  age_rating: number | null
-  status: string | null
-  reading_direction: string | null
+  summary_number: Generated<string>
   release_date: string | null
   created_date: string
   last_modified_date: string

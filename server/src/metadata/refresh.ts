@@ -16,8 +16,8 @@ import type { Kysely } from 'kysely'
 
 import { bookFilePath, findBookRecord } from '../books/files.js'
 import type { DB } from '../db/schema.js'
-import { openBook, type BookContents } from '../media/index.js'
-import { comicInfoBookPatch, comicInfoEntry } from './comicinfo.js'
+import { comicInfoBookPatch } from './comicinfo.js'
+import { readComicInfo } from './document.js'
 import {
   applyBookPatch,
   isEmptyUpdate,
@@ -56,24 +56,6 @@ const VALUE_NAMES: Record<string, string> = {
   number_sort: 'numberSort',
   release_date: 'releaseDate',
   isbn: 'isbn',
-}
-
-type DocumentRead = { status: 'ok'; xml: string } | { status: 'skipped' | 'failed'; reason: string }
-
-/** Read `ComicInfo.xml` out of a book, without ever throwing. */
-async function readComicInfo(path: string): Promise<DocumentRead> {
-  let book: BookContents | null = null
-  try {
-    book = await openBook(path)
-    const entry = comicInfoEntry(book.files)
-    if (entry === null) return { status: 'skipped', reason: 'the book carries no ComicInfo.xml' }
-
-    return { status: 'ok', xml: (await book.readResource(entry)).toString('utf8') }
-  } catch (error) {
-    return { status: 'failed', reason: (error as Error).message }
-  } finally {
-    book?.close()
-  }
 }
 
 /** A book's stored metadata and locks, or null when it has no metadata row. */

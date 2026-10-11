@@ -164,9 +164,8 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
     .insertInto('book_metadata_aggregation')
     .values({
       series_id: 'S1',
-      title: 'Akira',
-      title_sort: 'Akira',
       summary: 'Neo-Tokyo',
+      summary_number: '1',
       release_date: '1982-12-20',
       created_date: now,
       last_modified_date: now,

@@ -195,3 +195,115 @@ export function isEmptyUpdate(update: BookMetadataUpdate): boolean {
     update.links === undefined
   )
 }
+
+/** What a provider read about a series out of its books, with every field optional. */
+export interface SeriesMetadataPatch {
+  status?: string
+  title?: string
+  titleSort?: string
+  summary?: string
+  readingDirection?: string
+  ageRating?: number
+  publisher?: string
+  language?: string
+  genres?: readonly string[]
+  totalBookCount?: number
+}
+
+/** The stored metadata of a series, and which of its fields a user has locked. */
+export interface SeriesMetadataState {
+  status: string
+  title: string
+  titleSort: string
+  summary: string
+  readingDirection: string | null
+  ageRating: number | null
+  publisher: string
+  language: string
+  totalBookCount: number | null
+  genres: readonly string[]
+  locks: {
+    status: boolean
+    title: boolean
+    titleSort: boolean
+    summary: boolean
+    readingDirection: boolean
+    ageRating: boolean
+    publisher: boolean
+    language: boolean
+    totalBookCount: boolean
+    genres: boolean
+  }
+}
+
+/** What to write for a series, and only what changes. */
+export interface SeriesMetadataUpdate {
+  values: {
+    status?: string
+    title?: string
+    title_sort?: string
+    summary?: string
+    reading_direction?: string | null
+    age_rating?: number | null
+    publisher?: string
+    language?: string
+    total_book_count?: number | null
+  }
+  genres?: readonly string[]
+}
+
+/**
+ * Apply a patch to a series' metadata, honouring the locks.
+ *
+ * A series patch always comes from its books, so what an aggregation decided is
+ * subject to the same rules a scan is: a locked field is the user's.
+ */
+export function applySeriesPatch(state: SeriesMetadataState, patch: SeriesMetadataPatch): SeriesMetadataUpdate {
+  const update: SeriesMetadataUpdate = { values: {} }
+
+  if (patch.status !== undefined && !state.locks.status && patch.status !== state.status) {
+    update.values.status = patch.status
+  }
+  if (patch.title !== undefined && !state.locks.title && patch.title !== state.title) {
+    update.values.title = patch.title
+  }
+  if (patch.titleSort !== undefined && !state.locks.titleSort && patch.titleSort !== state.titleSort) {
+    update.values.title_sort = patch.titleSort
+  }
+  if (patch.summary !== undefined && !state.locks.summary && patch.summary !== state.summary) {
+    update.values.summary = patch.summary
+  }
+  if (
+    patch.readingDirection !== undefined &&
+    !state.locks.readingDirection &&
+    patch.readingDirection !== state.readingDirection
+  ) {
+    update.values.reading_direction = patch.readingDirection
+  }
+  if (patch.ageRating !== undefined && !state.locks.ageRating && patch.ageRating !== state.ageRating) {
+    update.values.age_rating = patch.ageRating
+  }
+  if (patch.publisher !== undefined && !state.locks.publisher && patch.publisher !== state.publisher) {
+    update.values.publisher = patch.publisher
+  }
+  if (patch.language !== undefined && !state.locks.language && patch.language !== state.language) {
+    update.values.language = patch.language
+  }
+  if (
+    patch.totalBookCount !== undefined &&
+    !state.locks.totalBookCount &&
+    patch.totalBookCount !== state.totalBookCount
+  ) {
+    update.values.total_book_count = patch.totalBookCount
+  }
+  if (patch.genres !== undefined && !state.locks.genres && !sameTags(state.genres, patch.genres)) {
+    update.genres = patch.genres
+  }
+
+  return update
+}
+
+/** Whether a series update would write anything at all. */
+export function isEmptySeriesUpdate(update: SeriesMetadataUpdate): boolean {
+  return Object.keys(update.values).length === 0 && update.genres === undefined
+}

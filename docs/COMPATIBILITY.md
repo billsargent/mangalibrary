@@ -50,7 +50,6 @@ Komga leaves room for interpretation. Clients see the same shape either way.
 | `age_rating` filter                                                                                 | `-1` selects series with no age rating, since an unset rating is a null column rather than a sentinel.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | List-valued metadata (`tags`, `genres`, `links`, `authors`, `alternateTitles`, `sharingLabels`)     | Returned in a deterministic order (alphabetical by label). The database has no inherent ordering for these rows, and a stable order keeps clients and tests predictable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `POST .../list` request bodies                                                                      | The `condition` object (Komga's structured search language) and the FTS5 index arrive with the search work; `fullTextSearch` is honoured today.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `SeriesDto.booksMetadata.summaryNumber`                                                             | Present but empty: the schema does not record which book's metadata won the aggregation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `MediaDto.epubDivinaCompatible`                                                                     | Always `false` until the analysis job inspects archives and EPUBs.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `CollectionDto.filtered` / `ReadListDto.filtered`                                                   | Always `false`: saved searches (dynamic collections and read lists) are not modelled; the id lists are authoritative.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Collections and read lists                                                                          | Global resources, and visibility is derived from their members: one is listed when at least one member is visible, and `seriesIds` / `bookIds` is trimmed to what the caller may see. An empty collection is therefore visible only to an admin.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -100,8 +99,17 @@ is analysed. Like the EPUB reader and the ComicRack list, this is done with
 targeted patterns rather than an XML parser - the documents involved are a flat
 list of elements whose text is wanted.
 
-So far this reads a book's own fields from `ComicInfo.xml`; the series half of the
-same document, EPUB metadata and Mylar file names are still to come.
+So far this reads a book's own fields from `ComicInfo.xml`, and the whole of what
+that document says about the series its book belongs to; EPUB metadata and Mylar
+file names are still to come.
+
+A series has no file of its own, so its metadata is folded out of its books: the
+value most of them agree on, the highest age rating, the union of the genres, and
+the volume appended to the title when the library asks for it (`Series (2)`; volume
+1 is the series itself, so it is left alone). `SeriesDto.booksMetadata` is computed
+the same way the reference computes it - the union of the credits and tags, the
+earliest release date, and the summary of the earliest-numbered book that has one,
+with that book's number.
 
 Deliberate differences from the reference:
 
@@ -112,17 +120,32 @@ Deliberate differences from the reference:
   is not a URL, a `GTIN` whose check digit does not hold, a release date the
   calendar does not have. In the reference a release date that `LocalDate` refuses
   costs the whole document, because its provider throws and returns nothing.
+- A language is checked for the shape of a BCP47 tag rather than against ICU's list
+  of ISO languages, and its casing is normalised (`pt_br` becomes `pt-BR`). An
+  invented language therefore lands in the field, where the reference would refuse
+  it; `Unknown`, which documents write, is refused by both.
+- An age rating is the highest one among the books, and genres are the union of
+  theirs, as the reference aggregates them. When the books disagree on a value and
+  the counts tie, the earliest book in reading order wins; the reference leaves that
+  to whatever order its database returned.
 - A field is written only when its value would change, so re-analysing a book
   leaves the metadata rows - and their timestamps - alone.
 - Reading a book's metadata is part of analysing it here, where the reference
   schedules it as its own task. The effect is the same; the book is read once
   more, which is cheaper than threading an open container through both steps.
+- A series' documents are read when a scan touches the series. The reference also
+  re-reads them every time one of its books' metadata is refreshed, but its task
+  queue collapses those requests into one per series, and without that queue the
+  same behaviour would re-read every book of a series once per book analysed. What
+  analysis does here is recompute `booksMetadata` from the books' stored metadata,
+  which is cheap and is what makes that view move when a book is edited or a
+  document is imported.
 
 The per-field locks (`titleLock`, `authorsLock`, and the rest) are honoured
-exactly as the reference honours them: a locked field, and a locked list, is left
-as the user set it. Lists are replaced rather than merged, because the file is read
-as a whole, and are compared as sets so that re-ordering credits in a file does not
-rewrite the book.
+exactly as the reference honours them, for a book and for a series: a locked field,
+and a locked list, is left as the user set it. Lists are replaced rather than
+merged, because the file is read as a whole, and are compared as sets so that
+re-ordering credits in a file does not rewrite the book.
 
 ## Scanning
 
