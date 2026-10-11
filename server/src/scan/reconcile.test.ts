@@ -1,0 +1,240 @@
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { createDatabase, type Database } from '../db/index.js'
+import { migrate } from '../db/migrate.js'
+import { migrations } from '../db/migrations/index.js'
+import { scanLibrary } from './reconcile.js'
+
+async function setup(overrides: Record<string, unknown> = {}): Promise<{ database: Database; root: string }> {
+  const root = mkdtempSync(join(tmpdir(), 'ml-reconcile-'))
+  const database = createDatabase(':memory:')
+  await migrate(database.db, migrations)
+  const now = new Date().toISOString()
+  await database.db
+    .insertInto('libraries')
+    .values({
+      id: 'L1',
+      name: 'Main',
+      root,
+      scan_cbx: 1,
+      scan_pdf: 1,
+      scan_epub: 1,
+      created_date: now,
+      last_modified_date: now,
+      ...overrides,
+    } as never)
+    .execute()
+  return { database, root }
+}
+
+/** Write files, creating the directories they live in. */
+function files(root: string, paths: string[]): void {
+  for (const path of paths) {
+    const full = join(root, path)
+    mkdirSync(dirname(full), { recursive: true })
+    writeFileSync(full, path)
+  }
+}
+
+async function seriesRows(database: Database) {
+  return database.db.selectFrom('series').selectAll().orderBy('name').execute()
+}
+
+async function bookRows(database: Database, seriesId?: string) {
+  let builder = database.db.selectFrom('books').selectAll()
+  if (seriesId !== undefined) builder = builder.where('series_id', '=', seriesId)
+  return builder.orderBy('number').execute()
+}
+
+describe('scanning a library', () => {
+  it('creates the series and books it finds, numbered from 1', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 10.cbz', 'Akira/Volume 2.cbz', 'Akira/Volume 1.cbz'])
+
+    const summary = await scanLibrary(database.db, 'L1')
+    expect(summary).toMatchObject({ seriesCreated: 1, booksCreated: 3 })
+
+    const series = await seriesRows(database)
+    expect(series).toHaveLength(1)
+    expect(series[0]?.name).toBe('Akira')
+    expect(series[0]?.url.startsWith('file:')).toBe(true)
+
+    const books = await bookRows(database)
+    // Numbered in the order a reader expects, not lexicographically.
+    expect(books.map((book) => [book.name, book.number])).toEqual([
+      ['Volume 1', 1],
+      ['Volume 2', 2],
+      ['Volume 10', 3],
+    ])
+    expect(books[0]?.url.startsWith('file:')).toBe(true)
+
+    // Every series and book gets the metadata row the rest of the API expects.
+    const seriesMeta = await database.db.selectFrom('series_metadata').selectAll().execute()
+    expect(seriesMeta).toHaveLength(1)
+    expect(seriesMeta[0]?.title).toBe('Akira')
+    const bookMeta = await database.db.selectFrom('book_metadata').selectAll().execute()
+    expect(bookMeta).toHaveLength(3)
+    expect(bookMeta.map((row) => row.number).sort()).toEqual(['1', '2', '3'])
+  })
+
+  it('changes nothing when nothing changed', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz'])
+    await scanLibrary(database.db, 'L1')
+
+    const second = await scanLibrary(database.db, 'L1')
+    expect(second).toEqual({
+      seriesCreated: 0,
+      seriesUpdated: 0,
+      seriesDeleted: 0,
+      booksCreated: 0,
+      booksUpdated: 0,
+      booksDeleted: 0,
+    })
+  })
+
+  it('adds a new book and renumbers', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz', 'Akira/Volume 2.cbz'])
+    await scanLibrary(database.db, 'L1')
+
+    files(root, ['Akira/Volume 10.cbz'])
+    const summary = await scanLibrary(database.db, 'L1')
+    expect(summary.booksCreated).toBe(1)
+
+    expect((await bookRows(database)).map((book) => [book.name, book.number])).toEqual([
+      ['Volume 1', 1],
+      ['Volume 2', 2],
+      ['Volume 10', 3],
+    ])
+  })
+
+  it('soft-deletes a book that is gone, and renumbers the rest', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz', 'Akira/Volume 2.cbz', 'Akira/Volume 3.cbz'])
+    await scanLibrary(database.db, 'L1')
+
+    rmSync(join(root, 'Akira/Volume 2.cbz'))
+    const summary = await scanLibrary(database.db, 'L1')
+    expect(summary.booksDeleted).toBe(1)
+
+    const all = await database.db.selectFrom('books').selectAll().execute()
+    const deleted = all.filter((book) => book.deleted_date !== null)
+    expect(deleted.map((book) => book.name)).toEqual(['Volume 2'])
+
+    // The soft-deleted book no longer takes a number, so the rest close up.
+    expect(
+      (await bookRows(database)).filter((book) => book.deleted_date === null).map((book) => [book.name, book.number]),
+    ).toEqual([
+      ['Volume 1', 1],
+      ['Volume 3', 2],
+    ])
+  })
+
+  it('soft-deletes a series whose folder is gone, and everything under it', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz', 'Berserk/Volume 1.cbz'])
+    await scanLibrary(database.db, 'L1')
+
+    rmSync(join(root, 'Akira'), { recursive: true })
+    const summary = await scanLibrary(database.db, 'L1')
+    expect(summary.seriesDeleted).toBe(1)
+    expect(summary.booksDeleted).toBe(1)
+
+    const series = await seriesRows(database)
+    expect(series.find((row) => row.name === 'Akira')?.deleted_date).not.toBeNull()
+    expect(series.find((row) => row.name === 'Berserk')?.deleted_date).toBeNull()
+  })
+
+  it('soft-deletes everything when the folder is empty', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz'])
+    await scanLibrary(database.db, 'L1')
+
+    rmSync(join(root, 'Akira'), { recursive: true })
+    await scanLibrary(database.db, 'L1')
+
+    expect((await seriesRows(database)).every((row) => row.deleted_date !== null)).toBe(true)
+  })
+
+  it('empties the trash at the end when the library asks for it', async () => {
+    const { database, root } = await setup({ empty_trash_after_scan: 1 })
+    files(root, ['Akira/Volume 1.cbz', 'Akira/Volume 2.cbz'])
+    await scanLibrary(database.db, 'L1')
+
+    rmSync(join(root, 'Akira/Volume 2.cbz'))
+    await scanLibrary(database.db, 'L1')
+
+    // The trash was emptied, so the row is really gone rather than soft-deleted.
+    expect((await database.db.selectFrom('books').selectAll().execute()).map((book) => book.name)).toEqual(['Volume 1'])
+  })
+
+  it('marks a changed book outdated when the scan is deep', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz'])
+    await scanLibrary(database.db, 'L1')
+
+    const book = (await bookRows(database))[0]!
+    const now = new Date().toISOString()
+    await database.db
+      .insertInto('media')
+      .values({
+        book_id: book.id,
+        media_type: 'application/zip',
+        status: 'READY',
+        comment: null,
+        page_count: 1,
+        created_date: now,
+        last_modified_date: now,
+      })
+      .execute()
+
+    // The walk takes the later of the creation and modified times, so the change
+    // has to move the modified time past the creation time.
+    utimesSync(join(root, 'Akira/Volume 1.cbz'), new Date(), new Date('2030-02-03T04:05:06Z'))
+    const summary = await scanLibrary(database.db, 'L1', { deep: true })
+    expect(summary.booksUpdated).toBe(1)
+
+    const media = await database.db
+      .selectFrom('media')
+      .selectAll()
+      .where('book_id', '=', book.id)
+      .executeTakeFirstOrThrow()
+    expect(media.status).toBe('OUTDATED')
+  })
+
+  it('marks the library unavailable when the root is excluded, and clears it again', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz'])
+
+    await scanLibrary(database.db, 'L1')
+    await database.db
+      .updateTable('libraries')
+      .set({ scan_directory_exclusions: JSON.stringify([root]) })
+      .where('id', '=', 'L1')
+      .execute()
+
+    await expect(scanLibrary(database.db, 'L1')).rejects.toThrow()
+    let library = await database.db.selectFrom('libraries').selectAll().where('id', '=', 'L1').executeTakeFirstOrThrow()
+    expect(library.unavailable_date).not.toBeNull()
+
+    await database.db.updateTable('libraries').set({ scan_directory_exclusions: '[]' }).where('id', '=', 'L1').execute()
+    await scanLibrary(database.db, 'L1')
+    library = await database.db.selectFrom('libraries').selectAll().where('id', '=', 'L1').executeTakeFirstOrThrow()
+    expect(library.unavailable_date).toBeNull()
+  })
+
+  it('marks a oneshots folder as a series per file', async () => {
+    const { database, root } = await setup({ oneshots_directory: 'oneshots' })
+    files(root, ['oneshots/One Shot.cbz', 'oneshots/Another.cbz'])
+
+    await scanLibrary(database.db, 'L1')
+    const series = await seriesRows(database)
+    expect(series.map((row) => [row.name, row.oneshot])).toEqual([
+      ['Another', 1],
+      ['One Shot', 1],
+    ])
+  })
+})

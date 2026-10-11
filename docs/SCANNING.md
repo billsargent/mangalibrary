@@ -71,7 +71,9 @@ as separate tasks _after_ the walk, never as part of it.
 - **Restore is hash-based.** A re-added series is matched to a deleted one by
   book count, the multiset of file sizes and then content hashes; when it matches,
   metadata, thumbnails, read progress and read-list membership move across and the
-  old row is deleted.
+  old row is deleted. This is not implemented yet: hashing book files arrives with
+  the page-hashing work, so today a returning series is created afresh and the
+  deleted one waits in the trash until it is emptied.
 - **Unsupported content is not a scan failure.** A file with an accepted
   extension whose content is unrecognised still becomes a book; the analysis step
   marks its media unsupported (`ERR_1001`).
@@ -90,10 +92,19 @@ as separate tasks _after_ the walk, never as part of it.
 ## Storing what the scan finds
 
 Komga stores absolute `file:` URLs for `series.url` and `books.url`, and the
-importer copies them across unchanged. Our scanner will do the same, so a
-migrated library and a freshly scanned one are indistinguishable. The cost is
-that moving a library root needs a re-scan; the file download endpoint accepts a
-root-relative path as well, so a hand-written row keeps working.
+importer copies them across unchanged. Our scanner does the same, so a migrated
+library and a freshly scanned one are indistinguishable. The cost is that moving a
+library root needs a re-scan; the file download endpoint accepts a root-relative
+path as well, so a hand-written row keeps working.
+
+`walkLibrary` in `server/src/scan/library.ts` is the walk, and takes a folder and
+the library's settings, with no database access. `scanLibrary` in
+`server/src/scan/reconcile.ts` is the reconciliation: it creates, updates,
+soft-deletes and renumbers, marks a changed book's media outdated, marks the
+library unavailable when the walk cannot proceed, empties the trash when the
+library asks for it, and leaves everything else to the trash. What it does not do
+yet is the hash-based restore above, and the cleanup of empty collections and read
+lists after a scan.
 
 Our schema stores the exclusions in `libraries.scan_directory_exclusions` (a JSON
 list) rather than a table of its own; the semantics are the ones above.
