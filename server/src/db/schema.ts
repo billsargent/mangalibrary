@@ -211,6 +211,12 @@ export interface SeriesMetadataTable {
   summary: Generated<string>
   summary_lock: Generated<number>
   total_book_count: number | null
+  total_book_count_lock: Generated<number>
+  sharing_labels_lock: Generated<number>
+  tags_lock: Generated<number>
+  genres_lock: Generated<number>
+  links_lock: Generated<number>
+  alternate_titles_lock: Generated<number>
   created_date: string
   last_modified_date: string
 }
@@ -287,6 +293,7 @@ export interface BookMetadataTable {
   reading_direction_lock: Generated<number>
   authors_lock: Generated<number>
   tags_lock: Generated<number>
+  links_lock: Generated<number>
   created_date: string
   last_modified_date: string
 }

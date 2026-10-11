@@ -27,6 +27,16 @@ function lower(values: readonly string[]): string[] {
   return values.filter((value) => value.trim() !== '').map((value) => value.trim().toLowerCase())
 }
 
+/**
+ * Whether any content restriction applies. When this is false every series is
+ * visible, which lets callers skip building an id list entirely.
+ */
+export function hasContentRestrictions(user: AuthUser): boolean {
+  if (isAdmin(user)) return false
+  const { ageRestriction, labelsAllow, labelsExclude } = user.restrictions
+  return ageRestriction !== null || labelsAllow.length > 0 || labelsExclude.length > 0
+}
+
 /** Combine conditions where `null` means "no constraint" (jOOQ's `noCondition`). */
 function orCondition(left: boolean | null, right: boolean | null): boolean | null {
   if (left === null) return right

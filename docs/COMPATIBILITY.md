@@ -35,6 +35,26 @@ Use `importer/` to convert an existing Komga install. It reads the legacy
 database read-only and writes the new schema; book files are untouched. See
 [IMPORT.md](IMPORT.md).
 
+## Documented differences
+
+A few behaviours cannot be reproduced exactly, or are deliberately defined where
+Komga leaves room for interpretation. Clients see the same shape either way.
+
+| Endpoint | Difference |
+| --- | --- |
+| Any list with an `unpaged=true` parameter | The response is a single page whose `size` equals the number of elements, matching Spring's unpaged `PageImpl`. |
+| `GET /api/v1/series/latest` | Ordered by the creation time of the series' most recently added book, so a series reappears when new volumes arrive. |
+| `GET /api/v1/series/new` | Ordered by when the series itself was created. |
+| `GET /api/v1/series/updated` | Ordered by `lastModified` of the series. |
+| `deleted` parameter | Defaults to excluding deleted items, as Komga does. `oneshot` and `unpaged` constrain nothing until a client sets them explicitly. |
+| `age_rating` filter | `-1` selects series with no age rating, since an unset rating is a null column rather than a sentinel. |
+| List-valued metadata (`tags`, `genres`, `links`, `authors`, `alternateTitles`, `sharingLabels`) | Returned in a deterministic order (alphabetical by label). The database has no inherent ordering for these rows, and a stable order keeps clients and tests predictable. |
+| `POST .../list` request bodies | The `condition` object (Komga's structured search language) and the FTS5 index arrive with the search work; `fullTextSearch` is honoured today. |
+| `SeriesDto.booksMetadata.summaryNumber` | Present but empty: the schema does not record which book's metadata won the aggregation. |
+| `MediaDto.epubDivinaCompatible` | Always `false` until the analysis job inspects archives and EPUBs. |
+| `CollectionDto.filtered` / `ReadListDto.filtered` | Always `false`: saved searches (dynamic collections and read lists) are not modelled; the id lists are authoritative. |
+| `PATCH .../metadata` | Writes the fields present in the body and records the requested lock state. A lock does not block a PATCH - it stops scanning and metadata refresh from overwriting a hand-edited field. Non-nullable columns (`title`, `summary`, ...) cannot be unset, so an explicit null is ignored for them. |
+
 ## Not in scope (yet)
 
 OPDS v1/v2, Kobo sync, KOReader sync, Mihon/Tachiyomi shims, OAuth2/OIDC login,

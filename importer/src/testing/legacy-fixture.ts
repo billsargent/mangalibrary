@@ -41,6 +41,7 @@ export function createLegacyFixture(file: string): void {
       SERIES_ID text primary key, STATUS text not null, STATUS_LOCK integer not null default 0,
       TITLE text not null, TITLE_LOCK integer not null default 0, TITLE_SORT text not null,
       PUBLISHER text not null default '', LANGUAGE text not null default '', SUMMARY text not null default '',
+      TAGS_LOCK integer not null default 0, GENRES_LOCK integer not null default 0,
       CREATED_DATE datetime not null default current_timestamp,
       LAST_MODIFIED_DATE datetime not null default current_timestamp
     );
@@ -61,6 +62,7 @@ export function createLegacyFixture(file: string): void {
       NUMBER text not null default '', NUMBER_LOCK integer not null default 0,
       NUMBER_SORT real not null default 0, NUMBER_SORT_LOCK integer not null default 0,
       SUMMARY text not null default '', AUTHORS_LOCK integer not null default 0,
+      LINKS_LOCK integer not null default 0,
       CREATED_DATE datetime not null default current_timestamp,
       LAST_MODIFIED_DATE datetime not null default current_timestamp
     );
@@ -147,8 +149,8 @@ export function createLegacyFixture(file: string): void {
     ['S1', 'L1', 'Akira', 'akira', '2024-01-01 10:00:00'],
   ])
   insert(
-    'insert into SERIES_METADATA (SERIES_ID, STATUS, TITLE, TITLE_LOCK, TITLE_SORT, PUBLISHER, LANGUAGE, SUMMARY) values (?, ?, ?, ?, ?, ?, ?, ?)',
-    [['S1', 'ENDED', 'Akira', 1, 'Akira', 'Kodansha', 'en', 'A cyberpunk classic.']],
+    'insert into SERIES_METADATA (SERIES_ID, STATUS, TITLE, TITLE_LOCK, TITLE_SORT, PUBLISHER, LANGUAGE, SUMMARY, TAGS_LOCK) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [['S1', 'ENDED', 'Akira', 1, 'Akira', 'Kodansha', 'en', 'A cyberpunk classic.', 1]],
   )
   insert('insert into SERIES_METADATA_AUTHOR (SERIES_ID, NAME, ROLE) values (?, ?, ?)', [['S1', 'Katsuhiro Otomo', 'writer']])
   insert('insert into SERIES_METADATA_TAG (SERIES_ID, TAG) values (?, ?)', [['S1', 'cyberpunk']])
@@ -162,9 +164,9 @@ export function createLegacyFixture(file: string): void {
       ['B2', 'S1', 'L1', 'Volume 2', 'v2.cbz', '2024-01-02 10:00:00', 2048, 2],
     ],
   )
-  insert('insert into BOOK_METADATA (BOOK_ID, TITLE, NUMBER, NUMBER_SORT) values (?, ?, ?, ?)', [
-    ['B1', 'Akira Volume One', '1', 1],
-    ['B2', 'Akira Volume Two', '2', 2],
+  insert('insert into BOOK_METADATA (BOOK_ID, TITLE, NUMBER, NUMBER_SORT, LINKS_LOCK) values (?, ?, ?, ?, ?)', [
+    ['B1', 'Akira Volume One', '1', 1, 1],
+    ['B2', 'Akira Volume Two', '2', 2, 0],
   ])
   insert('insert into BOOK_METADATA_AUTHOR (BOOK_ID, NAME, ROLE) values (?, ?, ?)', [['B1', 'Katsuhiro Otomo', 'writer']])
   insert('insert into BOOK_METADATA_TAG (BOOK_ID, TAG) values (?, ?)', [['B1', 'cyberpunk']])
