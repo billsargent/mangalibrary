@@ -5,5 +5,4 @@ coverage
 *.sqlite
 data
 ui/
-komga/
-komga-webui/
+server/src/generated/
