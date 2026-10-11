@@ -1,10 +1,9 @@
 #!/usr/bin/env node
-import { importKomga } from './index.js'
+import { formatReport, importKomga } from './index.js'
 
 function readFlag(args: string[], name: string): string | undefined {
-  const i = args.indexOf(name)
-  if (i < 0) return undefined
-  return args[i + 1]
+  const index = args.indexOf(name)
+  return index < 0 ? undefined : args[index + 1]
 }
 
 function hasFlag(args: string[], name: string): boolean {
@@ -18,8 +17,11 @@ function usage(): never {
       '',
       'Options:',
       '  --dry-run        Report what would be imported, write nothing',
-      '  --rescan-only    Import users/settings/collections/read lists, then rescan libraries',
+      '  --rescan-only    Import identity and settings only, then rescan libraries',
       '  --force          Allow writing into a non-empty destination (back up first)',
+      '',
+      'Example:',
+      '  npm run import -- --from ~/.komga --to ./data',
     ].join('\n'),
   )
   process.exit(1)
@@ -37,3 +39,12 @@ importKomga({
   rescanOnly: hasFlag(args, '--rescan-only'),
   force: hasFlag(args, '--force'),
 })
+  .then((report) => {
+    console.log(formatReport(report))
+    console.log('')
+    console.log(`Import ${report.dryRun ? 'preview' : 'completed'} successfully.`)
+  })
+  .catch((error: unknown) => {
+    console.error(`Import failed: ${(error as Error).message}`)
+    process.exit(1)
+  })
