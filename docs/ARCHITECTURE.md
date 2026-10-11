@@ -21,7 +21,7 @@ API but replaces everything behind it.
 | Database   | SQLite via `better-sqlite3`, queried with Kysely                          |
 | Migrations | Own runner + `schema_migrations` table                                    |
 | IDs        | TSID (13-char Crockford Base32, time-sortable)                            |
-| Jobs       | `jobs` table + `piscina` worker pool                                      |
+| Jobs       | `jobs` table, run in-process by a worker with a configurable pool size    |
 | Events     | `EventEmitter` -> SSE + search reindex                                    |
 | Search     | SQLite FTS5 (`bm25` relevance)                                            |
 | Images     | `sharp`                                                                   |
