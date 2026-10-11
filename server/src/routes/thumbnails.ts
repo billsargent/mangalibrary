@@ -41,6 +41,17 @@ const OWNER_TABLE: Record<ThumbnailOwnerType, 'books' | 'series' | 'collections'
   READLIST: 'readlists',
 }
 
+/** Event prefix per owner type; the suffix is `Added` or `Deleted`. */
+const EVENT_PREFIX: Record<
+  ThumbnailOwnerType,
+  'ThumbnailBook' | 'ThumbnailSeries' | 'ThumbnailSeriesCollection' | 'ThumbnailReadList'
+> = {
+  BOOK: 'ThumbnailBook',
+  SERIES: 'ThumbnailSeries',
+  COLLECTION: 'ThumbnailSeriesCollection',
+  READLIST: 'ThumbnailReadList',
+}
+
 interface ThumbnailRow {
   id: string
   owner_type: string
@@ -69,6 +80,27 @@ function toThumbnailDto(row: ThumbnailRow, spec: OwnerSpec): Record<string, unkn
     fileSize: row.file_size,
     [spec.idField]: row.owner_id,
   }
+}
+
+/**
+ * The body of a thumbnail event.
+ *
+ * A series poster changes what every list showing that series looks like, and the
+ * same goes for a collection or a read list, which is why those carry only their
+ * own id. A book's poster also changes its series, so the series id comes along.
+ */
+async function thumbnailEventData(
+  db: Kysely<DB>,
+  spec: OwnerSpec,
+  id: string,
+  selected: boolean,
+): Promise<Record<string, unknown>> {
+  const data: Record<string, unknown> = { [spec.idField]: id, selected }
+  if (spec.ownerType === 'BOOK') {
+    const book = await db.selectFrom('books').select('series_id').where('id', '=', id).executeTakeFirst()
+    data.seriesId = book?.series_id ?? ''
+  }
+  return data
 }
 
 /** Whether the owner itself exists, before any question of access. */
@@ -290,6 +322,10 @@ export async function registerThumbnailRoutes(app: FastifyInstance, opts: RouteO
       })
 
       const row = await db.selectFrom('thumbnails').selectAll().where('id', '=', thumbnailId).executeTakeFirstOrThrow()
+      opts.events.publish({
+        name: `${EVENT_PREFIX[spec.ownerType]}Added`,
+        data: await thumbnailEventData(db, spec, id, true),
+      })
       return toThumbnailDto(row as ThumbnailRow, spec)
     })
 
@@ -302,7 +338,7 @@ export async function registerThumbnailRoutes(app: FastifyInstance, opts: RouteO
 
       const existing = await db
         .selectFrom('thumbnails')
-        .select('id')
+        .select(['id', 'selected'])
         .where('id', '=', thumbnailId)
         .where('owner_type', '=', spec.ownerType)
         .where('owner_id', '=', id)
@@ -310,6 +346,10 @@ export async function registerThumbnailRoutes(app: FastifyInstance, opts: RouteO
       if (!existing) return reply.code(404).send({ message: 'Thumbnail not found' })
 
       await db.deleteFrom('thumbnails').where('id', '=', thumbnailId).execute()
+      opts.events.publish({
+        name: `${EVENT_PREFIX[spec.ownerType]}Deleted`,
+        data: await thumbnailEventData(db, spec, id, existing.selected === 1),
+      })
       return reply.code(204).send()
     })
 
@@ -342,6 +382,12 @@ export async function registerThumbnailRoutes(app: FastifyInstance, opts: RouteO
           .set({ selected: 1, last_modified_date: now })
           .where('id', '=', thumbnailId)
           .execute()
+      })
+      // Selecting a poster changes what every list shows, which is the same
+      // thing an upload does, so it is announced the same way.
+      opts.events.publish({
+        name: `${EVENT_PREFIX[spec.ownerType]}Added`,
+        data: await thumbnailEventData(db, spec, id, true),
       })
       return reply.code(204).send()
     })

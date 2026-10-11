@@ -96,6 +96,39 @@ async function writeAgeRestriction(db: Kysely<DB>, userId: string, value: unknow
     .execute()
 }
 
+/**
+ * Everything that decides what a user may see or do, as one comparable value.
+ *
+ * A session carries the permissions it was opened with, so a change to any of
+ * this has to end the session - and an update that changes none of it must not.
+ * Comparing one string per update is simpler than tracking each field.
+ */
+async function permissionSnapshot(db: Kysely<DB>, userId: string): Promise<string> {
+  const [row, libraries, labels] = await Promise.all([
+    db
+      .selectFrom('users')
+      .select(['roles', 'shared_all_libraries', 'age_restriction', 'age_restriction_allow_only'])
+      .where('id', '=', userId)
+      .executeTakeFirst(),
+    db
+      .selectFrom('user_library_sharing')
+      .select('library_id')
+      .where('user_id', '=', userId)
+      .orderBy('library_id')
+      .execute(),
+    db.selectFrom('user_sharing').select(['allow', 'label']).where('user_id', '=', userId).orderBy('label').execute(),
+  ])
+
+  return JSON.stringify({
+    roles: row?.roles ?? '',
+    sharedAllLibraries: row?.shared_all_libraries ?? 0,
+    ageRestriction: row?.age_restriction ?? null,
+    ageRestrictionAllowOnly: row?.age_restriction_allow_only ?? null,
+    libraries: libraries.map((entry) => entry.library_id),
+    labels: labels.map((entry) => `${entry.allow}:${entry.label}`),
+  })
+}
+
 export async function registerUserRoutes(app: FastifyInstance, opts: RouteOptions): Promise<void> {
   const { db } = opts
 
@@ -157,6 +190,7 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
     const existing = await db.selectFrom('users').select('id').where('id', '=', req.params.id).executeTakeFirst()
     if (!existing) return reply.code(404).send({ message: 'User not found' })
 
+    const before = await permissionSnapshot(db, req.params.id)
     const body = (req.body ?? {}) as Record<string, unknown>
     if ('roles' in body) {
       await db
@@ -168,6 +202,13 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
     await writeLibrarySharing(db, req.params.id, body.sharedLibraries)
     await writeUserSharing(db, req.params.id, body)
     await writeAgeRestriction(db, req.params.id, body.ageRestriction)
+
+    // A live session carries the permissions it was opened with, so a change to
+    // what the user may see has to end it. An update that changes nothing
+    // readable leaves the sessions alone.
+    if ((await permissionSnapshot(db, req.params.id)) !== before) {
+      opts.events.publish({ name: 'SessionExpired', data: { userId: req.params.id }, userId: req.params.id })
+    }
     return reply.code(204).send()
   })
 
@@ -175,6 +216,7 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
     const existing = await db.selectFrom('users').select('id').where('id', '=', req.params.id).executeTakeFirst()
     if (!existing) return reply.code(404).send({ message: 'User not found' })
     await db.deleteFrom('users').where('id', '=', req.params.id).execute()
+    opts.events.publish({ name: 'SessionExpired', data: { userId: req.params.id }, userId: req.params.id })
     return reply.code(204).send()
   })
 
@@ -196,6 +238,11 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
           .set({ password: hashPassword(password), last_modified_date: new Date().toISOString() })
           .where('id', '=', userId)
           .execute()
+        // An admin resetting somebody else's password ends that user's sessions;
+        // changing your own does not, which is what the reference does.
+        if (adminOnly && userId !== currentUser(req).id) {
+          opts.events.publish({ name: 'SessionExpired', data: { userId }, userId })
+        }
         return reply.code(204).send()
       },
     )
