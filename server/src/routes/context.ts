@@ -74,3 +74,27 @@ export function seriesAllowed(context: ContentContext, seriesId: string, library
   if (!canAccessLibrary(context.user, libraryId)) return false
   return context.restrictedSeriesIds === null || context.restrictedSeriesIds.includes(seriesId)
 }
+
+/**
+ * Series ids the user may see, or `null` when that means every series.
+ *
+ * Used by the organisation endpoints: a collection or read list is listed when
+ * at least one of its members is visible, and its member list is trimmed to what
+ * the caller can see.
+ */
+export async function accessibleSeriesIds(
+  db: Kysely<DB>,
+  context: ContentContext,
+): Promise<Set<string> | null> {
+  if (context.restrictedSeriesIds !== null) return new Set(context.restrictedSeriesIds)
+
+  const all = await allLibraryIds(db)
+  if (context.libraryIds.length === all.length) return null
+
+  const rows = await db
+    .selectFrom('series')
+    .select('id')
+    .where('library_id', 'in', context.libraryIds)
+    .execute()
+  return new Set(rows.map((row) => row.id))
+}

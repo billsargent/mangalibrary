@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify'
+import multipart from '@fastify/multipart'
 import { registerAuth } from './auth/session.js'
 import type { Config } from './config.js'
 import type { Database } from './db/index.js'
@@ -11,6 +12,9 @@ export interface AppDeps {
   database: Database
 }
 
+/** Uploads we accept, in bytes. Covers ComicRack reading lists and library imports. */
+const MAX_UPLOAD_BYTES = 32 * 1024 * 1024
+
 /**
  * Build the Fastify instance. Kept separate from the entrypoint so tests can
  * exercise it with `inject` without binding a port.
@@ -20,6 +24,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     logger: { level: deps.config.logLevel },
     trustProxy: true,
   })
+
+  await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES } })
 
   app.get('/health', async () => ({ status: 'ok', version: APP_VERSION }))
 
