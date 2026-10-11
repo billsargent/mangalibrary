@@ -1,8 +1,10 @@
 import { sql, type Kysely } from 'kysely'
 import type { FastifyInstance } from 'fastify'
-import { requireAdmin, requireAuth } from '../auth/session.js'
+import { requireAdmin, requireAuth, requireRole } from '../auth/session.js'
 import type { DB } from '../db/schema.js'
 import { nextTsid } from '../tsid.js'
+import { zipStream } from '../zip.js'
+import { archiveEntries } from './book-files.js'
 import { buildBookDtos } from './content-data.js'
 import type { BookRow } from './content-dto.js'
 import { loadReadStatus, matchesReadStatus, sendBook } from './books.js'
@@ -455,6 +457,40 @@ export async function registerReadListRoutes(app: FastifyInstance, opts: RouteOp
 
   sibling('/api/v1/readlists/:id/books/:bookId/next', 'next')
   sibling('/api/v1/readlists/:id/books/:bookId/previous', 'previous')
+
+  /**
+   * Download a whole read list as a ZIP.
+   *
+   * Entries are numbered in read list order and carry the book's file name, so
+   * the archive keeps the reading order the list defines. A book whose file is no
+   * longer on disk is skipped rather than failing the whole download.
+   */
+  app.get<{ Params: { id: string } }>(
+    '/api/v1/readlists/:id/file',
+    { preHandler: requireRole('FILE_DOWNLOAD') },
+    async (req, reply) => {
+      const context = await contentContext(db, req)
+      const found = await loadOne(context, req.params.id)
+      if ('status' in found) {
+        return reply.code(found.status).send({ message: found.status === 404 ? 'Read list not found' : 'Forbidden' })
+      }
+
+      const ordered = await accessibleBooks(db, context, req.params.id)
+      const entries = await archiveEntries(
+        db,
+        ordered.map((book) => book.id),
+        (fileName, index) => `${index + 1} - ${fileName}`,
+      )
+      const fileName = `${found.dto.name}.zip`.replace(/"/g, "'")
+      return reply
+        .header(
+          'content-disposition',
+          `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        )
+        .type('application/zip')
+        .send(zipStream(entries))
+    },
+  )
 }
 
 interface OrderedBook {
