@@ -591,6 +591,18 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
         deviceName: typeof device.name === 'string' ? device.name : null,
         readDate: new Date().toISOString(),
       })
+      // Progress is private to the reader, but it also moves the series' read
+      // counts, which everyone the event reaches may be looking at.
+      opts.events.publish({
+        name: 'ReadProgressChanged',
+        data: { bookId: req.params.bookId, userId: context.user.id },
+        userId: context.user.id,
+      })
+      opts.events.publish({
+        name: 'ReadProgressSeriesChanged',
+        data: { seriesId: found.row.series_id, userId: context.user.id },
+        userId: context.user.id,
+      })
       return reply.code(204).send()
     },
   )
@@ -617,6 +629,16 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
       }
 
       await upsertReadProgress(db, context.user.id, req.params.bookId, update)
+      opts.events.publish({
+        name: 'ReadProgressChanged',
+        data: { bookId: req.params.bookId, userId: context.user.id },
+        userId: context.user.id,
+      })
+      opts.events.publish({
+        name: 'ReadProgressSeriesChanged',
+        data: { seriesId: found.row.series_id, userId: context.user.id },
+        userId: context.user.id,
+      })
       return reply.code(204).send()
     },
   )
@@ -636,6 +658,16 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
         .where('user_id', '=', context.user.id)
         .where('book_id', '=', req.params.bookId)
         .execute()
+      opts.events.publish({
+        name: 'ReadProgressDeleted',
+        data: { bookId: req.params.bookId, userId: context.user.id },
+        userId: context.user.id,
+      })
+      opts.events.publish({
+        name: 'ReadProgressSeriesDeleted',
+        data: { seriesId: found.row.series_id, userId: context.user.id },
+        userId: context.user.id,
+      })
       return reply.code(204).send()
     },
   )

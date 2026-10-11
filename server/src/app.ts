@@ -3,6 +3,7 @@ import multipart from '@fastify/multipart'
 import { registerAuth } from './auth/session.js'
 import type { Config } from './config.js'
 import type { Database } from './db/index.js'
+import { EventBus } from './events.js'
 import { registerRoutes } from './routes/index.js'
 import { MAX_UPLOAD_BYTES } from './uploads.js'
 import { APP_VERSION } from './version.js'
@@ -31,6 +32,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   await registerAuth(app, { db: deps.database.db, sessionTtlMs: deps.config.sessionTtlMs })
   await registerRoutes(app, {
     db: deps.database.db,
+    events: new EventBus(),
     port: deps.config.port,
     configuredPort: deps.config.configuredPort,
   })

@@ -3,12 +3,15 @@ import type { Kysely } from 'kysely'
 import { canAccessLibrary } from '../auth/access.js'
 import { requireAdmin, requireAuth } from '../auth/session.js'
 import type { DB } from '../db/schema.js'
+import type { EventBus } from '../events.js'
 import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
 import { nextTsid } from '../tsid.js'
 import { toLibraryDto, type LibraryDto, type LibraryRow } from './dto.js'
 
 export interface RouteOptions {
   db: Kysely<DB>
+  /** Fan-out of changes to the clients watching for them. */
+  events: EventBus
   /** Port the server is listening on, as reported by the settings endpoint. */
   port?: number
   /** Port the configuration asks for, when it asks for one at all. */

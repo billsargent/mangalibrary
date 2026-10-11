@@ -9,6 +9,7 @@ import { registerReadListRoutes } from './readlists.js'
 import { registerReferentialRoutes } from './referential.js'
 import { registerSeriesRoutes } from './series.js'
 import { registerSettingsRoutes } from './settings.js'
+import { registerSseRoutes } from './sse.js'
 import { registerSystemRoutes } from './system.js'
 import { registerThumbnailRoutes } from './thumbnails.js'
 import { registerUserRoutes } from './users.js'
@@ -28,4 +29,5 @@ export async function registerRoutes(app: FastifyInstance, opts: RouteOptions): 
   await registerClaimRoutes(app, opts)
   await registerSystemRoutes(app, opts)
   await registerMaintenanceRoutes(app, opts)
+  await registerSseRoutes(app, opts)
 }
