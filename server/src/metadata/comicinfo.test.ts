@@ -266,3 +266,62 @@ describe('reading the series a ComicInfo describes', () => {
     expect(comicInfoSeriesPatch('<ComicInfo><Title>One Shot</Title></ComicInfo>')).toEqual({})
   })
 })
+
+describe('reading the organisation a ComicInfo describes', () => {
+  it('puts the book in the read lists its arcs name, with their numbers', () => {
+    const patch = comicInfoBookPatch(
+      '<ComicInfo><StoryArc>The Long Way, The Short Way</StoryArc><StoryArcNumber>2, 5</StoryArcNumber></ComicInfo>',
+    )
+    expect(patch.readLists).toEqual([
+      { name: 'The Long Way', number: 2 },
+      { name: 'The Short Way', number: 5 },
+    ])
+  })
+
+  it('puts it in an arc without a number when the document states none', () => {
+    const patch = comicInfoBookPatch('<ComicInfo><StoryArc>The Long Way</StoryArc></ComicInfo>')
+    expect(patch.readLists).toEqual([{ name: 'The Long Way', number: null }])
+  })
+
+  it('leaves out a pair whose number cannot be read, as the reference does', () => {
+    const patch = comicInfoBookPatch(
+      '<ComicInfo><StoryArc>The Long Way, The Short Way</StoryArc><StoryArcNumber>2, later</StoryArcNumber></ComicInfo>',
+    )
+    expect(patch.readLists).toEqual([{ name: 'The Long Way', number: 2 }])
+  })
+
+  it('reads an alternate series as a read list of its own', () => {
+    const patch = comicInfoBookPatch(
+      '<ComicInfo><AlternateSeries>Akira Color</AlternateSeries><AlternateNumber>7</AlternateNumber></ComicInfo>',
+    )
+    expect(patch.readLists).toEqual([{ name: 'Akira Color', number: 7 }])
+
+    const named = comicInfoBookPatch('<ComicInfo><AlternateSeries>Akira Color</AlternateSeries></ComicInfo>')
+    expect(named.readLists).toEqual([{ name: 'Akira Color', number: null }])
+  })
+
+  it('reads both an alternate series and its arcs', () => {
+    const patch = comicInfoBookPatch(
+      '<ComicInfo><AlternateSeries>Color</AlternateSeries><StoryArc>Arc</StoryArc></ComicInfo>',
+    )
+    expect(patch.readLists).toEqual([
+      { name: 'Color', number: null },
+      { name: 'Arc', number: null },
+    ])
+  })
+
+  it('reads nothing when the document names none', () => {
+    expect(comicInfoBookPatch('<ComicInfo><Title>Akira</Title></ComicInfo>').readLists).toBeUndefined()
+    expect(comicInfoBookPatch('<ComicInfo><StoryArc>  ,  </StoryArc></ComicInfo>').readLists).toBeUndefined()
+  })
+
+  it('puts the series in the collections its SeriesGroup names', () => {
+    const patch = comicInfoSeriesPatch(
+      '<ComicInfo><Series>Akira</Series><SeriesGroup>Otomo, Cyberpunk, Otomo</SeriesGroup></ComicInfo>',
+    )
+    expect(patch.collections).toEqual(['Otomo', 'Cyberpunk'])
+
+    expect(comicInfoSeriesPatch('<ComicInfo><Series>Akira</Series></ComicInfo>').collections).toBeUndefined()
+    expect(comicInfoSeriesPatch('<ComicInfo><SeriesGroup> , </SeriesGroup></ComicInfo>').collections).toBeUndefined()
+  })
+})

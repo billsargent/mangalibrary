@@ -451,6 +451,40 @@ describe('refreshing a series from its sidecar', () => {
   })
 })
 
+describe('putting a series in the collections its books name', () => {
+  const GROUPED = comicInfo({ Series: 'Akira', SeriesGroup: 'Otomo, Cyberpunk' })
+
+  it('creates the collections and puts the series in them', async () => {
+    const database = await setup([{ name: 'Volume 1', document: GROUPED }])
+
+    const result = await refreshSeriesMetadata(database.db, 'S1')
+    expect(result.collections).toEqual(['Otomo', 'Cyberpunk'])
+
+    const collections = await database.db.selectFrom('collections').selectAll().orderBy('name').execute()
+    expect(collections.map((row) => row.name)).toEqual(['Cyberpunk', 'Otomo'])
+
+    const members = await database.db.selectFrom('collection_series').selectAll().execute()
+    expect(members.map((row) => row.series_id)).toEqual(['S1', 'S1'])
+  })
+
+  it('adds nothing the second time', async () => {
+    const database = await setup([{ name: 'Volume 1', document: GROUPED }])
+
+    await refreshSeriesMetadata(database.db, 'S1')
+    const result = await refreshSeriesMetadata(database.db, 'S1')
+    expect(result.collections).toEqual([])
+    expect(await database.db.selectFrom('collection_series').selectAll().execute()).toHaveLength(2)
+  })
+
+  it('is left alone when the library is set not to import collections', async () => {
+    const database = await setup([{ name: 'Volume 1', document: GROUPED }], { import_comic_info_collection: 0 })
+
+    const result = await refreshSeriesMetadata(database.db, 'S1')
+    expect(result.collections).toEqual([])
+    expect(await database.db.selectFrom('collections').selectAll().execute()).toHaveLength(0)
+  })
+})
+
 describe('refreshing a oneshot series', () => {
   it('is its book: its title, its summary, an ended status and one book', async () => {
     const database = await setup(

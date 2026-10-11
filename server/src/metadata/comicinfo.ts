@@ -13,7 +13,7 @@
 import type { FileEntry } from '../media/types.js'
 import { validatedIsbn } from './isbn.js'
 import { normalisedLanguage } from './language.js'
-import type { Author, BookMetadataPatch, SeriesMetadataPatch, WebLink } from './patches.js'
+import type { Author, BookMetadataPatch, ReadListEntry, SeriesMetadataPatch, WebLink } from './patches.js'
 import { elementFloat, elementInt, elementText } from './xml.js'
 
 /** The file name, however the archive capitalises it. */
@@ -164,6 +164,58 @@ function linksOf(xml: string): WebLink[] {
 }
 
 /**
+ * The read lists a document puts its book in.
+ *
+ * `AlternateSeries` names another list the book belongs to, with `AlternateNumber`
+ * as its place in it. `StoryArc` names one or more arcs, and `StoryArcNumber` gives
+ * the matching places, comma for comma - a pair that does not have a number is left
+ * out, as the reference leaves it out, because a book that cannot say where it sits
+ * in an arc cannot be placed in it.
+ */
+function readListsOf(xml: string): ReadListEntry[] {
+  const entries: ReadListEntry[] = []
+
+  const alternate = elementText(xml, 'AlternateSeries')
+  if (alternate !== null) entries.push({ name: alternate, number: elementInt(xml, 'AlternateNumber') })
+
+  const storyArcs = elementText(xml, 'StoryArc')
+  if (storyArcs === null) return entries
+
+  const names = storyArcs
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => name !== '')
+  const numbers = (elementText(xml, 'StoryArcNumber') ?? '')
+    .split(',')
+    .map((number) => number.trim())
+    .map((number) => (/^[+-]?\d+$/.test(number) ? Number(number) : null))
+
+  if (numbers.some((number) => number !== null)) {
+    for (const [index, name] of names.entries()) {
+      const number = numbers[index]
+      if (number !== undefined && number !== null) entries.push({ name, number })
+    }
+    return entries
+  }
+
+  for (const name of names) entries.push({ name, number: null })
+  return entries
+}
+
+/** The collections a `SeriesGroup` puts the series in, which may name several. */
+function collectionsOf(xml: string): string[] {
+  const group = elementText(xml, 'SeriesGroup')
+  if (group === null) return []
+
+  const collections: string[] = []
+  for (const value of group.split(',')) {
+    const name = value.trim()
+    if (name !== '' && !collections.includes(name)) collections.push(name)
+  }
+  return collections
+}
+
+/**
  * What a ComicInfo document says about its book.
  *
  * A field the document does not carry is left out of the patch entirely, so a
@@ -199,6 +251,9 @@ export function comicInfoBookPatch(xml: string): BookMetadataPatch {
 
   const isbn = validatedIsbn(elementText(xml, 'GTIN'))
   if (isbn !== null) patch.isbn = isbn
+
+  const readLists = readListsOf(xml)
+  if (readLists.length > 0) patch.readLists = readLists
 
   return patch
 }
@@ -246,6 +301,9 @@ export function comicInfoSeriesPatch(xml: string, options: { appendVolume?: bool
 
   const count = elementInt(xml, 'Count')
   if (count !== null) patch.totalBookCount = count
+
+  const collections = collectionsOf(xml)
+  if (collections.length > 0) patch.collections = collections
 
   return patch
 }
