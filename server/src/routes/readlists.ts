@@ -65,11 +65,7 @@ async function booksByReadList(
 
 async function unknownBooks(db: Kysely<DB>, bookIds: readonly string[]): Promise<string[]> {
   if (bookIds.length === 0) return []
-  const rows = await db
-    .selectFrom('books')
-    .select('id')
-    .where('id', 'in', bookIds)
-    .execute()
+  const rows = await db.selectFrom('books').select('id').where('id', 'in', bookIds).execute()
   const known = new Set(rows.map((row) => row.id))
   return bookIds.filter((id) => !known.has(id))
 }
@@ -114,9 +110,10 @@ const ENTITIES: Record<string, string> = {
 function decodeEntities(value: string): string {
   return value.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, entity: string) => {
     if (entity.startsWith('#')) {
-      const code = entity.startsWith('#x') || entity.startsWith('#X')
-        ? Number.parseInt(entity.slice(2), 16)
-        : Number.parseInt(entity.slice(1), 10)
+      const code =
+        entity.startsWith('#x') || entity.startsWith('#X')
+          ? Number.parseInt(entity.slice(2), 16)
+          : Number.parseInt(entity.slice(1), 10)
       return Number.isFinite(code) ? String.fromCodePoint(code) : match
     }
     return ENTITIES[entity.toLowerCase()] ?? match
@@ -159,8 +156,10 @@ async function matchingSeries(db: Kysely<DB>, requested: string): Promise<{ id: 
     .selectFrom('series')
     .innerJoin('series_metadata', 'series_metadata.series_id', 'series.id')
     .select(['series.id', 'series_metadata.title', 'series.name'])
-    .where(sql<boolean>`lower(series_metadata.title) = lower(${requested})
-      or lower(series.name) = lower(${requested})`)
+    .where(
+      sql<boolean>`lower(series_metadata.title) = lower(${requested})
+      or lower(series.name) = lower(${requested})`,
+    )
     .execute()
   return rows.map((row) => ({ id: row.id, title: row.title }))
 }
@@ -410,7 +409,11 @@ export async function registerReadListRoutes(app: FastifyInstance, opts: RouteOp
       const unpaged = booleanParam(query.unpaged) === true
       const ordered = await accessibleBooks(db, context, req.params.id)
 
-      const passing = await structuralFilter(db, ordered.map((book) => book.id), query)
+      const passing = await structuralFilter(
+        db,
+        ordered.map((book) => book.id),
+        query,
+      )
       let candidates = ordered.filter((book) => passing.has(book.id))
 
       const statuses = toArray(query.read_status)
@@ -421,7 +424,10 @@ export async function registerReadListRoutes(app: FastifyInstance, opts: RouteOp
 
       const total = candidates.length
       const window = unpaged ? candidates : candidates.slice(page * size, page * size + size)
-      const rows = await loadBooks(db, window.map((book) => book.id))
+      const rows = await loadBooks(
+        db,
+        window.map((book) => book.id),
+      )
       const dtos = await buildBookDtos(db, rows, context.user.id)
       return springPage(dtos, page, unpaged ? total : size, total)
     },
@@ -456,11 +462,7 @@ interface OrderedBook {
 }
 
 /** Books of a read list the caller may see, in read list order. */
-async function accessibleBooks(
-  db: Kysely<DB>,
-  context: ContentContext,
-  readListId: string,
-): Promise<OrderedBook[]> {
+async function accessibleBooks(db: Kysely<DB>, context: ContentContext, readListId: string): Promise<OrderedBook[]> {
   const allowed = await accessibleSeriesIds(db, context)
   const grouped = await booksByReadList(db, [readListId], allowed)
   return (grouped.get(readListId) ?? []).map((id) => ({ id }))

@@ -32,7 +32,7 @@ function readFileConfig(path: string): FileConfig {
   try {
     return JSON.parse(readFileSync(path, 'utf8')) as FileConfig
   } catch (err) {
-    throw new Error(`Invalid config file ${path}: ${(err as Error).message}`)
+    throw new Error(`Invalid config file ${path}: ${(err as Error).message}`, { cause: err })
   }
 }
 
@@ -57,9 +57,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const host = env.SERVER_HOST ?? fileConfig.host ?? DEFAULT_HOST
   const logLevel = env.LOG_LEVEL ?? fileConfig.logLevel ?? DEFAULT_LOG_LEVEL
   const sessionTtlMs = toNumber(env.KOMGA_SESSION_TTL_MS, DEFAULT_SESSION_TTL_MS, 'session TTL')
-  const databaseFile = resolve(
-    env.KOMGA_DATABASE_FILE ?? fileConfig.databaseFile ?? join(configDir, 'database.sqlite'),
-  )
+  const databaseFile = resolve(env.KOMGA_DATABASE_FILE ?? fileConfig.databaseFile ?? join(configDir, 'database.sqlite'))
 
   return { configDir, databaseFile, host, port, logLevel, sessionTtlMs }
 }

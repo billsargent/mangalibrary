@@ -36,10 +36,7 @@ const COLLECTION_COLUMNS = [
 ] as const
 
 /** Series membership per collection, in stored order. */
-async function seriesByCollection(
-  db: Kysely<DB>,
-  collectionIds: readonly string[],
-): Promise<Map<string, string[]>> {
+async function seriesByCollection(db: Kysely<DB>, collectionIds: readonly string[]): Promise<Map<string, string[]>> {
   const grouped = new Map<string, string[]>()
   if (collectionIds.length === 0) return grouped
 
@@ -66,11 +63,7 @@ function visible(ids: string[], allowed: Set<string> | null): string[] {
 /** Validate that every referenced series exists. */
 async function unknownSeries(db: Kysely<DB>, seriesIds: readonly string[]): Promise<string[]> {
   if (seriesIds.length === 0) return []
-  const rows = await db
-    .selectFrom('series')
-    .select('id')
-    .where('id', 'in', seriesIds)
-    .execute()
+  const rows = await db.selectFrom('series').select('id').where('id', 'in', seriesIds).execute()
   const known = new Set(rows.map((row) => row.id))
   return seriesIds.filter((id) => !known.has(id))
 }
@@ -177,7 +170,11 @@ export async function registerCollectionRoutes(app: FastifyInstance, opts: Route
       .execute()
     await replaceMembership(db, id, seriesIds)
 
-    const row = await db.selectFrom('collections').select(COLLECTION_COLUMNS).where('id', '=', id).executeTakeFirstOrThrow()
+    const row = await db
+      .selectFrom('collections')
+      .select(COLLECTION_COLUMNS)
+      .where('id', '=', id)
+      .executeTakeFirstOrThrow()
     return toCollectionDto(row as unknown as CollectionRow, seriesIds)
   })
 
@@ -191,11 +188,7 @@ export async function registerCollectionRoutes(app: FastifyInstance, opts: Route
   })
 
   app.patch<{ Params: { id: string } }>('/api/v1/collections/:id', { preHandler: requireAdmin }, async (req, reply) => {
-    const existing = await db
-      .selectFrom('collections')
-      .select('id')
-      .where('id', '=', req.params.id)
-      .executeTakeFirst()
+    const existing = await db.selectFrom('collections').select('id').where('id', '=', req.params.id).executeTakeFirst()
     if (!existing) return reply.code(404).send({ message: 'Collection not found' })
 
     const body = (req.body ?? {}) as Record<string, unknown>

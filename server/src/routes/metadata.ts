@@ -293,37 +293,68 @@ async function replaceRows(
   switch (table) {
     case 'series_metadata_sharing':
       await db.deleteFrom('series_metadata_sharing').where('series_id', '=', id).execute()
-      if (rows.length > 0) await db.insertInto('series_metadata_sharing').values(rows as never).execute()
+      if (rows.length > 0)
+        await db
+          .insertInto('series_metadata_sharing')
+          .values(rows as never)
+          .execute()
       return
     case 'series_metadata_tag':
       await db.deleteFrom('series_metadata_tag').where('series_id', '=', id).execute()
-      if (rows.length > 0) await db.insertInto('series_metadata_tag').values(rows as never).execute()
+      if (rows.length > 0)
+        await db
+          .insertInto('series_metadata_tag')
+          .values(rows as never)
+          .execute()
       return
     case 'series_metadata_genre':
       await db.deleteFrom('series_metadata_genre').where('series_id', '=', id).execute()
-      if (rows.length > 0) await db.insertInto('series_metadata_genre').values(rows as never).execute()
+      if (rows.length > 0)
+        await db
+          .insertInto('series_metadata_genre')
+          .values(rows as never)
+          .execute()
       return
     case 'series_metadata_link':
       await db.deleteFrom('series_metadata_link').where('series_id', '=', id).execute()
-      if (rows.length > 0) await db.insertInto('series_metadata_link').values(rows as never).execute()
+      if (rows.length > 0)
+        await db
+          .insertInto('series_metadata_link')
+          .values(rows as never)
+          .execute()
       return
     case 'series_metadata_alternate_title':
       await db.deleteFrom('series_metadata_alternate_title').where('series_id', '=', id).execute()
       if (rows.length > 0) {
-        await db.insertInto('series_metadata_alternate_title').values(rows as never).execute()
+        await db
+          .insertInto('series_metadata_alternate_title')
+          .values(rows as never)
+          .execute()
       }
       return
     case 'book_metadata_author':
       await db.deleteFrom('book_metadata_author').where('book_id', '=', id).execute()
-      if (rows.length > 0) await db.insertInto('book_metadata_author').values(rows as never).execute()
+      if (rows.length > 0)
+        await db
+          .insertInto('book_metadata_author')
+          .values(rows as never)
+          .execute()
       return
     case 'book_metadata_tag':
       await db.deleteFrom('book_metadata_tag').where('book_id', '=', id).execute()
-      if (rows.length > 0) await db.insertInto('book_metadata_tag').values(rows as never).execute()
+      if (rows.length > 0)
+        await db
+          .insertInto('book_metadata_tag')
+          .values(rows as never)
+          .execute()
       return
     case 'book_metadata_link':
       await db.deleteFrom('book_metadata_link').where('book_id', '=', id).execute()
-      if (rows.length > 0) await db.insertInto('book_metadata_link').values(rows as never).execute()
+      if (rows.length > 0)
+        await db
+          .insertInto('book_metadata_link')
+          .values(rows as never)
+          .execute()
       return
   }
 }

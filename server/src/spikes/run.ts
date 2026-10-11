@@ -35,7 +35,9 @@ async function spikes() {
   })
 
   await check('sharp: thumbnail resize -> jpeg', async () => {
-    const png = await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#808080' } }).png().toBuffer()
+    const png = await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#808080' } })
+      .png()
+      .toBuffer()
     const thumb = await sharp(png).resize(300, 300, { fit: 'inside' }).jpeg({ quality: 85 }).toBuffer()
     const meta = await sharp(thumb).metadata()
     return `${meta.width}x${meta.height} ${meta.format} ${thumb.length}B`

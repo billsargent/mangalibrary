@@ -76,9 +76,7 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
   app.get('/api/v1/libraries', { preHandler: requireAuth }, async (req) => {
     const user = currentUser(req)
     const rows = await db.selectFrom('libraries').selectAll().orderBy('name').execute()
-    return rows
-      .filter((row) => canAccessLibrary(user, row.id))
-      .map((row) => toLibraryDto(row as unknown as LibraryRow))
+    return rows.filter((row) => canAccessLibrary(user, row.id)).map((row) => toLibraryDto(row as unknown as LibraryRow))
   })
 
   app.post('/api/v1/libraries', { preHandler: requireAdmin }, async (req, reply) => {
@@ -92,39 +90,70 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
     const now = new Date().toISOString()
     const values: Record<string, unknown> = { id: nextTsid(), name, root, created_date: now, last_modified_date: now }
     scalarFields(body, values)
-    await db.insertInto('libraries').values(values as never).execute()
+    await db
+      .insertInto('libraries')
+      .values(values as never)
+      .execute()
     await replaceExclusions(db, values.id as string, body.scanDirectoryExclusions)
 
-    const row = await db.selectFrom('libraries').selectAll().where('id', '=', values.id as string).executeTakeFirstOrThrow()
+    const row = await db
+      .selectFrom('libraries')
+      .selectAll()
+      .where('id', '=', values.id as string)
+      .executeTakeFirstOrThrow()
     return toLibraryDto(row as unknown as LibraryRow)
   })
 
-  app.get<{ Params: { libraryId: string } }>('/api/v1/libraries/:libraryId', { preHandler: requireAuth }, async (req, reply) => {
-    const user = currentUser(req)
-    if (!canAccessLibrary(user, req.params.libraryId)) return reply.code(403).send({ message: 'Forbidden' })
-    const row = await db.selectFrom('libraries').selectAll().where('id', '=', req.params.libraryId).executeTakeFirst()
-    if (!row) return reply.code(404).send({ message: 'Library not found' })
-    return toLibraryDto(row as unknown as LibraryRow)
-  })
+  app.get<{ Params: { libraryId: string } }>(
+    '/api/v1/libraries/:libraryId',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const user = currentUser(req)
+      if (!canAccessLibrary(user, req.params.libraryId)) return reply.code(403).send({ message: 'Forbidden' })
+      const row = await db.selectFrom('libraries').selectAll().where('id', '=', req.params.libraryId).executeTakeFirst()
+      if (!row) return reply.code(404).send({ message: 'Library not found' })
+      return toLibraryDto(row as unknown as LibraryRow)
+    },
+  )
 
-  app.patch<{ Params: { libraryId: string } }>('/api/v1/libraries/:libraryId', { preHandler: requireAdmin }, async (req, reply) => {
-    const existing = await db.selectFrom('libraries').select('id').where('id', '=', req.params.libraryId).executeTakeFirst()
-    if (!existing) return reply.code(404).send({ message: 'Library not found' })
+  app.patch<{ Params: { libraryId: string } }>(
+    '/api/v1/libraries/:libraryId',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const existing = await db
+        .selectFrom('libraries')
+        .select('id')
+        .where('id', '=', req.params.libraryId)
+        .executeTakeFirst()
+      if (!existing) return reply.code(404).send({ message: 'Library not found' })
 
-    const body = (req.body ?? {}) as Record<string, unknown>
-    const values: Record<string, unknown> = { last_modified_date: new Date().toISOString() }
-    scalarFields(body, values)
-    await db.updateTable('libraries').set(values as never).where('id', '=', req.params.libraryId).execute()
-    await replaceExclusions(db, req.params.libraryId, body.scanDirectoryExclusions)
-    return reply.code(204).send()
-  })
+      const body = (req.body ?? {}) as Record<string, unknown>
+      const values: Record<string, unknown> = { last_modified_date: new Date().toISOString() }
+      scalarFields(body, values)
+      await db
+        .updateTable('libraries')
+        .set(values as never)
+        .where('id', '=', req.params.libraryId)
+        .execute()
+      await replaceExclusions(db, req.params.libraryId, body.scanDirectoryExclusions)
+      return reply.code(204).send()
+    },
+  )
 
-  app.delete<{ Params: { libraryId: string } }>('/api/v1/libraries/:libraryId', { preHandler: requireAdmin }, async (req, reply) => {
-    const existing = await db.selectFrom('libraries').select('id').where('id', '=', req.params.libraryId).executeTakeFirst()
-    if (!existing) return reply.code(404).send({ message: 'Library not found' })
-    await db.deleteFrom('libraries').where('id', '=', req.params.libraryId).execute()
-    return reply.code(204).send()
-  })
+  app.delete<{ Params: { libraryId: string } }>(
+    '/api/v1/libraries/:libraryId',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const existing = await db
+        .selectFrom('libraries')
+        .select('id')
+        .where('id', '=', req.params.libraryId)
+        .executeTakeFirst()
+      if (!existing) return reply.code(404).send({ message: 'Library not found' })
+      await db.deleteFrom('libraries').where('id', '=', req.params.libraryId).execute()
+      return reply.code(204).send()
+    },
+  )
 
   /** Queue an administrative operation on a library. */
   const action = (
@@ -134,7 +163,11 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
     payload: (libraryId: string, body: Record<string, unknown>) => unknown = () => ({}),
   ) => {
     app.post<{ Params: { libraryId: string } }>(path, { preHandler: requireAdmin }, async (req, reply) => {
-      const existing = await db.selectFrom('libraries').select('id').where('id', '=', req.params.libraryId).executeTakeFirst()
+      const existing = await db
+        .selectFrom('libraries')
+        .select('id')
+        .where('id', '=', req.params.libraryId)
+        .executeTakeFirst()
       if (!existing) return reply.code(404).send({ message: 'Library not found' })
 
       const body = (req.body ?? {}) as Record<string, unknown>

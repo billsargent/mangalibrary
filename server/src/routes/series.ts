@@ -308,9 +308,9 @@ export async function findSeries(
     return { rows: await loadSeriesRows(db, ids), total }
   }
 
-  const ordered = (await applySort(seriesQuery(db, filters).select('series.id'), sorts)
-    .orderBy('series.id')
-    .execute()).map((row) => row.id)
+  const ordered = (
+    await applySort(seriesQuery(db, filters).select('series.id'), sorts).orderBy('series.id').execute()
+  ).map((row) => row.id)
 
   let candidates = ordered
   if (context.restrictedSeriesIds !== null) {
@@ -321,7 +321,10 @@ export async function findSeries(
   if (filters.readStatuses.length > 0) {
     const counts = await loadSeriesCounts(db, candidates, context.user.id)
     candidates = candidates.filter((id) =>
-      matchesReadStatus(counts.get(id) ?? { booksCount: 0, booksReadCount: 0, booksInProgressCount: 0 }, filters.readStatuses),
+      matchesReadStatus(
+        counts.get(id) ?? { booksCount: 0, booksReadCount: 0, booksInProgressCount: 0 },
+        filters.readStatuses,
+      ),
     )
   }
 
@@ -358,7 +361,8 @@ export function filtersFrom(
 ): SeriesFilters {
   const libraries = toArray(query.library_id)
   const search = typeof query.search === 'string' && query.search !== '' ? query.search : undefined
-  const fullText = typeof body.fullTextSearch === 'string' && body.fullTextSearch !== '' ? body.fullTextSearch : undefined
+  const fullText =
+    typeof body.fullTextSearch === 'string' && body.fullTextSearch !== '' ? body.fullTextSearch : undefined
 
   return {
     libraryIds: libraries.length > 0 ? libraries : context.libraryIds,
@@ -622,9 +626,7 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
         else seriesByCollection.set(member.collection_id, [member.series_id])
       }
 
-      return rows.map((row) =>
-        toCollectionDto(row as unknown as CollectionRow, seriesByCollection.get(row.id) ?? []),
-      )
+      return rows.map((row) => toCollectionDto(row as unknown as CollectionRow, seriesByCollection.get(row.id) ?? []))
     },
   )
 
@@ -639,7 +641,11 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
         .executeTakeFirst()
       if (!existing) return reply.code(404).send({ message: 'Series not found' })
 
-      const result = await applySeriesMetadataPatch(db, req.params.seriesId, (req.body ?? {}) as Record<string, unknown>)
+      const result = await applySeriesMetadataPatch(
+        db,
+        req.params.seriesId,
+        (req.body ?? {}) as Record<string, unknown>,
+      )
       if (!result.ok) return reply.code(400).send({ validationErrors: result.errors })
       return reply.code(204).send()
     },
@@ -649,7 +655,11 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
     '/api/v1/series/:seriesId/metadata/refresh',
     { preHandler: requireAdmin },
     async (req, reply) => {
-      const existing = await db.selectFrom('series').select('id').where('id', '=', req.params.seriesId).executeTakeFirst()
+      const existing = await db
+        .selectFrom('series')
+        .select('id')
+        .where('id', '=', req.params.seriesId)
+        .executeTakeFirst()
       if (!existing) return reply.code(404).send({ message: 'Series not found' })
 
       await enqueueJob(db, {
@@ -666,7 +676,11 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
     '/api/v1/series/:seriesId/analyze',
     { preHandler: requireAdmin },
     async (req, reply) => {
-      const existing = await db.selectFrom('series').select('id').where('id', '=', req.params.seriesId).executeTakeFirst()
+      const existing = await db
+        .selectFrom('series')
+        .select('id')
+        .where('id', '=', req.params.seriesId)
+        .executeTakeFirst()
       if (!existing) return reply.code(404).send({ message: 'Series not found' })
 
       await enqueueJob(db, {
@@ -735,11 +749,7 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
       await db
         .deleteFrom('read_progress')
         .where('user_id', '=', context.user.id)
-        .where(
-          'book_id',
-          'in',
-          db.selectFrom('books').select('id').where('series_id', '=', req.params.seriesId),
-        )
+        .where('book_id', 'in', db.selectFrom('books').select('id').where('series_id', '=', req.params.seriesId))
         .execute()
       return reply.code(204).send()
     },

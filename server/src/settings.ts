@@ -16,11 +16,7 @@ export async function setSetting(db: Kysely<DB>, key: string, value: string): Pr
 }
 
 /** Read a setting, generating and persisting it on first use. */
-export async function getOrCreateSetting(
-  db: Kysely<DB>,
-  key: string,
-  generate: () => string,
-): Promise<string> {
+export async function getOrCreateSetting(db: Kysely<DB>, key: string, generate: () => string): Promise<string> {
   const existing = await getSetting(db, key)
   if (existing !== undefined) return existing
   const value = generate()

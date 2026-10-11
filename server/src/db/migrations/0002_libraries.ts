@@ -43,9 +43,7 @@ export const migration0002Libraries: Migration = {
     await db.schema
       .createTable('library_exclusions')
       .ifNotExists()
-      .addColumn('library_id', 'text', (col) =>
-        col.notNull().references('libraries.id').onDelete('cascade'),
-      )
+      .addColumn('library_id', 'text', (col) => col.notNull().references('libraries.id').onDelete('cascade'))
       .addColumn('exclusion', 'text', (col) => col.notNull())
       .addPrimaryKeyConstraint('pk__library_exclusions', ['library_id', 'exclusion'])
       .execute()

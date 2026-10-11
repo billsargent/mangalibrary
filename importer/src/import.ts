@@ -6,7 +6,7 @@ import { createDatabase } from '../../server/src/db/index.js'
 import { migrate } from '../../server/src/db/migrate.js'
 import { migrations } from '../../server/src/db/migrations/index.js'
 import type { DB } from '../../server/src/db/schema.js'
-import { LegacyDatabase, type LegacyRow } from './legacy.js'
+import { LegacyDatabase } from './legacy.js'
 
 export interface ImportOptions {
   /** Legacy Komga config directory (contains `database.sqlite`). */
@@ -121,7 +121,10 @@ async function insertAll(db: Kysely<DB>, table: keyof DB, rows: Record<string, u
   if (rows.length === 0) return 0
   for (const group of chunk(rows)) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await db.insertInto(table as any).values(group as any).execute()
+    await db
+      .insertInto(table as any)
+      .values(group as any)
+      .execute()
   }
   return rows.length
 }
@@ -269,7 +272,8 @@ function mapSeriesMetadata(legacy: LegacyDatabase, timestamp: string): Record<st
     reading_direction_lock: bool(row.READING_DIRECTION_LOCK, 0),
     summary: text(row.SUMMARY, ''),
     summary_lock: bool(row.SUMMARY_LOCK, 0),
-    total_book_count: row.TOTAL_BOOK_COUNT === null || row.TOTAL_BOOK_COUNT === undefined ? null : number(row.TOTAL_BOOK_COUNT),
+    total_book_count:
+      row.TOTAL_BOOK_COUNT === null || row.TOTAL_BOOK_COUNT === undefined ? null : number(row.TOTAL_BOOK_COUNT),
     total_book_count_lock: bool(row.TOTAL_BOOK_COUNT_LOCK, 0),
     sharing_labels_lock: bool(row.SHARING_LABELS_LOCK, 0),
     tags_lock: bool(row.TAGS_LOCK, 0),
@@ -617,12 +621,7 @@ async function clearDestination(db: Kysely<DB>): Promise<void> {
   }
 }
 
-async function copyTable(
-  name: keyof DB,
-  legacy: LegacyDatabase,
-  db: Kysely<DB>,
-  timestamp: string,
-): Promise<number> {
+async function copyTable(name: keyof DB, legacy: LegacyDatabase, db: Kysely<DB>, timestamp: string): Promise<number> {
   switch (name) {
     case 'libraries':
       return insertAll(db, name, mapLibraries(legacy, timestamp))
