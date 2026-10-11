@@ -1,6 +1,7 @@
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
-import { basename, extname, resolve, sep } from 'node:path'
+import { basename, extname, isAbsolute, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { type Kysely } from 'kysely'
 import type { FastifyInstance } from 'fastify'
 import { requireAdmin, requireRole } from '../auth/session.js'
@@ -35,22 +36,18 @@ const FILE_MEDIA_TYPES: Record<string, string> = {
   '.kepub': 'application/kepub+zip',
 }
 
-interface BookLocation {
+interface BookRecord {
   libraryId: string
   seriesId: string
   name: string
-  /** Absolute path on disk, already checked to sit inside the library root. */
-  path: string
+  /** Where the row says the file is: an absolute `file:` URL, or a relative path. */
+  url: string
+  /** The library root, as configured. */
+  root: string
 }
 
-/**
- * Resolve a book's file.
- *
- * The stored URL is relative to the library root. The resolved path is checked
- * to stay inside that root, so a database row can never point the server at an
- * arbitrary file.
- */
-async function bookLocation(db: Kysely<DB>, bookId: string): Promise<BookLocation | null> {
+/** The book as stored, without touching the filesystem. */
+async function findBook(db: Kysely<DB>, bookId: string): Promise<BookRecord | null> {
   const row = await db
     .selectFrom('books')
     .innerJoin('libraries', 'libraries.id', 'books.library_id')
@@ -59,15 +56,63 @@ async function bookLocation(db: Kysely<DB>, bookId: string): Promise<BookLocatio
     .executeTakeFirst()
   if (!row) return null
 
-  const root = resolve(row.root)
-  const path = resolve(root, row.url)
-  if (path !== root && !path.startsWith(root + sep)) return null
-
-  return { libraryId: row.library_id, seriesId: row.series_id, name: row.name, path }
+  return {
+    libraryId: row.library_id,
+    seriesId: row.series_id,
+    name: row.name,
+    url: row.url,
+    root: row.root,
+  }
 }
 
-function bookAccess(context: ContentContext, location: BookLocation): boolean {
-  return seriesAllowed(context, location.seriesId, location.libraryId)
+/**
+ * Paths a stored location could mean, most specific first.
+ *
+ * Komga stores absolute `file:` URLs - the importer copies them across
+ * unchanged - while a row written by hand or by a future scanner may hold a path
+ * relative to the library root. Both are accepted so that a migrated library and
+ * a freshly scanned one behave the same way.
+ */
+function storedPathCandidates(root: string, url: string): string[] {
+  const candidates: string[] = []
+  if (url.startsWith('file:')) {
+    try {
+      candidates.push(fileURLToPath(url))
+    } catch {
+      // Not a usable file URL; the relative interpretation below may still work.
+    }
+  } else if (isAbsolute(url)) {
+    candidates.push(url)
+  }
+  candidates.push(resolve(root, url))
+  return candidates
+}
+
+/** Whether a path is the library root or sits inside it. */
+function insideRoot(root: string, candidate: string): boolean {
+  const normalizedRoot = resolve(root)
+  const normalized = resolve(candidate)
+  return normalized === normalizedRoot || normalized.startsWith(normalizedRoot + sep)
+}
+
+/**
+ * The book's file on disk, or null.
+ *
+ * Every candidate is confined to the library root, so a row can never point the
+ * server at an arbitrary file - including one that arrives from an imported
+ * database.
+ */
+async function bookFile(record: BookRecord): Promise<string | null> {
+  for (const candidate of storedPathCandidates(record.root, record.url)) {
+    if (!insideRoot(record.root, candidate)) continue
+    const info = await stat(candidate).catch(() => undefined)
+    if (info?.isFile()) return candidate
+  }
+  return null
+}
+
+function bookAccess(context: ContentContext, book: BookRecord): boolean {
+  return seriesAllowed(context, book.seriesId, book.libraryId)
 }
 
 export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptions): Promise<void> {
@@ -79,9 +124,9 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
     { preHandler: requireRole('PAGE_STREAMING') },
     async (req, reply) => {
       const context = await contentContext(db, req)
-      const location = await bookLocation(db, req.params.bookId)
-      if (!location) return reply.code(404).send({ message: 'Book not found' })
-      if (!bookAccess(context, location)) return reply.code(403).send({ message: 'Forbidden' })
+      const book = await findBook(db, req.params.bookId)
+      if (!book) return reply.code(404).send({ message: 'Book not found' })
+      if (!bookAccess(context, book)) return reply.code(403).send({ message: 'Forbidden' })
 
       const rows = await db
         .selectFrom('media_page')
@@ -108,14 +153,15 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
     { preHandler: requireRole('FILE_DOWNLOAD') },
     async (req, reply) => {
       const context = await contentContext(db, req)
-      const location = await bookLocation(db, req.params.bookId)
-      if (!location) return reply.code(404).send({ message: 'Book not found' })
-      if (!bookAccess(context, location)) return reply.code(403).send({ message: 'Forbidden' })
+      const book = await findBook(db, req.params.bookId)
+      if (!book) return reply.code(404).send({ message: 'Book not found' })
+      if (!bookAccess(context, book)) return reply.code(403).send({ message: 'Forbidden' })
 
-      const info = await stat(location.path).catch(() => undefined)
-      if (!info?.isFile()) return reply.code(404).send({ message: 'Book file not found' })
+      const path = await bookFile(book)
+      if (!path) return reply.code(404).send({ message: 'Book file not found' })
+      const info = await stat(path)
 
-      const fileName = basename(location.path).replace(/"/g, "'")
+      const fileName = basename(path).replace(/"/g, "'")
       return reply
         .header('content-length', info.size)
         .header(
@@ -123,8 +169,8 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
           `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
         )
         .header('last-modified', info.mtime.toUTCString())
-        .type(FILE_MEDIA_TYPES[extname(location.path).toLowerCase()] ?? 'application/octet-stream')
-        .send(createReadStream(location.path))
+        .type(FILE_MEDIA_TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream')
+        .send(createReadStream(path))
     },
   )
 

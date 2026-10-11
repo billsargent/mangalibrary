@@ -62,6 +62,13 @@ Komga leaves room for interpretation. Clients see the same shape either way.
 | `GET /api/v1/books/{id}/file`                                                                       | Sends the file as an attachment with `Content-Type` taken from its extension, and a `Last-Modified` header. A book whose file is missing from disk answers `404`, not a zero-length body.                                                                                                                                                                                            |
 | `DELETE /api/v1/books/{id}/file`, `DELETE /api/v1/series/{id}/file`, `PUT /api/v1/books/thumbnails` | Answer `202` and queue a job; the file and poster work itself belongs to the scanning layer (M6), which also has to keep the trash and the database in step.                                                                                                                                                                                                                         |
 
+## Scanning
+
+How a library directory is read - which directory becomes a series, how
+exclusions match, what a oneshots folder does, and what happens to files that
+disappear - is specified in [SCANNING.md](SCANNING.md). It records Komga's
+behaviour rule by rule, and the two places we are deliberately stricter.
+
 ## Not in scope (yet)
 
 OPDS v1/v2, Kobo sync, KOReader sync, Mihon/Tachiyomi shims, OAuth2/OIDC login,
