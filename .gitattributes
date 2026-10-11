@@ -1,0 +1,21 @@
+# Check text files out with LF on every platform, so that Prettier (which
+# enforces LF), git, and CI all agree on the contents of a file. Without this, a
+# Windows checkout gets CRLF and `npm run prettier` reports the whole repository
+# as unformatted even though nothing in it differs from HEAD.
+* text=auto eol=lf
+
+# Images and archives are never line-ending normalised.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.cbz binary
+*.cbr binary
+*.7z binary
+*.jar binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
