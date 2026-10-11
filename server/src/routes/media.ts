@@ -1,12 +1,13 @@
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
-import { basename, extname, isAbsolute, resolve, sep } from 'node:path'
+import { basename, extname, isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { type Kysely } from 'kysely'
 import type { FastifyInstance } from 'fastify'
 import { requireAdmin, requireRole } from '../auth/session.js'
 import type { DB } from '../db/schema.js'
 import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
+import { insideRoot } from '../media/scan.js'
 import { humanSize } from './content-dto.js'
 import { contentContext, seriesAllowed, type ContentContext } from './context.js'
 import type { RouteOptions } from './libraries.js'
@@ -86,13 +87,6 @@ function storedPathCandidates(root: string, url: string): string[] {
   }
   candidates.push(resolve(root, url))
   return candidates
-}
-
-/** Whether a path is the library root or sits inside it. */
-function insideRoot(root: string, candidate: string): boolean {
-  const normalizedRoot = resolve(root)
-  const normalized = resolve(candidate)
-  return normalized === normalizedRoot || normalized.startsWith(normalizedRoot + sep)
 }
 
 /**
