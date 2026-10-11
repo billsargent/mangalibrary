@@ -4,9 +4,11 @@ import type { DB } from '../db/schema.js'
 import { registerBookRoutes } from './books.js'
 import { registerCollectionRoutes } from './collections.js'
 import { registerLibraryRoutes } from './libraries.js'
+import { registerMediaRoutes } from './media.js'
 import { registerReadListRoutes } from './readlists.js'
 import { registerReferentialRoutes } from './referential.js'
 import { registerSeriesRoutes } from './series.js'
+import { registerThumbnailRoutes } from './thumbnails.js'
 import { registerUserRoutes } from './users.js'
 
 /** Registers every REST route group implemented so far. */
@@ -19,4 +21,6 @@ export async function registerRoutes(app: FastifyInstance, db: Kysely<DB>): Prom
   await registerBookRoutes(app, opts)
   await registerCollectionRoutes(app, opts)
   await registerReadListRoutes(app, opts)
+  await registerMediaRoutes(app, opts)
+  await registerThumbnailRoutes(app, opts)
 }
