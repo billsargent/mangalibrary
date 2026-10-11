@@ -69,44 +69,133 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
     ])
     .execute()
 
-  await db.insertInto('libraries').values({ id: 'L1', name: 'Main', root: '/library', created_date: now, last_modified_date: now }).execute()
+  await db
+    .insertInto('libraries')
+    .values({ id: 'L1', name: 'Main', root: '/library', created_date: now, last_modified_date: now })
+    .execute()
   await db.insertInto('user_library_sharing').values({ user_id: 'U2', library_id: 'L1' }).execute()
 
   await db
     .insertInto('series')
     .values([
-      { id: 'S1', library_id: 'L1', name: 'Akira', url: 'akira', file_last_modified: now, created_date: now, last_modified_date: now },
-      { id: 'S2', library_id: 'L1', name: 'Berserk', url: 'berserk', file_last_modified: now, created_date: now, last_modified_date: now },
+      {
+        id: 'S1',
+        library_id: 'L1',
+        name: 'Akira',
+        url: 'akira',
+        file_last_modified: now,
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        id: 'S2',
+        library_id: 'L1',
+        name: 'Berserk',
+        url: 'berserk',
+        file_last_modified: now,
+        created_date: now,
+        last_modified_date: now,
+      },
     ])
     .execute()
 
   await db
     .insertInto('series_metadata')
     .values([
-      { series_id: 'S1', status: 'ONGOING', title: 'Akira', title_sort: 'Akira', age_rating: 12, created_date: now, last_modified_date: now },
-      { series_id: 'S2', status: 'ONGOING', title: 'Berserk', title_sort: 'Berserk', age_rating: 18, created_date: now, last_modified_date: now },
+      {
+        series_id: 'S1',
+        status: 'ONGOING',
+        title: 'Akira',
+        title_sort: 'Akira',
+        age_rating: 12,
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        series_id: 'S2',
+        status: 'ONGOING',
+        title: 'Berserk',
+        title_sort: 'Berserk',
+        age_rating: 18,
+        created_date: now,
+        last_modified_date: now,
+      },
     ])
     .execute()
 
   await db
     .insertInto('books')
     .values([
-      { id: 'B1', series_id: 'S1', library_id: 'L1', name: 'Volume 1', url: 'v1.cbz', file_last_modified: now, number: 1, created_date: now, last_modified_date: now },
-      { id: 'B2', series_id: 'S1', library_id: 'L1', name: 'Volume 2', url: 'v2.cbz', file_last_modified: now, number: 2, created_date: now, last_modified_date: now },
-      { id: 'B3', series_id: 'S2', library_id: 'L1', name: 'Volume 1', url: 'b1.cbz', file_last_modified: now, number: 1, created_date: now, last_modified_date: now },
+      {
+        id: 'B1',
+        series_id: 'S1',
+        library_id: 'L1',
+        name: 'Volume 1',
+        url: 'v1.cbz',
+        file_last_modified: now,
+        number: 1,
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        id: 'B2',
+        series_id: 'S1',
+        library_id: 'L1',
+        name: 'Volume 2',
+        url: 'v2.cbz',
+        file_last_modified: now,
+        number: 2,
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        id: 'B3',
+        series_id: 'S2',
+        library_id: 'L1',
+        name: 'Volume 1',
+        url: 'b1.cbz',
+        file_last_modified: now,
+        number: 1,
+        created_date: now,
+        last_modified_date: now,
+      },
     ])
     .execute()
 
   await db
     .insertInto('book_metadata')
     .values([
-      { book_id: 'B1', title: 'Akira Volume One', number: '1', number_sort: 1, created_date: now, last_modified_date: now },
-      { book_id: 'B2', title: 'Akira Volume Two', number: '2', number_sort: 2, created_date: now, last_modified_date: now },
-      { book_id: 'B3', title: 'Berserk Volume One', number: '1', number_sort: 1, created_date: now, last_modified_date: now },
+      {
+        book_id: 'B1',
+        title: 'Akira Volume One',
+        number: '1',
+        number_sort: 1,
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        book_id: 'B2',
+        title: 'Akira Volume Two',
+        number: '2',
+        number_sort: 2,
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        book_id: 'B3',
+        title: 'Berserk Volume One',
+        number: '1',
+        number_sort: 1,
+        created_date: now,
+        last_modified_date: now,
+      },
     ])
     .execute()
 
-  await db.insertInto('collections').values({ id: 'C1', name: 'Classics', ordered: 1, created_date: now, last_modified_date: now }).execute()
+  await db
+    .insertInto('collections')
+    .values({ id: 'C1', name: 'Classics', ordered: 1, created_date: now, last_modified_date: now })
+    .execute()
   await db
     .insertInto('collection_series')
     .values([
@@ -115,7 +204,17 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
     ])
     .execute()
 
-  await db.insertInto('readlists').values({ id: 'RL1', name: 'Favourites', summary: 'The good ones', ordered: 1, created_date: now, last_modified_date: now }).execute()
+  await db
+    .insertInto('readlists')
+    .values({
+      id: 'RL1',
+      name: 'Favourites',
+      summary: 'The good ones',
+      ordered: 1,
+      created_date: now,
+      last_modified_date: now,
+    })
+    .execute()
   await db
     .insertInto('readlist_book')
     .values([
@@ -182,7 +281,9 @@ describe('collections', () => {
     expect(
       (await app.inject({ method: 'DELETE', url: `/api/v1/collections/${dto.id}`, headers: admin })).statusCode,
     ).toBe(204)
-    expect((await app.inject({ method: 'GET', url: `/api/v1/collections/${dto.id}`, headers: admin })).statusCode).toBe(404)
+    expect((await app.inject({ method: 'GET', url: `/api/v1/collections/${dto.id}`, headers: admin })).statusCode).toBe(
+      404,
+    )
     await app.close()
   })
 
@@ -222,9 +323,9 @@ describe('collections', () => {
       (await app.inject({ method: 'POST', url: '/api/v1/collections', headers: reader, payload: { name: 'X' } }))
         .statusCode,
     ).toBe(403)
-    expect(
-      (await app.inject({ method: 'DELETE', url: '/api/v1/collections/C1', headers: reader })).statusCode,
-    ).toBe(403)
+    expect((await app.inject({ method: 'DELETE', url: '/api/v1/collections/C1', headers: reader })).statusCode).toBe(
+      403,
+    )
     expect(
       (
         await app.inject({
@@ -316,7 +417,9 @@ describe('read lists', () => {
         .statusCode,
     ).toBe(403)
 
-    expect((await app.inject({ method: 'DELETE', url: `/api/v1/readlists/${id}`, headers: admin })).statusCode).toBe(204)
+    expect((await app.inject({ method: 'DELETE', url: `/api/v1/readlists/${id}`, headers: admin })).statusCode).toBe(
+      204,
+    )
     expect((await app.inject({ method: 'GET', url: `/api/v1/readlists/${id}`, headers: admin })).statusCode).toBe(404)
     await app.close()
   })

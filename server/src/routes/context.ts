@@ -82,19 +82,12 @@ export function seriesAllowed(context: ContentContext, seriesId: string, library
  * at least one of its members is visible, and its member list is trimmed to what
  * the caller can see.
  */
-export async function accessibleSeriesIds(
-  db: Kysely<DB>,
-  context: ContentContext,
-): Promise<Set<string> | null> {
+export async function accessibleSeriesIds(db: Kysely<DB>, context: ContentContext): Promise<Set<string> | null> {
   if (context.restrictedSeriesIds !== null) return new Set(context.restrictedSeriesIds)
 
   const all = await allLibraryIds(db)
   if (context.libraryIds.length === all.length) return null
 
-  const rows = await db
-    .selectFrom('series')
-    .select('id')
-    .where('library_id', 'in', context.libraryIds)
-    .execute()
+  const rows = await db.selectFrom('series').select('id').where('library_id', 'in', context.libraryIds).execute()
   return new Set(rows.map((row) => row.id))
 }

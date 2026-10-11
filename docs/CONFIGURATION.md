@@ -7,14 +7,14 @@ The server reads configuration from environment variables, falling back to
 
 ## Settings
 
-| Setting | Environment variable | `config.json` key | Default |
-| --- | --- | --- | --- |
-| Config directory | `KOMGA_CONFIG_DIR` | — | `~/.komga` |
-| Database file | `KOMGA_DATABASE_FILE` | `databaseFile` | `<configDir>/database.sqlite` |
-| HTTP port | `SERVER_PORT` (or `PORT`) | `port` | `25600` |
-| Bind address | `SERVER_HOST` | `host` | `0.0.0.0` |
-| Log level | `LOG_LEVEL` | `logLevel` | `info` |
-| Session lifetime | `KOMGA_SESSION_TTL_MS` | — | `604800000` (7 days) |
+| Setting          | Environment variable      | `config.json` key | Default                       |
+| ---------------- | ------------------------- | ----------------- | ----------------------------- |
+| Config directory | `KOMGA_CONFIG_DIR`        | —                 | `~/.komga`                    |
+| Database file    | `KOMGA_DATABASE_FILE`     | `databaseFile`    | `<configDir>/database.sqlite` |
+| HTTP port        | `SERVER_PORT` (or `PORT`) | `port`            | `25600`                       |
+| Bind address     | `SERVER_HOST`             | `host`            | `0.0.0.0`                     |
+| Log level        | `LOG_LEVEL`               | `logLevel`        | `info`                        |
+| Session lifetime | `KOMGA_SESSION_TTL_MS`    | —                 | `604800000` (7 days)          |
 
 ## Examples
 
@@ -35,8 +35,8 @@ KOMGA_CONFIG_DIR=/data/komga SERVER_PORT=8080 LOG_LEVEL=debug npm start
 
 ## Endpoints
 
-| Path | Purpose |
-| --- | --- |
+| Path          | Purpose                                                         |
+| ------------- | --------------------------------------------------------------- |
 | `GET /health` | Liveness probe. Returns `{ "status": "ok", "version": "..." }`. |
 
 ## Database

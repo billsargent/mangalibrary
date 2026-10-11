@@ -18,9 +18,7 @@ describe('migrate', () => {
     const second = await migrate(database.db, migrations)
     expect(second.applied).toEqual([])
 
-    const result = await sql<{ name: string }>`select name from sqlite_master where type = 'table'`.execute(
-      database.db,
-    )
+    const result = await sql<{ name: string }>`select name from sqlite_master where type = 'table'`.execute(database.db)
     const tables = result.rows.map((row) => row.name)
     expect(tables).toContain('schema_migrations')
     expect(tables).toContain('server_settings')

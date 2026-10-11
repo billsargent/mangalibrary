@@ -83,7 +83,12 @@ export const migration0003Identity: Migration = {
       .addColumn('created_date', 'text', (col) => col.notNull())
       .execute()
 
-    await db.schema.createIndex('idx__sessions__expires_at').ifNotExists().on('sessions').columns(['expires_at']).execute()
+    await db.schema
+      .createIndex('idx__sessions__expires_at')
+      .ifNotExists()
+      .on('sessions')
+      .columns(['expires_at'])
+      .execute()
     await db.schema.createIndex('idx__sessions__user_id').ifNotExists().on('sessions').columns(['user_id']).execute()
   },
 }

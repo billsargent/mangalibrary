@@ -58,11 +58,7 @@ export function booleanParam(value: unknown): boolean | null {
  * property we do not support still gets a stable, documented order, and the
  * fallback guarantees the result is deterministic (which paging requires).
  */
-export function parseSort(
-  raw: unknown,
-  allowed: Record<string, string>,
-  fallback: readonly SortSpec[],
-): SortSpec[] {
+export function parseSort(raw: unknown, allowed: Record<string, string>, fallback: readonly SortSpec[]): SortSpec[] {
   const specs: SortSpec[] = []
   for (const entry of toArray(raw)) {
     const [rawField, rawDirection] = entry.split(',')
@@ -100,7 +96,6 @@ export function likeAny(column: string, value: string): RawBuilder<boolean> {
 /** Whether `value` is a regular expression SQLite's REGEXP implementation accepts. */
 export function isRegex(value: string): boolean {
   try {
-    // eslint-disable-next-line no-new
     new RegExp(value)
     return true
   } catch {

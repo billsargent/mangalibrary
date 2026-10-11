@@ -66,7 +66,14 @@ async function setup(): Promise<Harness> {
   await database.db.insertInto('user_sharing').values({ user_id: 'U2', allow: 0, label: 'mature' }).execute()
   await database.db
     .insertInto('user_api_keys')
-    .values({ id: 'K1', user_id: 'U1', key: 'the-api-key', comment: 'test', created_date: now, last_modified_date: now })
+    .values({
+      id: 'K1',
+      user_id: 'U1',
+      key: 'the-api-key',
+      comment: 'test',
+      created_date: now,
+      last_modified_date: now,
+    })
     .execute()
 
   const app = Fastify({ logger: { level: 'silent' } })
@@ -143,7 +150,11 @@ describe('login and sessions', () => {
     expect(sessions).toHaveLength(1)
     expect(sessions[0]?.user_id).toBe('U1')
 
-    const viaHeader = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { [AUTH_TOKEN_HEADER]: String(token) } })
+    const viaHeader = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me',
+      headers: { [AUTH_TOKEN_HEADER]: String(token) },
+    })
     expect(viaHeader.statusCode).toBe(200)
     expect(viaHeader.json().email).toBe('admin@example.com')
     expect(viaHeader.json().roles).toContain('ADMIN')
@@ -307,7 +318,10 @@ describe('access helpers', () => {
   })
 
   it('applies age restrictions in ALLOW_ONLY mode', () => {
-    const user: AuthUser = { ...base, restrictions: { ageRestriction: { age: 12, restriction: 'ALLOW_ONLY' }, labelsAllow: [], labelsExclude: [] } }
+    const user: AuthUser = {
+      ...base,
+      restrictions: { ageRestriction: { age: 12, restriction: 'ALLOW_ONLY' }, labelsAllow: [], labelsExclude: [] },
+    }
     expect(contentRestrictionAllows(user, { ageRating: 10, sharingLabels: [] })).toBe(true)
     expect(contentRestrictionAllows(user, { ageRating: 18, sharingLabels: [] })).toBe(false)
     // An allow label is an escape hatch for content above the age restriction.
@@ -317,11 +331,17 @@ describe('access helpers', () => {
   })
 
   it('applies excluded labels and age EXCLUDE mode', () => {
-    const user: AuthUser = { ...base, restrictions: { ageRestriction: null, labelsAllow: [], labelsExclude: ['mature'] } }
+    const user: AuthUser = {
+      ...base,
+      restrictions: { ageRestriction: null, labelsAllow: [], labelsExclude: ['mature'] },
+    }
     expect(contentRestrictionAllows(user, { ageRating: null, sharingLabels: ['mature'] })).toBe(false)
     expect(contentRestrictionAllows(user, { ageRating: null, sharingLabels: ['safe'] })).toBe(true)
 
-    const exclude: AuthUser = { ...base, restrictions: { ageRestriction: { age: 18, restriction: 'EXCLUDE' }, labelsAllow: [], labelsExclude: [] } }
+    const exclude: AuthUser = {
+      ...base,
+      restrictions: { ageRestriction: { age: 18, restriction: 'EXCLUDE' }, labelsAllow: [], labelsExclude: [] },
+    }
     expect(contentRestrictionAllows(exclude, { ageRating: 20, sharingLabels: [] })).toBe(false)
     expect(contentRestrictionAllows(exclude, { ageRating: 5, sharingLabels: [] })).toBe(true)
     expect(contentRestrictionAllows(exclude, { ageRating: null, sharingLabels: [] })).toBe(true)
@@ -331,7 +351,11 @@ describe('access helpers', () => {
     const admin: AuthUser = {
       ...base,
       roles: ['ADMIN'],
-      restrictions: { ageRestriction: { age: 0, restriction: 'ALLOW_ONLY' }, labelsAllow: [], labelsExclude: ['mature'] },
+      restrictions: {
+        ageRestriction: { age: 0, restriction: 'ALLOW_ONLY' },
+        labelsAllow: [],
+        labelsExclude: ['mature'],
+      },
     }
     expect(contentRestrictionAllows(admin, { ageRating: 18, sharingLabels: ['mature'] })).toBe(true)
   })
