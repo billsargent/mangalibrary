@@ -24,6 +24,13 @@ export interface Config {
   announcementsUrl: string | null
   /** Where release notes are read from, if anywhere. */
   releasesUrl: string | null
+  /**
+   * Directory holding the fonts offered to the EPUB reader.
+   *
+   * Each subdirectory is a font family and its files are the faces of that family,
+   * which is how an operator adds a font: drop a directory in.
+   */
+  fontsDir: string
 }
 
 export const DEFAULT_PORT = 25600
@@ -39,6 +46,7 @@ interface FileConfig {
   logLevel?: string
   announcementsUrl?: string
   releasesUrl?: string
+  fontsDir?: string
 }
 
 function readFileConfig(path: string): FileConfig {
@@ -90,5 +98,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     sessionTtlMs,
     announcementsUrl: toUrl(env.KOMGA_ANNOUNCEMENTS_URL ?? fileConfig.announcementsUrl),
     releasesUrl: toUrl(env.KOMGA_RELEASES_URL ?? fileConfig.releasesUrl),
+    fontsDir: resolve(env.KOMGA_FONTS_DIR ?? fileConfig.fontsDir ?? join(configDir, 'fonts')),
   }
 }

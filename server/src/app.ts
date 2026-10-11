@@ -39,6 +39,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     fetchJson: deps.fetchJson ?? defaultFetchJson,
     announcementsUrl: deps.config.announcementsUrl,
     releasesUrl: deps.config.releasesUrl,
+    fontsDir: deps.config.fontsDir,
     port: deps.config.port,
     configuredPort: deps.config.configuredPort,
   })
