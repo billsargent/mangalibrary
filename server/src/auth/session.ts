@@ -190,7 +190,9 @@ export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions
 
     const user = await authenticateCredentials(opts.db, email, password)
     if (!user) {
-      await recordActivity(opts.db, null, email, req, false, 'Bad credentials')
+      // Attribute the failure to the account when the email is known.
+      const known = await findUserByEmail(opts.db, email)
+      await recordActivity(opts.db, known?.id ?? null, email, req, false, 'Bad credentials')
       return reply.code(401).send({ message: 'Invalid credentials' })
     }
 

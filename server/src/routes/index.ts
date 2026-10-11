@@ -1,0 +1,14 @@
+import type { FastifyInstance } from 'fastify'
+import type { Kysely } from 'kysely'
+import type { DB } from '../db/schema.js'
+import { registerLibraryRoutes } from './libraries.js'
+import { registerReferentialRoutes } from './referential.js'
+import { registerUserRoutes } from './users.js'
+
+/** Registers every REST route group implemented so far. */
+export async function registerRoutes(app: FastifyInstance, db: Kysely<DB>): Promise<void> {
+  const opts = { db }
+  await registerLibraryRoutes(app, opts)
+  await registerUserRoutes(app, opts)
+  await registerReferentialRoutes(app, opts)
+}
