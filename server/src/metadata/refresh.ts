@@ -14,7 +14,7 @@
 
 import type { Kysely } from 'kysely'
 
-import { bookFilePath, findBookRecord } from '../books/files.js'
+import { bookFilePath, findBookRecord } from '../content/files.js'
 import type { DB } from '../db/schema.js'
 import { comicInfoBookPatch } from './comicinfo.js'
 import { readBookDocuments } from './document.js'

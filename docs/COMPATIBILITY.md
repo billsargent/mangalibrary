@@ -104,8 +104,16 @@ usually carries, and an EPUB's package document. From the first come the book's
 title, summary, number, release date, credits, tags, links and ISBN, and the series
 it belongs to; from the second the same, plus the publisher, the language, the
 subjects as genres, the reading direction stated on the spine, and the collection the
-book belongs to - with its position in that collection as the book's number. Mylar
-file names are still to come.
+book belongs to - with its position in that collection as the book's number.
+
+A series also has a file of its own in a Mylar library: a `series.json` sidecar in
+its folder, from which come the name (with the year appended once the collection has
+more than one volume), the publisher, the description, the status, the number of
+issues in the run and the age rating. A oneshot series - one file, in a oneshots
+folder - is described by its single book instead: its title, its summary, a status of
+`ENDED` and a book count of 1, whatever the library's settings say, as the reference
+does. The sidecar is not read for a oneshot series, and a document that cannot be
+read contributes nothing rather than failing the series.
 
 When a book carries both documents, both are applied, the package document last,
 which is the order the reference's providers run in.
@@ -152,6 +160,9 @@ Deliberate differences from the reference:
   analysis does here is recompute `booksMetadata` from the books' stored metadata,
   which is cheap and is what makes that view move when a book is edited or a
   document is imported.
+- A changed sidecar is noticed because the folder holding it changed, which the walk
+  already compares; the reference also keeps a table of sidecar files it has seen,
+  which is what its own change detection reads.
 
 The per-field locks (`titleLock`, `authorsLock`, and the rest) are honoured
 exactly as the reference honours them, for a book and for a series: a locked field,

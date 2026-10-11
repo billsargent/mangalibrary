@@ -351,3 +351,47 @@ export function applySeriesPatch(state: SeriesMetadataState, patch: SeriesMetada
 export function isEmptySeriesUpdate(update: SeriesMetadataUpdate): boolean {
   return Object.keys(update.values).length === 0 && update.genres === undefined
 }
+
+/** The state a series has once an update has been written. */
+function withSeriesUpdate(state: SeriesMetadataState, update: SeriesMetadataUpdate): SeriesMetadataState {
+  return {
+    ...state,
+    status: update.values.status ?? state.status,
+    title: update.values.title ?? state.title,
+    titleSort: update.values.title_sort ?? state.titleSort,
+    summary: update.values.summary ?? state.summary,
+    readingDirection:
+      update.values.reading_direction === undefined ? state.readingDirection : update.values.reading_direction,
+    ageRating: update.values.age_rating === undefined ? state.ageRating : update.values.age_rating,
+    publisher: update.values.publisher ?? state.publisher,
+    language: update.values.language ?? state.language,
+    totalBookCount:
+      update.values.total_book_count === undefined ? state.totalBookCount : update.values.total_book_count,
+    genres: update.genres ?? state.genres,
+  }
+}
+
+/**
+ * Apply several patches to a series, in order.
+ *
+ * A series is described by its books and by its own sidecars, and the reference
+ * applies one patch per source in turn, so that a source that knows more wins: the
+ * books first, then the sidecar that names the collection, then the oneshot rule
+ * that takes everything from the single book the series is.
+ */
+export function applySeriesPatches(
+  state: SeriesMetadataState,
+  patches: readonly SeriesMetadataPatch[],
+): SeriesMetadataUpdate {
+  let current = state
+  const merged: SeriesMetadataUpdate = { values: {} }
+
+  for (const patch of patches) {
+    const update = applySeriesPatch(current, patch)
+    current = withSeriesUpdate(current, update)
+    Object.assign(merged.values, update.values)
+    if (update.genres !== undefined) merged.genres = update.genres
+  }
+
+  return merged
+}
