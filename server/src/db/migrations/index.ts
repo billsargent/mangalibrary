@@ -8,6 +8,7 @@ import { migration0006Thumbnails } from './0006_thumbnails.js'
 import { migration0007ProgressOrganisation } from './0007_progress_organisation.js'
 import { migration0008Maintenance } from './0008_maintenance.js'
 import { migration0009Search } from './0009_search.js'
+import { migration0010UserRestrictions } from './0010_user_restrictions.js'
 
 /**
  * Ordered migration registry, applied in id order by the runner.
@@ -26,4 +27,5 @@ export const migrations: Migration[] = [
   migration0007ProgressOrganisation,
   migration0008Maintenance,
   migration0009Search,
+  migration0010UserRestrictions,
 ]

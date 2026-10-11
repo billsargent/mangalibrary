@@ -43,6 +43,7 @@ const CORE_TABLES = [
   'libraries',
   'library_exclusions',
   'users',
+  'user_sharing',
   'user_library_sharing',
   'series',
   'series_metadata',
@@ -171,6 +172,13 @@ function mapLibraryExclusions(legacy: LegacyDatabase): Record<string, unknown>[]
     .filter((row) => row.library_id !== '' && row.exclusion !== '')
 }
 
+function mapUserSharing(legacy: LegacyDatabase): Record<string, unknown>[] {
+  return legacy
+    .rows('USER_SHARING')
+    .map((row) => ({ user_id: text(row.USER_ID), allow: bool(row.ALLOW, 1), label: text(row.LABEL) }))
+    .filter((row) => row.user_id !== '' && row.label !== '')
+}
+
 function mapUsers(legacy: LegacyDatabase, timestamp: string): Record<string, unknown>[] {
   const rolesByUser = new Map<string, string[]>()
   for (const row of legacy.rows('USER_ROLE')) {
@@ -180,16 +188,6 @@ function mapUsers(legacy: LegacyDatabase, timestamp: string): Record<string, unk
     const list = rolesByUser.get(userId) ?? []
     list.push(role)
     rolesByUser.set(userId, list)
-  }
-
-  const sharingByUser = new Map<string, string[]>()
-  for (const row of legacy.rows('USER_SHARING')) {
-    const userId = text(row.USER_ID)
-    const label = text(row.LABEL)
-    if (!userId || !label) continue
-    const list = sharingByUser.get(userId) ?? []
-    list.push(label)
-    sharingByUser.set(userId, list)
   }
 
   return legacy.rows('USER').map((row) => {
@@ -209,8 +207,12 @@ function mapUsers(legacy: LegacyDatabase, timestamp: string): Record<string, unk
       password: text(row.PASSWORD),
       roles: jsonArray(roles),
       shared_all_libraries: bool(row.SHARED_ALL_LIBRARIES, 1),
-      age_restriction: row.AGE_RESTRICTION === null || row.AGE_RESTRICTION === undefined ? null : number(row.AGE_RESTRICTION),
-      sharing_labels: jsonArray(sharingByUser.get(id) ?? []),
+      age_restriction:
+        row.AGE_RESTRICTION === null || row.AGE_RESTRICTION === undefined ? null : number(row.AGE_RESTRICTION),
+      age_restriction_allow_only:
+        row.AGE_RESTRICTION_ALLOW_ONLY === null || row.AGE_RESTRICTION_ALLOW_ONLY === undefined
+          ? null
+          : bool(row.AGE_RESTRICTION_ALLOW_ONLY, 1),
       created_date: isoDate(row.CREATED_DATE, timestamp),
       last_modified_date: isoDate(row.LAST_MODIFIED_DATE, timestamp),
     }
@@ -593,6 +595,7 @@ const CLEAR_ORDER: (keyof DB)[] = [
   'series',
   'library_exclusions',
   'user_library_sharing',
+  'user_sharing',
   'user_api_keys',
   'authentication_activity',
   'sessions',
@@ -620,6 +623,8 @@ async function copyTable(
       return insertAll(db, name, mapLibraryExclusions(legacy))
     case 'users':
       return insertAll(db, name, mapUsers(legacy, timestamp))
+    case 'user_sharing':
+      return insertAll(db, name, mapUserSharing(legacy))
     case 'user_library_sharing':
       return insertAll(db, name, mapUserLibrarySharing(legacy))
     case 'series':

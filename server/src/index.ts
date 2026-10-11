@@ -10,7 +10,7 @@ async function main(): Promise<void> {
 
   const { applied } = await migrate(database.db, migrations)
 
-  const app = buildServer({ config, database })
+  const app = await buildServer({ config, database })
   if (applied.length > 0) app.log.info({ applied }, 'applied migrations')
 
   const shutdown = (signal: string) => {
