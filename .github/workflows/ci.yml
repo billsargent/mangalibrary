@@ -15,9 +15,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run type-check
-      - run: npm test
+          cache-dependency-path: |
+            server/package-lock.json
+            importer/package-lock.json
+      - run: npm ci --prefix server
+      - run: npm ci --prefix importer
+      - run: npm --prefix server run type-check
+      - run: npm --prefix importer run type-check
+      - run: npm --prefix server test
+      - run: npm --prefix importer test
 
   ui:
     name: UI

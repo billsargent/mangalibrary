@@ -32,20 +32,20 @@ See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the full policy.
 
 Requirements: **Node.js >= 22** and npm.
 
-The server and importer are npm workspaces at the repo root; the UI is a
-standalone Vite app.
+Each app (`server/`, `importer/`, `ui/`) installs its own dependencies as a
+standalone package (no npm workspaces).
 
 ```bash
-npm install            # server + importer workspaces
-npm install -w ui      # (from repo root) or: cd ui && npm install
+npm run install:all    # installs server/ and importer/
+cd ui && npm install   # UI (separate Vite app)
 ```
 
-Common commands:
+Common commands (from the repo root):
 
 ```bash
-npm run type-check     # type-check all workspaces
-npm test               # run unit tests
-npm run lint           # lint all workspaces
+npm run type-check     # type-check server + importer
+npm test               # run server + importer unit tests
+npm run lint           # lint server + importer
 ```
 
 ## Contributing

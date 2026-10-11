@@ -7,14 +7,11 @@
   "engines": {
     "node": ">=22"
   },
-  "workspaces": [
-    "server",
-    "importer"
-  ],
   "scripts": {
-    "type-check": "npm run type-check --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
+    "install:all": "npm --prefix server install && npm --prefix importer install",
+    "type-check": "npm --prefix server run type-check && npm --prefix importer run type-check",
+    "test": "npm --prefix server test && npm --prefix importer test",
+    "lint": "npm --prefix server run lint --if-present && npm --prefix importer run lint --if-present",
     "prettier": "prettier --check .",
     "prettier:fix": "prettier --write ."
   },
