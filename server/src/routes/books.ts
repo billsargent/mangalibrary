@@ -68,7 +68,11 @@ function bookQuery(db: Kysely<DB>, filters: BookQueryFilters) {
   if (filters.search !== undefined && filters.search !== '') {
     const term = filters.search
     query = query.where((eb) =>
-      eb.or([likeAny('book_metadata.title', term), likeAny('books.name', term), likeAny('series_metadata.title', term)]),
+      eb.or([
+        likeAny('book_metadata.title', term),
+        likeAny('books.name', term),
+        likeAny('series_metadata.title', term),
+      ]),
     )
   }
 
@@ -192,7 +196,13 @@ export async function findBooks(
 
   const total = candidates.length
   const window = unpaged ? candidates : candidates.slice(page * size, page * size + size)
-  return { rows: await loadBookRows(db, window.map((row) => row.id)), total }
+  return {
+    rows: await loadBookRows(
+      db,
+      window.map((row) => row.id),
+    ),
+    total,
+  }
 }
 
 function searchTerm(query: Record<string, unknown>, body: Record<string, unknown>): string | undefined {
@@ -227,9 +237,7 @@ export async function sendBook(
 ): Promise<unknown> {
   const found = await bookById(db, context, bookId)
   if ('status' in found) {
-    return reply
-      .code(found.status)
-      .send({ message: found.status === 404 ? 'Book not found' : 'Forbidden' })
+    return reply.code(found.status).send({ message: found.status === 404 ? 'Book not found' : 'Forbidden' })
   }
   const dtos = await buildBookDtos(db, [found.row], context.user.id)
   return dtos[0]
@@ -325,7 +333,7 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
     list(req, (req.body ?? {}) as Record<string, unknown>),
   )
 
-  app.get('/api/v1/books/latest', { preHandler: requireAuth }, async (req, reply) => {
+  app.get('/api/v1/books/latest', { preHandler: requireAuth }, async (req) => {
     const context = await contentContext(db, req)
     const query = (req.query ?? {}) as Record<string, unknown>
     const { page, size } = paging(query)
@@ -337,7 +345,7 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
     return springPage(dtos, page, effectiveSize(total, size, unpaged), total)
   })
 
-  app.get('/api/v1/books/ondeck', { preHandler: requireAuth }, async (req, reply) => {
+  app.get('/api/v1/books/ondeck', { preHandler: requireAuth }, async (req) => {
     const context = await contentContext(db, req)
     const query = (req.query ?? {}) as Record<string, unknown>
     const { page, size } = paging(query)
@@ -352,13 +360,16 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
       .select(['books.id', 'books.series_id'])
       .where('books.library_id', 'in', libraryIds)
       .where('books.deleted_date', 'is', null)
-      .where(sql<boolean>`books.series_id in (
+      .where(
+        sql<boolean>`books.series_id in (
           select distinct rp_books.series_id
           from read_progress rp
           join books rp_books on rp_books.id = rp.book_id
           where rp.user_id = ${userId} and rp.completed = 1
-        )`)
-      .where(sql<boolean>`books.id in (
+        )`,
+      )
+      .where(
+        sql<boolean>`books.id in (
           select ranked.id from (
             select b2.id,
                    row_number() over (partition by b2.series_id order by b2.number asc, b2.id asc) as rn
@@ -366,7 +377,8 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
             where b2.deleted_date is null
               and b2.id not in (select book_id from read_progress where user_id = ${userId} and completed = 1)
           ) ranked where ranked.rn = 1
-        )`)
+        )`,
+      )
       .orderBy(
         sql<number>`(
           select max(rp2.read_date)
@@ -387,11 +399,14 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
 
     const total = candidates.length
     const window = candidates.slice(page * size, page * size + size)
-    const bookRows = await loadBookRows(db, window.map((row) => row.id))
+    const bookRows = await loadBookRows(
+      db,
+      window.map((row) => row.id),
+    )
     return springPage(await buildBookDtos(db, bookRows, context.user.id), page, size, total)
   })
 
-  app.get('/api/v1/books/duplicates', { preHandler: requireAuth }, async (req, reply) => {
+  app.get('/api/v1/books/duplicates', { preHandler: requireAuth }, async (req) => {
     const context = await contentContext(db, req)
     const query = (req.query ?? {}) as Record<string, unknown>
     const { page, size } = paging(query)
@@ -403,11 +418,13 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
       .where('books.library_id', 'in', context.libraryIds)
       .where('books.deleted_date', 'is', null)
       .where('books.file_hash', 'is not', null)
-      .where(sql<boolean>`books.file_hash in (
+      .where(
+        sql<boolean>`books.file_hash in (
           select file_hash from books
           where file_hash is not null and deleted_date is null
           group by file_hash having count(*) > 1
-        )`)
+        )`,
+      )
       .orderBy('books.file_hash')
       .orderBy('books.id')
       .execute()
@@ -420,18 +437,17 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
 
     const total = candidates.length
     const window = candidates.slice(page * size, page * size + size)
-    const bookRows = await loadBookRows(db, window.map((row) => row.id))
+    const bookRows = await loadBookRows(
+      db,
+      window.map((row) => row.id),
+    )
     return springPage(await buildBookDtos(db, bookRows, context.user.id), page, size, total)
   })
 
-  app.get<{ Params: { bookId: string } }>(
-    '/api/v1/books/:bookId',
-    { preHandler: requireAuth },
-    async (req, reply) => {
-      const context = await contentContext(db, req)
-      return sendBook(db, context, req.params.bookId, reply)
-    },
-  )
+  app.get<{ Params: { bookId: string } }>('/api/v1/books/:bookId', { preHandler: requireAuth }, async (req, reply) => {
+    const context = await contentContext(db, req)
+    return sendBook(db, context, req.params.bookId, reply)
+  })
 
   /** Adjacent book in the same series, in reading order. */
   const sibling = (path: string, direction: 'next' | 'previous') => {
@@ -507,9 +523,7 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
         else booksByReadList.set(entry.readlist_id, [entry.book_id])
       }
 
-      return rows.map((row) =>
-        toReadListDto(row as unknown as ReadListRow, booksByReadList.get(row.id) ?? []),
-      )
+      return rows.map((row) => toReadListDto(row as unknown as ReadListRow, booksByReadList.get(row.id) ?? []))
     },
   )
 

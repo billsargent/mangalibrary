@@ -9,12 +9,10 @@ import {
   toMediaDto,
   toReadProgressDto,
   toSeriesDto,
-  toSeriesMetadataDto,
   type AlternateTitleDto,
   type AuthorDto,
   type BookDto,
   type BookExtras,
-  type BookMetadataAggregationDto,
   type BookMetadataAggregationRow,
   type BookMetadataRow,
   type BookRow,
@@ -225,10 +223,7 @@ export async function loadBookExtras(db: Kysely<DB>, bookIds: readonly string[])
   return extras
 }
 
-async function loadBookMetadata(
-  db: Kysely<DB>,
-  bookIds: readonly string[],
-): Promise<Map<string, BookMetadataRow>> {
+async function loadBookMetadata(db: Kysely<DB>, bookIds: readonly string[]): Promise<Map<string, BookMetadataRow>> {
   const rows = new Map<string, BookMetadataRow>()
   if (bookIds.length === 0) return rows
   const result = await db.selectFrom('book_metadata').selectAll().where('book_id', 'in', bookIds).execute()
@@ -301,11 +296,7 @@ export async function buildBookDtos(db: Kysely<DB>, rows: readonly BookRow[], us
     loadProgress(db, ids, userId),
     seriesIds.length === 0
       ? Promise.resolve([])
-      : db
-          .selectFrom('series')
-          .select(['id', 'name'])
-          .where('id', 'in', seriesIds)
-          .execute(),
+      : db.selectFrom('series').select(['id', 'name']).where('id', 'in', seriesIds).execute(),
   ])
 
   const titles = new Map(series.map((row) => [row.id, row.name]))

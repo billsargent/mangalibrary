@@ -13,7 +13,8 @@
     "test": "vitest run",
     "spike": "tsx src/spikes/run.ts",
     "generate:schemas": "tsx scripts/generate-schemas.ts",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.1",
@@ -38,12 +39,16 @@
     "yauzl": "^3.2.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.9.0",
     "@types/yauzl": "^2.10.3",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
+    "typescript-eslint": "^8.71.1",
     "vitest": "^2.1.5"
   },
   "allowScripts": {

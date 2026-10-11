@@ -22,8 +22,23 @@ jobs:
       - run: npm ci --prefix importer
       - run: npm --prefix server run type-check
       - run: npm --prefix importer run type-check
+      - run: npm --prefix server run lint
+      - run: npm --prefix importer run lint
       - run: npm --prefix server test
       - run: npm --prefix importer test
+
+  format:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run prettier
 
   ui:
     name: UI

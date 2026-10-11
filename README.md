@@ -12,12 +12,12 @@ Komga databases are migrated with the bundled importer.
 
 ## Layout
 
-| Path | What it is |
-| --- | --- |
-| `server/` | Fastify + Kysely + SQLite backend (the API server) |
-| `ui/` | Vite + Vue 3 + Vuetify frontend (forked from Komga's `next-ui`) |
+| Path        | What it is                                                                 |
+| ----------- | -------------------------------------------------------------------------- |
+| `server/`   | Fastify + Kysely + SQLite backend (the API server)                         |
+| `ui/`       | Vite + Vue 3 + Vuetify frontend (forked from Komga's `next-ui`)            |
 | `importer/` | `komga-import` CLI — reads a legacy `~/.komga` and writes the new database |
-| `docs/` | Architecture, compatibility notes and import guide |
+| `docs/`     | Architecture, compatibility notes and import guide                         |
 
 ## Compatibility policy
 
@@ -36,7 +36,7 @@ Each app (`server/`, `importer/`, `ui/`) installs its own dependencies as a
 standalone package (no npm workspaces).
 
 ```bash
-npm run install:all    # installs server/ and importer/
+npm run install:all    # installs the root tooling, server/ and importer/
 cd ui && npm install   # UI (separate Vite app)
 ```
 
@@ -46,7 +46,10 @@ Common commands (from the repo root):
 npm run type-check     # type-check server + importer
 npm test               # run server + importer unit tests
 npm run lint           # lint server + importer
+npm run prettier       # check formatting (npm run prettier:fix to apply)
 ```
+
+All four run in CI.
 
 ## Contributing
 

@@ -41,7 +41,11 @@ async function writeLibrarySharing(db: Kysely<DB>, userId: string, value: unknow
   if (!value || typeof value !== 'object') return
   const shared = value as { all?: unknown; libraryIds?: unknown }
   if (typeof shared.all === 'boolean') {
-    await db.updateTable('users').set({ shared_all_libraries: shared.all ? 1 : 0 }).where('id', '=', userId).execute()
+    await db
+      .updateTable('users')
+      .set({ shared_all_libraries: shared.all ? 1 : 0 })
+      .where('id', '=', userId)
+      .execute()
   }
   if (Array.isArray(shared.libraryIds)) {
     await db.deleteFrom('user_library_sharing').where('user_id', '=', userId).execute()
@@ -58,7 +62,9 @@ async function writeLibrarySharing(db: Kysely<DB>, userId: string, value: unknow
 async function writeUserSharing(db: Kysely<DB>, userId: string, body: Record<string, unknown>): Promise<void> {
   if (!('labelsAllow' in body) && !('labelsExclude' in body)) return
   const allow = Array.isArray(body.labelsAllow) ? body.labelsAllow.map(String).filter((label) => label !== '') : []
-  const exclude = Array.isArray(body.labelsExclude) ? body.labelsExclude.map(String).filter((label) => label !== '') : []
+  const exclude = Array.isArray(body.labelsExclude)
+    ? body.labelsExclude.map(String).filter((label) => label !== '')
+    : []
 
   await db.deleteFrom('user_sharing').where('user_id', '=', userId).execute()
   const rows = [
@@ -173,22 +179,26 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
   })
 
   const changePassword = (path: string, adminOnly: boolean) => {
-    app.patch<{ Params: { id: string } }>(path, { preHandler: adminOnly ? requireAdmin : requireAuth }, async (req, reply) => {
-      const userId = adminOnly ? req.params.id : currentUser(req).id
-      const body = (req.body ?? {}) as Record<string, unknown>
-      const password = typeof body.password === 'string' ? body.password : ''
-      if (!password) return reply.code(400).send({ message: 'password is required' })
+    app.patch<{ Params: { id: string } }>(
+      path,
+      { preHandler: adminOnly ? requireAdmin : requireAuth },
+      async (req, reply) => {
+        const userId = adminOnly ? req.params.id : currentUser(req).id
+        const body = (req.body ?? {}) as Record<string, unknown>
+        const password = typeof body.password === 'string' ? body.password : ''
+        if (!password) return reply.code(400).send({ message: 'password is required' })
 
-      const existing = await db.selectFrom('users').select('id').where('id', '=', userId).executeTakeFirst()
-      if (!existing) return reply.code(404).send({ message: 'User not found' })
+        const existing = await db.selectFrom('users').select('id').where('id', '=', userId).executeTakeFirst()
+        if (!existing) return reply.code(404).send({ message: 'User not found' })
 
-      await db
-        .updateTable('users')
-        .set({ password: hashPassword(password), last_modified_date: new Date().toISOString() })
-        .where('id', '=', userId)
-        .execute()
-      return reply.code(204).send()
-    })
+        await db
+          .updateTable('users')
+          .set({ password: hashPassword(password), last_modified_date: new Date().toISOString() })
+          .where('id', '=', userId)
+          .execute()
+        return reply.code(204).send()
+      },
+    )
   }
   changePassword('/api/v2/users/:id/password', true)
   changePassword('/api/v2/users/me/password', false)
@@ -241,17 +251,21 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
     }
   })
 
-  app.delete<{ Params: { keyId: string } }>('/api/v2/users/me/api-keys/:keyId', { preHandler: requireAuth }, async (req, reply) => {
-    const existing = await db
-      .selectFrom('user_api_keys')
-      .select('id')
-      .where('id', '=', req.params.keyId)
-      .where('user_id', '=', currentUser(req).id)
-      .executeTakeFirst()
-    if (!existing) return reply.code(404).send({ message: 'API key not found' })
-    await db.deleteFrom('user_api_keys').where('id', '=', req.params.keyId).execute()
-    return reply.code(204).send()
-  })
+  app.delete<{ Params: { keyId: string } }>(
+    '/api/v2/users/me/api-keys/:keyId',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const existing = await db
+        .selectFrom('user_api_keys')
+        .select('id')
+        .where('id', '=', req.params.keyId)
+        .where('user_id', '=', currentUser(req).id)
+        .executeTakeFirst()
+      if (!existing) return reply.code(404).send({ message: 'API key not found' })
+      await db.deleteFrom('user_api_keys').where('id', '=', req.params.keyId).execute()
+      return reply.code(204).send()
+    },
+  )
 
   // ------------------------------------------------------- authentication activity
   const activityDto = (row: {

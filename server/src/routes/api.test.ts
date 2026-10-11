@@ -136,7 +136,12 @@ describe('libraries', () => {
   it('lists only the libraries the caller can access', async () => {
     const { app } = await setup()
     const all = await app.inject({ method: 'GET', url: '/api/v1/libraries', headers: admin })
-    expect(all.json().map((library: { id: string }) => library.id).sort()).toEqual(['L1', 'L2'])
+    expect(
+      all
+        .json()
+        .map((library: { id: string }) => library.id)
+        .sort(),
+    ).toEqual(['L1', 'L2'])
 
     const mine = await app.inject({ method: 'GET', url: '/api/v1/libraries', headers: reader })
     expect(mine.json().map((library: { id: string }) => library.id)).toEqual(['L1'])
@@ -200,8 +205,14 @@ describe('libraries', () => {
     const { app } = await setup()
 
     expect(
-      (await app.inject({ method: 'POST', url: '/api/v1/libraries', headers: reader, payload: { name: 'X', root: '/x' } }))
-        .statusCode,
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/libraries',
+          headers: reader,
+          payload: { name: 'X', root: '/x' },
+        })
+      ).statusCode,
     ).toBe(403)
 
     const created = await app.inject({
@@ -227,14 +238,23 @@ describe('libraries', () => {
     expect(after.json().name).toBe('Renamed')
     expect(after.json().hashPages).toBe(true)
 
-    expect((await app.inject({ method: 'DELETE', url: `/api/v1/libraries/${dto.id}`, headers: admin })).statusCode).toBe(204)
-    expect((await app.inject({ method: 'GET', url: `/api/v1/libraries/${dto.id}`, headers: admin })).statusCode).toBe(404)
+    expect(
+      (await app.inject({ method: 'DELETE', url: `/api/v1/libraries/${dto.id}`, headers: admin })).statusCode,
+    ).toBe(204)
+    expect((await app.inject({ method: 'GET', url: `/api/v1/libraries/${dto.id}`, headers: admin })).statusCode).toBe(
+      404,
+    )
     await app.close()
   })
 
   it('queues a scan as an accepted job', async () => {
     const { app, database } = await setup()
-    const res = await app.inject({ method: 'POST', url: '/api/v1/libraries/L1/scan', headers: admin, payload: { deep: true } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/libraries/L1/scan',
+      headers: admin,
+      payload: { deep: true },
+    })
     expect(res.statusCode).toBe(202)
 
     const jobs = await database.db.selectFrom('jobs').selectAll().execute()
@@ -266,7 +286,13 @@ describe('referentials', () => {
   it('wraps v2 referentials in a Spring page', async () => {
     const { app } = await setup()
     const res = await app.inject({ method: 'GET', url: '/api/v2/genres', headers: admin })
-    const page = res.json() as { content: string[]; totalElements: number; size: number; number: number; pageable: unknown }
+    const page = res.json() as {
+      content: string[]
+      totalElements: number
+      size: number
+      number: number
+      pageable: unknown
+    }
     expect(page.content).toEqual(['Science Fiction'])
     expect(page.totalElements).toBe(1)
     expect(page.size).toBe(20)
@@ -339,7 +365,9 @@ describe('users', () => {
     expect(after.json().roles).toEqual(['ADMIN'])
     expect(after.json().ageRestriction).toBeUndefined()
 
-    expect((await app.inject({ method: 'DELETE', url: `/api/v2/users/${dto.id}`, headers: admin })).statusCode).toBe(204)
+    expect((await app.inject({ method: 'DELETE', url: `/api/v2/users/${dto.id}`, headers: admin })).statusCode).toBe(
+      204,
+    )
     await app.close()
   })
 
@@ -360,8 +388,12 @@ describe('users', () => {
     expect(key.userId).toBe('U1')
     expect(key.key.length).toBeGreaterThan(10)
 
-    expect((await app.inject({ method: 'DELETE', url: `/api/v2/users/me/api-keys/${key.id}`, headers: admin })).statusCode).toBe(204)
-    expect((await app.inject({ method: 'GET', url: '/api/v2/users/me/api-keys', headers: admin })).json()).toHaveLength(1)
+    expect(
+      (await app.inject({ method: 'DELETE', url: `/api/v2/users/me/api-keys/${key.id}`, headers: admin })).statusCode,
+    ).toBe(204)
+    expect((await app.inject({ method: 'GET', url: '/api/v2/users/me/api-keys', headers: admin })).json()).toHaveLength(
+      1,
+    )
     await app.close()
   })
 

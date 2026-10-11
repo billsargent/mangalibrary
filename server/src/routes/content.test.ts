@@ -82,9 +82,33 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
   await db
     .insertInto('series')
     .values([
-      { id: 'S1', library_id: 'L1', name: 'Akira', url: 'akira', file_last_modified: now, created_date: now, last_modified_date: now },
-      { id: 'S2', library_id: 'L1', name: 'Berserk', url: 'berserk', file_last_modified: now, created_date: now, last_modified_date: now },
-      { id: 'S3', library_id: 'L2', name: 'Secret Series', url: 'secret', file_last_modified: now, created_date: now, last_modified_date: now },
+      {
+        id: 'S1',
+        library_id: 'L1',
+        name: 'Akira',
+        url: 'akira',
+        file_last_modified: now,
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        id: 'S2',
+        library_id: 'L1',
+        name: 'Berserk',
+        url: 'berserk',
+        file_last_modified: now,
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        id: 'S3',
+        library_id: 'L2',
+        name: 'Secret Series',
+        url: 'secret',
+        file_last_modified: now,
+        created_date: now,
+        last_modified_date: now,
+      },
     ])
     .execute()
 
@@ -128,7 +152,10 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
     ])
     .execute()
 
-  await db.insertInto('series_metadata_author').values({ series_id: 'S1', name: 'Katsuhiro Otomo', role: 'writer' }).execute()
+  await db
+    .insertInto('series_metadata_author')
+    .values({ series_id: 'S1', name: 'Katsuhiro Otomo', role: 'writer' })
+    .execute()
   await db.insertInto('series_metadata_tag').values({ series_id: 'S1', tag: 'cyberpunk' }).execute()
   await db.insertInto('series_metadata_genre').values({ series_id: 'S1', genre: 'Science Fiction' }).execute()
   await db.insertInto('series_metadata_sharing').values({ series_id: 'S1', label: 'mature' }).execute()
@@ -194,9 +221,33 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
   await db
     .insertInto('book_metadata')
     .values([
-      { book_id: 'B1', title: 'Akira Volume One', number: '1', number_sort: 1, release_date: '1982-12-20', created_date: now, last_modified_date: now },
-      { book_id: 'B2', title: 'Akira Volume Two', number: '2', number_sort: 2, release_date: '1985-01-15', created_date: now, last_modified_date: now },
-      { book_id: 'B3', title: 'Berserk Volume One', number: '1', number_sort: 1, release_date: '1989-11-01', created_date: now, last_modified_date: now },
+      {
+        book_id: 'B1',
+        title: 'Akira Volume One',
+        number: '1',
+        number_sort: 1,
+        release_date: '1982-12-20',
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        book_id: 'B2',
+        title: 'Akira Volume Two',
+        number: '2',
+        number_sort: 2,
+        release_date: '1985-01-15',
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        book_id: 'B3',
+        title: 'Berserk Volume One',
+        number: '1',
+        number_sort: 1,
+        release_date: '1989-11-01',
+        created_date: now,
+        last_modified_date: now,
+      },
     ])
     .execute()
   await db.insertInto('book_metadata_tag').values({ book_id: 'B1', tag: 'classic' }).execute()
@@ -204,15 +255,44 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
   await db
     .insertInto('media')
     .values([
-      { book_id: 'B1', media_type: 'application/vnd.comicbook+zip', status: 'READY', page_count: 200, created_date: now, last_modified_date: now },
-      { book_id: 'B2', media_type: 'application/vnd.comicbook+zip', status: 'READY', page_count: 0, created_date: now, last_modified_date: now },
-      { book_id: 'B3', media_type: 'application/pdf', status: 'READY', page_count: 100, created_date: now, last_modified_date: now },
+      {
+        book_id: 'B1',
+        media_type: 'application/vnd.comicbook+zip',
+        status: 'READY',
+        page_count: 200,
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        book_id: 'B2',
+        media_type: 'application/vnd.comicbook+zip',
+        status: 'READY',
+        page_count: 0,
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        book_id: 'B3',
+        media_type: 'application/pdf',
+        status: 'READY',
+        page_count: 100,
+        created_date: now,
+        last_modified_date: now,
+      },
     ])
     .execute()
 
   await db
     .insertInto('read_progress')
-    .values({ user_id: 'U2', book_id: 'B1', page: 200, completed: 1, read_date: now, created_date: now, last_modified_date: now })
+    .values({
+      user_id: 'U2',
+      book_id: 'B1',
+      page: 200,
+      completed: 1,
+      read_date: now,
+      created_date: now,
+      last_modified_date: now,
+    })
     .execute()
 
   await db
@@ -334,7 +414,9 @@ describe('series listing', () => {
       headers: admin,
     })
     expect(
-      (descending.json() as { content: { metadata: { titleSort: string } }[] }).content.map((s) => s.metadata.titleSort),
+      (descending.json() as { content: { metadata: { titleSort: string } }[] }).content.map(
+        (s) => s.metadata.titleSort,
+      ),
     ).toEqual(['Secret Series', 'Berserk', 'Akira'])
 
     const first = await app.inject({ method: 'GET', url: '/api/v1/series?page=0&size=2', headers: admin })
@@ -434,15 +516,15 @@ describe('series listing', () => {
   it('queues analysis and metadata refresh as jobs', async () => {
     const { app, database } = await setup()
 
-    expect(
-      (await app.inject({ method: 'POST', url: '/api/v1/series/S1/analyze', headers: admin })).statusCode,
-    ).toBe(202)
+    expect((await app.inject({ method: 'POST', url: '/api/v1/series/S1/analyze', headers: admin })).statusCode).toBe(
+      202,
+    )
     expect(
       (await app.inject({ method: 'POST', url: '/api/v1/series/S1/metadata/refresh', headers: admin })).statusCode,
     ).toBe(202)
-    expect(
-      (await app.inject({ method: 'POST', url: '/api/v1/series/S1/analyze', headers: reader })).statusCode,
-    ).toBe(403)
+    expect((await app.inject({ method: 'POST', url: '/api/v1/series/S1/analyze', headers: reader })).statusCode).toBe(
+      403,
+    )
 
     const jobs = await database.db.selectFrom('jobs').select(['type']).orderBy('type').execute()
     expect(jobs.map((job) => job.type)).toEqual(['AnalyzeSeries', 'RefreshSeriesMetadata'])
@@ -475,9 +557,9 @@ describe('series metadata', () => {
     })
     expect(res.statusCode).toBe(204)
 
-    const dto = (
-      await app.inject({ method: 'GET', url: '/api/v1/series/S1', headers: admin })
-    ).json() as { metadata: Record<string, unknown> }
+    const dto = (await app.inject({ method: 'GET', url: '/api/v1/series/S1', headers: admin })).json() as {
+      metadata: Record<string, unknown>
+    }
 
     expect(dto.metadata.title).toBe('Akira Deluxe')
     expect(dto.metadata.titleLock).toBe(true)
@@ -502,9 +584,9 @@ describe('series metadata', () => {
       headers: admin,
       payload: { summary: 'Kept' },
     })
-    const after = (
-      await app.inject({ method: 'GET', url: '/api/v1/series/S1', headers: admin })
-    ).json() as { metadata: { summary: string; title: string } }
+    const after = (await app.inject({ method: 'GET', url: '/api/v1/series/S1', headers: admin })).json() as {
+      metadata: { summary: string; title: string }
+    }
     expect(after.metadata.summary).toBe('Kept')
     expect(after.metadata.title).toBe('Akira')
 
@@ -515,10 +597,9 @@ describe('series metadata', () => {
       payload: { status: 'NONSENSE', ageRating: 'old' },
     })
     expect(invalid.statusCode).toBe(400)
-    expect(Object.keys((invalid.json() as { validationErrors: Record<string, string> }).validationErrors).sort()).toEqual([
-      'ageRating',
-      'status',
-    ])
+    expect(
+      Object.keys((invalid.json() as { validationErrors: Record<string, string> }).validationErrors).sort(),
+    ).toEqual(['ageRating', 'status'])
 
     expect(
       (
@@ -674,7 +755,9 @@ describe('books', () => {
 
     const previous = await app.inject({ method: 'GET', url: '/api/v1/books/B2/previous', headers: reader })
     expect((previous.json() as { id: string }).id).toBe('B1')
-    expect((await app.inject({ method: 'GET', url: '/api/v1/books/B1/previous', headers: reader })).statusCode).toBe(404)
+    expect((await app.inject({ method: 'GET', url: '/api/v1/books/B1/previous', headers: reader })).statusCode).toBe(
+      404,
+    )
     await app.close()
   })
 
@@ -780,16 +863,16 @@ describe('books', () => {
     })
     expect(bulk.statusCode).toBe(200)
 
-    const first = (
-      await app.inject({ method: 'GET', url: '/api/v1/books/B1', headers: admin })
-    ).json() as { metadata: Record<string, unknown> }
+    const first = (await app.inject({ method: 'GET', url: '/api/v1/books/B1', headers: admin })).json() as {
+      metadata: Record<string, unknown>
+    }
     expect(first.metadata.title).toBe('Akira v1')
     expect(first.metadata.authorsLock).toBe(true)
     expect(first.metadata.authors).toEqual([{ name: 'Otomo', role: 'writer' }])
 
-    const second = (
-      await app.inject({ method: 'GET', url: '/api/v1/books/B2', headers: admin })
-    ).json() as { metadata: Record<string, unknown> }
+    const second = (await app.inject({ method: 'GET', url: '/api/v1/books/B2', headers: admin })).json() as {
+      metadata: Record<string, unknown>
+    }
     expect(second.metadata.title).toBe('Akira v2')
     expect(second.metadata.tags).toEqual(['reprint'])
 

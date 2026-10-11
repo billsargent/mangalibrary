@@ -14,12 +14,7 @@ export const migration0008Maintenance: Migration = {
       .addPrimaryKeyConstraint('pk__page_hash', ['hash', 'book_id', 'page_number'])
       .execute()
 
-    await db.schema
-      .createIndex('idx__page_hash__book_id')
-      .ifNotExists()
-      .on('page_hash')
-      .columns(['book_id'])
-      .execute()
+    await db.schema.createIndex('idx__page_hash__book_id').ifNotExists().on('page_hash').columns(['book_id']).execute()
 
     await db.schema
       .createTable('page_hash_match')
@@ -81,12 +76,7 @@ export const migration0008Maintenance: Migration = {
       .columns(['priority', 'last_modified_date'])
       .execute()
 
-    await db.schema
-      .createIndex('idx__jobs__group_id')
-      .ifNotExists()
-      .on('jobs')
-      .columns(['group_id'])
-      .execute()
+    await db.schema.createIndex('idx__jobs__group_id').ifNotExists().on('jobs').columns(['group_id']).execute()
 
     await db.schema
       .createTable('client_settings_global')
@@ -114,7 +104,12 @@ export const migration0008Maintenance: Migration = {
       .addColumn('last_modified_date', 'text', (col) => col.notNull())
       .execute()
 
-    await db.schema.createIndex('idx__sync_points__user_id').ifNotExists().on('sync_points').columns(['user_id']).execute()
+    await db.schema
+      .createIndex('idx__sync_points__user_id')
+      .ifNotExists()
+      .on('sync_points')
+      .columns(['user_id'])
+      .execute()
 
     await db.schema
       .createTable('sync_point_book')

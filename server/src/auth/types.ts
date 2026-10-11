@@ -1,10 +1,4 @@
-export const USER_ROLES = [
-  'ADMIN',
-  'FILE_DOWNLOAD',
-  'PAGE_STREAMING',
-  'KOBO_SYNC',
-  'KOREADER_SYNC',
-] as const
+export const USER_ROLES = ['ADMIN', 'FILE_DOWNLOAD', 'PAGE_STREAMING', 'KOBO_SYNC', 'KOREADER_SYNC'] as const
 
 export type UserRole = (typeof USER_ROLES)[number]
 

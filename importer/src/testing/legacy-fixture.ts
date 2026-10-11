@@ -152,10 +152,14 @@ export function createLegacyFixture(file: string): void {
     'insert into SERIES_METADATA (SERIES_ID, STATUS, TITLE, TITLE_LOCK, TITLE_SORT, PUBLISHER, LANGUAGE, SUMMARY, TAGS_LOCK) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [['S1', 'ENDED', 'Akira', 1, 'Akira', 'Kodansha', 'en', 'A cyberpunk classic.', 1]],
   )
-  insert('insert into SERIES_METADATA_AUTHOR (SERIES_ID, NAME, ROLE) values (?, ?, ?)', [['S1', 'Katsuhiro Otomo', 'writer']])
+  insert('insert into SERIES_METADATA_AUTHOR (SERIES_ID, NAME, ROLE) values (?, ?, ?)', [
+    ['S1', 'Katsuhiro Otomo', 'writer'],
+  ])
   insert('insert into SERIES_METADATA_TAG (SERIES_ID, TAG) values (?, ?)', [['S1', 'cyberpunk']])
   insert('insert into SERIES_METADATA_GENRE (SERIES_ID, GENRE) values (?, ?)', [['S1', 'Science Fiction']])
-  insert('insert into SERIES_METADATA_LINK (SERIES_ID, LABEL, URL) values (?, ?, ?)', [['S1', 'Wikipedia', 'https://example.org/akira']])
+  insert('insert into SERIES_METADATA_LINK (SERIES_ID, LABEL, URL) values (?, ?, ?)', [
+    ['S1', 'Wikipedia', 'https://example.org/akira'],
+  ])
   insert('insert into SERIES_METADATA_SHARING (SERIES_ID, LABEL) values (?, ?)', [['S1', 'mature']])
   insert(
     'insert into BOOK (ID, SERIES_ID, LIBRARY_ID, NAME, URL, FILE_LAST_MODIFIED, FILE_SIZE, NUMBER) values (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -168,17 +172,24 @@ export function createLegacyFixture(file: string): void {
     ['B1', 'Akira Volume One', '1', 1, 1],
     ['B2', 'Akira Volume Two', '2', 2, 0],
   ])
-  insert('insert into BOOK_METADATA_AUTHOR (BOOK_ID, NAME, ROLE) values (?, ?, ?)', [['B1', 'Katsuhiro Otomo', 'writer']])
+  insert('insert into BOOK_METADATA_AUTHOR (BOOK_ID, NAME, ROLE) values (?, ?, ?)', [
+    ['B1', 'Katsuhiro Otomo', 'writer'],
+  ])
   insert('insert into BOOK_METADATA_TAG (BOOK_ID, TAG) values (?, ?)', [['B1', 'cyberpunk']])
-  insert('insert into BOOK_METADATA_LINK (BOOK_ID, LABEL, URL) values (?, ?, ?)', [['B1', 'Wikipedia', 'https://example.org/akira-v1']])
+  insert('insert into BOOK_METADATA_LINK (BOOK_ID, LABEL, URL) values (?, ?, ?)', [
+    ['B1', 'Wikipedia', 'https://example.org/akira-v1'],
+  ])
   insert('insert into MEDIA (BOOK_ID, MEDIA_TYPE, STATUS, PAGE_COUNT) values (?, ?, ?, ?)', [
     ['B1', 'application/zip', 'READY', 1],
     ['B2', 'application/zip', 'READY', 1],
   ])
-  insert('insert into MEDIA_PAGE (BOOK_ID, NUMBER, FILE_NAME, MEDIA_TYPE, WIDTH, HEIGHT, FILE_SIZE) values (?, ?, ?, ?, ?, ?, ?)', [
-    ['B1', 1, '001.jpg', 'image/jpeg', 800, 1200, 512],
-    ['B2', 1, '001.jpg', 'image/jpeg', 800, 1200, 512],
-  ])
+  insert(
+    'insert into MEDIA_PAGE (BOOK_ID, NUMBER, FILE_NAME, MEDIA_TYPE, WIDTH, HEIGHT, FILE_SIZE) values (?, ?, ?, ?, ?, ?, ?)',
+    [
+      ['B1', 1, '001.jpg', 'image/jpeg', 800, 1200, 512],
+      ['B2', 1, '001.jpg', 'image/jpeg', 800, 1200, 512],
+    ],
+  )
   insert(
     'insert into THUMBNAIL_BOOK (ID, BOOK_ID, TYPE, PAGE, SELECTED, MEDIA_TYPE, WIDTH, HEIGHT, FILE_SIZE, THUMBNAIL) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [['T1', 'B1', 'GENERATED', 1, 1, 'image/jpeg', 4, 4, 11, Buffer.from([0xff, 0xd8, 0xff, 0xd9])]],
@@ -199,7 +210,9 @@ export function createLegacyFixture(file: string): void {
     ['DELETE_EMPTY_COLLECTIONS', 'true'],
   ])
   insert('insert into CLIENT_SETTINGS_GLOBAL (KEY, VALUE) values (?, ?)', [['WEBUI_SERIES_GROUPS', 'alpha']])
-  insert('insert into CLIENT_SETTINGS_USER (USER_ID, KEY, VALUE) values (?, ?, ?)', [['U1', 'WEBUI_POSTER_STRETCH', 'true']])
+  insert('insert into CLIENT_SETTINGS_USER (USER_ID, KEY, VALUE) values (?, ?, ?)', [
+    ['U1', 'WEBUI_POSTER_STRETCH', 'true'],
+  ])
   insert('insert into PAGE_HASH (HASH, BOOK_ID, PAGE_NUMBER, FILE_SIZE) values (?, ?, ?, ?)', [['h1', 'B1', 1, 512]])
   insert('insert into PAGE_HASH_UNKNOWN (HASH, FILE_SIZE) values (?, ?)', [['h2', 999]])
   insert('insert into PAGE_HASH_MATCH (HASH, BOOK_ID, PAGE_NUMBER) values (?, ?, ?)', [['h2', 'B2', 1]])

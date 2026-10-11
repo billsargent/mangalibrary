@@ -5,30 +5,30 @@ API but replaces everything behind it.
 
 ## Components
 
-| Component | Path | Responsibility |
-| --- | --- | --- |
-| Server | `server/` | HTTP API, auth, domain logic, scanning, jobs, search |
-| UI | `ui/` | Web client (forked from Komga `next-ui`) |
-| Importer | `importer/` | One-time migration from a legacy Komga database |
+| Component | Path        | Responsibility                                       |
+| --------- | ----------- | ---------------------------------------------------- |
+| Server    | `server/`   | HTTP API, auth, domain logic, scanning, jobs, search |
+| UI        | `ui/`       | Web client (forked from Komga `next-ui`)             |
+| Importer  | `importer/` | One-time migration from a legacy Komga database      |
 
 ## Server stack
 
-| Concern | Choice |
-| --- | --- |
-| Runtime | Node.js >= 22 |
-| HTTP | Fastify 5 (+ cookie, session, multipart, static, cors, helmet, etag, SSE) |
-| Contract | Komga `openapi.json` -> route schemas + types at build time |
-| Database | SQLite via `better-sqlite3`, queried with Kysely |
-| Migrations | Own runner + `schema_migrations` table |
-| IDs | TSID (13-char Crockford Base32, time-sortable) |
-| Jobs | `jobs` table + `piscina` worker pool |
-| Events | `EventEmitter` -> SSE + search reindex |
-| Search | SQLite FTS5 (`bm25` relevance) |
-| Images | `sharp` |
-| Archives | `yauzl` (cbz), `node-unrar-js` (cbr), 7z (cb7) |
-| EPUB / PDF | `jszip` + `fast-xml-parser` + `cheerio` / `mupdf` |
-| Auth | Session cookie, `X-Auth-Token`, Basic, API key, remember-me; bcrypt |
-| Logging | `pino` |
+| Concern    | Choice                                                                    |
+| ---------- | ------------------------------------------------------------------------- |
+| Runtime    | Node.js >= 22                                                             |
+| HTTP       | Fastify 5 (+ cookie, session, multipart, static, cors, helmet, etag, SSE) |
+| Contract   | Komga `openapi.json` -> route schemas + types at build time               |
+| Database   | SQLite via `better-sqlite3`, queried with Kysely                          |
+| Migrations | Own runner + `schema_migrations` table                                    |
+| IDs        | TSID (13-char Crockford Base32, time-sortable)                            |
+| Jobs       | `jobs` table + `piscina` worker pool                                      |
+| Events     | `EventEmitter` -> SSE + search reindex                                    |
+| Search     | SQLite FTS5 (`bm25` relevance)                                            |
+| Images     | `sharp`                                                                   |
+| Archives   | `yauzl` (cbz), `node-unrar-js` (cbr), 7z (cb7)                            |
+| EPUB / PDF | `jszip` + `fast-xml-parser` + `cheerio` / `mupdf`                         |
+| Auth       | Session cookie, `X-Auth-Token`, Basic, API key, remember-me; bcrypt       |
+| Logging    | `pino`                                                                    |
 
 ## Data model
 

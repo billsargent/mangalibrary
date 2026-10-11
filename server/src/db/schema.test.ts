@@ -79,9 +79,7 @@ async function migratedDatabase() {
 describe('schema', () => {
   it('creates every expected table', async () => {
     const database = await migratedDatabase()
-    const result = await sql<{ name: string }>`select name from sqlite_master where type = 'table'`.execute(
-      database.db,
-    )
+    const result = await sql<{ name: string }>`select name from sqlite_master where type = 'table'`.execute(database.db)
     const names = new Set(result.rows.map((row) => row.name))
     const missing = EXPECTED_TABLES.filter((table) => !names.has(table))
     expect(missing).toEqual([])
@@ -139,9 +137,9 @@ describe('schema', () => {
       .values({ book_id: 'B1', title: 'Akira Volume One', created_date: now, last_modified_date: now })
       .execute()
 
-    const found = await sql<{ book_id: string }>`select book_id from fts_books where fts_books match ${'akira'}`.execute(
-      database.db,
-    )
+    const found = await sql<{
+      book_id: string
+    }>`select book_id from fts_books where fts_books match ${'akira'}`.execute(database.db)
     expect(found.rows.map((row) => row.book_id)).toContain('B1')
 
     await database.close()

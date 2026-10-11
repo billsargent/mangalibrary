@@ -20,13 +20,13 @@ komga-import --from ~/.komga --to ./data
 
 Options:
 
-| Flag | Effect |
-| --- | --- |
-| `--from <dir>` | Legacy Komga config dir (contains `database.sqlite`) |
-| `--to <dir>` | Destination config dir for the new database |
-| `--dry-run` | Report what would be imported, write nothing |
+| Flag            | Effect                                                             |
+| --------------- | ------------------------------------------------------------------ |
+| `--from <dir>`  | Legacy Komga config dir (contains `database.sqlite`)               |
+| `--to <dir>`    | Destination config dir for the new database                        |
+| `--dry-run`     | Report what would be imported, write nothing                       |
 | `--rescan-only` | Import identity and settings only, then rescan libraries from disk |
-| `--force` | Clear the destination tables, then import (back up first) |
+| `--force`       | Clear the destination tables, then import (back up first)          |
 
 The importer refuses to write into a destination that already contains data
 unless `--force` is given; `--force` clears the destination tables first, so take

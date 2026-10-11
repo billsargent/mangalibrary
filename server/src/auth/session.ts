@@ -39,11 +39,7 @@ export interface AuthPluginOptions {
   store?: SessionStore
 }
 
-async function authenticateCredentials(
-  db: Kysely<DB>,
-  email: string,
-  password: string,
-): Promise<AuthUser | undefined> {
+async function authenticateCredentials(db: Kysely<DB>, email: string, password: string): Promise<AuthUser | undefined> {
   const user = await findUserByEmail(db, email)
   if (!user) return undefined
 

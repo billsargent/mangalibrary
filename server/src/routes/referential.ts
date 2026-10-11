@@ -69,11 +69,7 @@ export async function registerReferentialRoutes(app: FastifyInstance, opts: Rout
         const bookAuthors = await db
           .selectFrom('book_metadata_author')
           .select(['name', 'role'])
-          .where(
-            'book_id',
-            'in',
-            db.selectFrom('books').select('id').where('series_id', 'in', seriesIds),
-          )
+          .where('book_id', 'in', db.selectFrom('books').select('id').where('series_id', 'in', seriesIds))
           .execute()
 
         const unique = new Map<string, AuthorDto>()
@@ -82,7 +78,9 @@ export async function registerReferentialRoutes(app: FastifyInstance, opts: Rout
           if (query.search && !author.name.toLowerCase().includes(query.search.toLowerCase())) continue
           unique.set(`${author.name}\u0000${author.role}`, { name: author.name, role: author.role })
         }
-        const authors = [...unique.values()].sort((a, b) => a.name.localeCompare(b.name) || a.role.localeCompare(b.role))
+        const authors = [...unique.values()].sort(
+          (a, b) => a.name.localeCompare(b.name) || a.role.localeCompare(b.role),
+        )
         return paginated(authors, req.query, usePage)
       })
 
@@ -127,10 +125,16 @@ export async function registerReferentialRoutes(app: FastifyInstance, opts: Rout
         return paginated(await distinctStrings(rows as { value: string | null }[]), request.query, usePage)
       }
 
-      app.get(`${path}/genres`, { preHandler: requireAuth }, async (req) => simple(req, 'genre', 'series_metadata_genre'))
+      app.get(`${path}/genres`, { preHandler: requireAuth }, async (req) =>
+        simple(req, 'genre', 'series_metadata_genre'),
+      )
       app.get(`${path}/tags`, { preHandler: requireAuth }, async (req) => simple(req, 'tag', 'series_metadata_tag'))
-      app.get(`${path}/tags/series`, { preHandler: requireAuth }, async (req) => simple(req, 'tag', 'series_metadata_tag'))
-      app.get(`${path}/sharing-labels`, { preHandler: requireAuth }, async (req) => simple(req, null, 'series_metadata_sharing'))
+      app.get(`${path}/tags/series`, { preHandler: requireAuth }, async (req) =>
+        simple(req, 'tag', 'series_metadata_tag'),
+      )
+      app.get(`${path}/sharing-labels`, { preHandler: requireAuth }, async (req) =>
+        simple(req, null, 'series_metadata_sharing'),
+      )
 
       app.get(`${path}/tags/book`, { preHandler: requireAuth }, async (req) => {
         const seriesIds = await seriesIdsFor(db, req)
@@ -139,11 +143,7 @@ export async function registerReferentialRoutes(app: FastifyInstance, opts: Rout
           .selectFrom('book_metadata_tag')
           .select('tag as value')
           .distinct()
-          .where(
-            'book_id',
-            'in',
-            db.selectFrom('books').select('id').where('series_id', 'in', seriesIds),
-          )
+          .where('book_id', 'in', db.selectFrom('books').select('id').where('series_id', 'in', seriesIds))
           .execute()
         return paginated(await distinctStrings(rows), req.query, usePage)
       })

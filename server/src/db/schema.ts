@@ -488,11 +488,7 @@ export interface PageHashUnknownTable {
 }
 
 export type HistoricalEventType =
-  | 'BOOK_FILE_DELETED'
-  | 'SERIES_FOLDER_DELETED'
-  | 'BOOK_CONVERTED'
-  | 'BOOK_IMPORTED'
-  | 'DUPLICATE_PAGE_DELETED'
+  'BOOK_FILE_DELETED' | 'SERIES_FOLDER_DELETED' | 'BOOK_CONVERTED' | 'BOOK_IMPORTED' | 'DUPLICATE_PAGE_DELETED'
 
 export interface HistoricalEventsTable {
   id: string
@@ -554,4 +550,3 @@ export interface AnnouncementsReadTable {
   announcement_id: string
   read_date: string
 }
-

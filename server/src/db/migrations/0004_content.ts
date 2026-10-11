@@ -21,7 +21,12 @@ export const migration0004Content: Migration = {
 
     await db.schema.createIndex('idx__series__library_id').ifNotExists().on('series').columns(['library_id']).execute()
     await db.schema.createIndex('idx__series__name').ifNotExists().on('series').columns(['name']).execute()
-    await db.schema.createIndex('idx__series__created_date').ifNotExists().on('series').columns(['created_date']).execute()
+    await db.schema
+      .createIndex('idx__series__created_date')
+      .ifNotExists()
+      .on('series')
+      .columns(['created_date'])
+      .execute()
     await db.schema
       .createIndex('idx__series__last_modified_date')
       .ifNotExists()
@@ -134,7 +139,12 @@ export const migration0004Content: Migration = {
 
     await db.schema.createIndex('idx__books__series_id').ifNotExists().on('books').columns(['series_id']).execute()
     await db.schema.createIndex('idx__books__library_id').ifNotExists().on('books').columns(['library_id']).execute()
-    await db.schema.createIndex('idx__books__created_date').ifNotExists().on('books').columns(['created_date']).execute()
+    await db.schema
+      .createIndex('idx__books__created_date')
+      .ifNotExists()
+      .on('books')
+      .columns(['created_date'])
+      .execute()
     await db.schema.createIndex('idx__books__file_hash').ifNotExists().on('books').columns(['file_hash']).execute()
     await db.schema
       .createIndex('idx__books__file_hash_koreader')
