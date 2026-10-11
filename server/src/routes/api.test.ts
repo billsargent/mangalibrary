@@ -415,4 +415,101 @@ describe('users', () => {
     expect((all.json() as { totalElements: number }).totalElements).toBe(1)
     await app.close()
   })
+
+  it('refuses to change or delete the caller\u2019s own account through the admin routes', async () => {
+    const { app } = await setup()
+
+    const patched = await app.inject({
+      method: 'PATCH',
+      url: '/api/v2/users/U1',
+      headers: admin,
+      payload: { roles: ['PAGE_STREAMING'] },
+    })
+    expect(patched.statusCode).toBe(403)
+
+    expect((await app.inject({ method: 'DELETE', url: '/api/v2/users/U1', headers: admin })).statusCode).toBe(403)
+
+    // The account is untouched, and still an administrator.
+    const me = await app.inject({ method: 'GET', url: '/api/v2/users/me', headers: admin })
+    expect((me.json() as { roles: string[] }).roles).toEqual(['ADMIN'])
+
+    await app.close()
+  })
+
+  it('requires a role array when creating a user', async () => {
+    const { app } = await setup()
+
+    const asString = await app.inject({
+      method: 'POST',
+      url: '/api/v2/users',
+      headers: admin,
+      payload: { email: 'a@example.com', password: 'secret', roles: 'FILE_DOWNLOAD' },
+    })
+    expect(asString.statusCode).toBe(400)
+
+    const absent = await app.inject({
+      method: 'POST',
+      url: '/api/v2/users',
+      headers: admin,
+      payload: { email: 'a@example.com', password: 'secret' },
+    })
+    expect(absent.statusCode).toBe(400)
+
+    // No account was created by either refusal.
+    const users = await app.inject({ method: 'GET', url: '/api/v2/users', headers: admin })
+    expect((users.json() as { email: string }[]).map((user) => user.email)).not.toContain('a@example.com')
+
+    // An unknown role name is dropped rather than refused, which is what the
+    // reference does with one.
+    const unknown = await app.inject({
+      method: 'POST',
+      url: '/api/v2/users',
+      headers: admin,
+      payload: { email: 'b@example.com', password: 'secret', roles: ['FILE_DOWNLOAD', 'NOT_A_ROLE'] },
+    })
+    expect(unknown.statusCode).toBe(200)
+    expect((unknown.json() as { roles: string[] }).roles).toEqual(['FILE_DOWNLOAD'])
+
+    // The same rule applies to an update.
+    const id = (unknown.json() as { id: string }).id
+    expect(
+      (await app.inject({ method: 'PATCH', url: `/api/v2/users/${id}`, headers: admin, payload: { roles: 'ADMIN' } }))
+        .statusCode,
+    ).toBe(400)
+
+    await app.close()
+  })
+
+  it('gives a new user every library unless the request says otherwise', async () => {
+    const { app } = await setup()
+
+    // The field was added after the endpoint existed, so a request that says
+    // nothing about libraries means all of them.
+    const open = await app.inject({
+      method: 'POST',
+      url: '/api/v2/users',
+      headers: admin,
+      payload: { email: 'open@example.com', password: 'secret', roles: ['PAGE_STREAMING'] },
+    })
+    expect((open.json() as { sharedAllLibraries: boolean }).sharedAllLibraries).toBe(true)
+
+    // A named library that does not exist is not shared, rather than stored as a
+    // share nobody can see.
+    const named = await app.inject({
+      method: 'POST',
+      url: '/api/v2/users',
+      headers: admin,
+      payload: {
+        email: 'named@example.com',
+        password: 'secret',
+        roles: ['PAGE_STREAMING'],
+        sharedLibraries: { all: false, libraryIds: ['L1', 'NOPE'] },
+      },
+    })
+    const dto = named.json() as { sharedAllLibraries: boolean; sharedLibrariesIds: string[] }
+    expect(dto.sharedAllLibraries).toBe(false)
+    expect(dto.sharedLibrariesIds).toEqual(['L1'])
+
+    await app.close()
+  })
 })
