@@ -4,6 +4,7 @@ import { canAccessLibrary } from '../auth/access.js'
 import { requireAdmin, requireAuth } from '../auth/session.js'
 import type { DB } from '../db/schema.js'
 import type { EventBus } from '../events.js'
+import type { FetchJson } from '../http.js'
 import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
 import { nextTsid } from '../tsid.js'
 import { toLibraryDto, type LibraryDto, type LibraryRow } from './dto.js'
@@ -12,6 +13,12 @@ export interface RouteOptions {
   db: Kysely<DB>
   /** Fan-out of changes to the clients watching for them. */
   events: EventBus
+  /** Reads a JSON document from a URL, for the endpoints that show something hosted elsewhere. */
+  fetchJson: FetchJson
+  /** Where the announcements feed lives, if anywhere. */
+  announcementsUrl: string | null
+  /** Where release notes live, if anywhere. */
+  releasesUrl: string | null
   /** Port the server is listening on, as reported by the settings endpoint. */
   port?: number
   /** Port the configuration asks for, when it asks for one at all. */

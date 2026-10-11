@@ -4,6 +4,7 @@ import { registerAuth } from './auth/session.js'
 import type { Config } from './config.js'
 import type { Database } from './db/index.js'
 import { EventBus } from './events.js'
+import { fetchJson as defaultFetchJson, type FetchJson } from './http.js'
 import { registerRoutes } from './routes/index.js'
 import { MAX_UPLOAD_BYTES } from './uploads.js'
 import { APP_VERSION } from './version.js'
@@ -13,6 +14,8 @@ export { APP_VERSION }
 export interface AppDeps {
   config: Config
   database: Database
+  /** Overridden in tests: nothing here should reach the network. */
+  fetchJson?: FetchJson
 }
 
 /**
@@ -33,6 +36,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   await registerRoutes(app, {
     db: deps.database.db,
     events: new EventBus(),
+    fetchJson: deps.fetchJson ?? defaultFetchJson,
+    announcementsUrl: deps.config.announcementsUrl,
+    releasesUrl: deps.config.releasesUrl,
     port: deps.config.port,
     configuredPort: deps.config.configuredPort,
   })
