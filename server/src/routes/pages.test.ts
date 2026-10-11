@@ -373,6 +373,10 @@ describe('book page images', () => {
     expect(unsupported.statusCode).toBe(404)
     expect(unsupported.json()).toEqual({ message: 'Book analysis failed' })
 
+    // A raw page is a PDF extraction this server cannot do, so the path is absent.
+    const raw = await app.inject({ method: 'GET', url: '/api/v1/books/B1/pages/1/raw', headers: reader })
+    expect(raw.statusCode).toBe(404)
+
     await app.close()
   })
 
