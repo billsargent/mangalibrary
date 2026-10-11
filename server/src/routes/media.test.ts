@@ -1,6 +1,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type { FastifyInstance } from 'fastify'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
@@ -34,6 +35,8 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database; root
   const root = mkdtempSync(join(tmpdir(), 'ml-media-root-'))
   const otherRoot = mkdtempSync(join(tmpdir(), 'ml-media-other-'))
   writeFileSync(join(root, 'v1.cbz'), 'not a real archive, only bytes')
+  writeFileSync(join(root, 'absolute.cbz'), 'absolute url bytes')
+  writeFileSync(join(otherRoot, 'outside.cbz'), 'outside the library root')
 
   const config = loadConfig({
     KOMGA_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'ml-media-config-')),
@@ -195,6 +198,32 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database; root
         created_date: now,
         last_modified_date: now,
       },
+      // Komga stores absolute file URLs, and the importer copies them across.
+      {
+        id: 'B4',
+        series_id: 'S1',
+        library_id: 'L1',
+        name: 'Absolute url',
+        url: pathToFileURL(join(root, 'absolute.cbz')).href,
+        file_last_modified: now,
+        file_size: 18,
+        number: 3,
+        created_date: now,
+        last_modified_date: now,
+      },
+      // Same shape, but pointing outside the library's own root.
+      {
+        id: 'B5',
+        series_id: 'S1',
+        library_id: 'L1',
+        name: 'Outside the root',
+        url: pathToFileURL(join(otherRoot, 'outside.cbz')).href,
+        file_last_modified: now,
+        file_size: 24,
+        number: 4,
+        created_date: now,
+        last_modified_date: now,
+      },
     ])
     .execute()
 
@@ -248,6 +277,16 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database; root
         width: 800,
         height: 1200,
         file_size: null,
+      },
+      // A book whose file is gone still has pages recorded from its last analysis.
+      {
+        book_id: 'B3',
+        number: 1,
+        file_name: '001.png',
+        media_type: 'image/png',
+        width: 800,
+        height: 1200,
+        file_size: 2048,
       },
     ])
     .execute()
@@ -545,6 +584,34 @@ describe('pages and files', () => {
     expect((await app.inject({ method: 'GET', url: '/api/v1/books/B1/file', headers: admin })).statusCode).toBe(403)
     expect((await app.inject({ method: 'GET', url: '/api/v1/books/B3/file', headers: reader })).statusCode).toBe(404)
     expect((await app.inject({ method: 'GET', url: '/api/v1/books/B2/file', headers: reader })).statusCode).toBe(403)
+    await app.close()
+  })
+
+  it('downloads a book stored as an absolute file url', async () => {
+    const { app } = await setup()
+
+    const res = await app.inject({ method: 'GET', url: '/api/v1/books/B4/file', headers: reader })
+    expect(res.statusCode).toBe(200)
+    expect(res.payload).toBe('absolute url bytes')
+    expect(res.headers['content-disposition']).toContain('filename="absolute.cbz"')
+    await app.close()
+  })
+
+  it('refuses a stored url that points outside the library root', async () => {
+    const { app } = await setup()
+    // The file exists, but it is not inside this library's root, so the row must
+    // not be able to reach it.
+    expect((await app.inject({ method: 'GET', url: '/api/v1/books/B5/file', headers: reader })).statusCode).toBe(404)
+    await app.close()
+  })
+
+  it('still lists pages for a book whose file is missing', async () => {
+    const { app } = await setup()
+
+    expect((await app.inject({ method: 'GET', url: '/api/v1/books/B3/file', headers: reader })).statusCode).toBe(404)
+    const pages = await app.inject({ method: 'GET', url: '/api/v1/books/B3/pages', headers: reader })
+    expect(pages.statusCode).toBe(200)
+    expect((pages.json() as unknown[]).length).toBe(1)
     await app.close()
   })
 
