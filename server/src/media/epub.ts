@@ -14,6 +14,8 @@ interface EpubPackage {
   spine: string[]
   tocId: string | null
   base: string
+  /** The package document as it was read, which is where its metadata lives. */
+  xml: string
 }
 
 /**
@@ -80,7 +82,7 @@ async function readPackage(container: Container): Promise<EpubPackage | null> {
     if (href) spine.push(href)
   }
 
-  return { manifest, spine, tocId: attribute(spineTag, 'toc'), base }
+  return { manifest, spine, tocId: attribute(spineTag, 'toc'), base, xml: opf }
 }
 
 async function readText(container: Container, name: string): Promise<string> {
@@ -183,6 +185,7 @@ export async function openEpub(buffer: Buffer): Promise<{
   files: { fileName: string; mediaType: string; size: number }[]
   toc: TocEntry[]
   divinaCompatible: boolean
+  packageDocument: string
 }> {
   const container = await openZip(buffer)
   const pkg = await readPackage(container)
@@ -214,7 +217,7 @@ export async function openEpub(buffer: Buffer): Promise<{
       size: container.sizes.get(fileName) ?? 0,
     }))
 
-  return { container, pages, files, toc: await readToc(container, pkg), divinaCompatible }
+  return { container, pages, files, toc: await readToc(container, pkg), divinaCompatible, packageDocument: pkg.xml }
 }
 
 /** How much of a resource one position covers, as the Readium algorithm does. */

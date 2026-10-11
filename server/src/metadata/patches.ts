@@ -196,6 +196,50 @@ export function isEmptyUpdate(update: BookMetadataUpdate): boolean {
   )
 }
 
+/** The state a book has once an update has been written. */
+function withBookUpdate(state: BookMetadataState, update: BookMetadataUpdate): BookMetadataState {
+  return {
+    ...state,
+    title: update.values.title ?? state.title,
+    summary: update.values.summary ?? state.summary,
+    number: update.values.number ?? state.number,
+    numberSort: update.values.number_sort ?? state.numberSort,
+    releaseDate: update.values.release_date === undefined ? state.releaseDate : update.values.release_date,
+    isbn: update.values.isbn ?? state.isbn,
+    authors: update.authors ?? state.authors,
+    tags: update.tags ?? state.tags,
+    links: update.links ?? state.links,
+  }
+}
+
+/**
+ * Apply several patches to a book, in order.
+ *
+ * A book can carry more than one document - an EPUB keeps its own metadata and may
+ * still hold a `ComicInfo.xml` - and the reference applies each document's patch in
+ * turn, so that a later one wins where they disagree. Each is applied to what the
+ * one before it decided, which is what keeps "only write what changes" true.
+ */
+export function applyBookPatches(
+  state: BookMetadataState,
+  patches: readonly BookMetadataPatch[],
+  capabilities: readonly BookMetadataCapability[] = BOOK_METADATA_CAPABILITIES,
+): BookMetadataUpdate {
+  let current = state
+  const merged: BookMetadataUpdate = { values: {} }
+
+  for (const patch of patches) {
+    const update = applyBookPatch(current, patch, capabilities)
+    current = withBookUpdate(current, update)
+    Object.assign(merged.values, update.values)
+    if (update.authors !== undefined) merged.authors = update.authors
+    if (update.tags !== undefined) merged.tags = update.tags
+    if (update.links !== undefined) merged.links = update.links
+  }
+
+  return merged
+}
+
 /** What a provider read about a series out of its books, with every field optional. */
 export interface SeriesMetadataPatch {
   status?: string

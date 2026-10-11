@@ -92,7 +92,7 @@ export async function openBook(path: string): Promise<BookContents> {
       pageCount: epub.pages.length,
       pages: epub.pages,
       files: epub.files,
-      epub: { toc: epub.toc, divinaCompatible: epub.divinaCompatible },
+      epub: { toc: epub.toc, divinaCompatible: epub.divinaCompatible, packageDocument: epub.packageDocument },
       readPage: async (pageNumber) => {
         const page = epub.pages[pageNumber - 1]
         if (!page) throw new Error(`page ${pageNumber} is out of range`)

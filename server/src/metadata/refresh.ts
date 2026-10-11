@@ -17,9 +17,10 @@ import type { Kysely } from 'kysely'
 import { bookFilePath, findBookRecord } from '../books/files.js'
 import type { DB } from '../db/schema.js'
 import { comicInfoBookPatch } from './comicinfo.js'
-import { readComicInfo } from './document.js'
+import { readBookDocuments } from './document.js'
+import { epubMetadata } from './epub.js'
 import {
-  applyBookPatch,
+  applyBookPatches,
   isEmptyUpdate,
   type Author,
   type BookMetadataCapability,
@@ -169,25 +170,37 @@ export async function refreshBookMetadata(
 
   const library = await db
     .selectFrom('libraries')
-    .select('import_comic_info_book')
+    .select(['import_comic_info_book', 'import_epub_book'])
     .where('id', '=', record.libraryId)
     .executeTakeFirst()
   if (!library) throw new Error(`library ${record.libraryId} does not exist`)
-  if (library.import_comic_info_book !== 1) {
-    return { status: 'skipped', changed: [], reason: 'the library does not import ComicInfo metadata' }
+  if (library.import_comic_info_book !== 1 && library.import_epub_book !== 1) {
+    return { status: 'skipped', changed: [], reason: 'the library does not import a book\u2019s metadata documents' }
   }
 
   const path = options.path ?? (await bookFilePath(record))
   if (path === null) return { status: 'skipped', changed: [], reason: 'the file is not there' }
 
-  const read = await readComicInfo(path)
+  const read = await readBookDocuments(path)
   if (read.status !== 'ok') return { status: read.status, changed: [], reason: read.reason }
 
-  const patch: BookMetadataPatch = comicInfoBookPatch(read.xml)
+  // The documents are applied in the reference's provider order, so that where two
+  // of them disagree the later one wins.
+  const patches: BookMetadataPatch[] = []
+  if (library.import_comic_info_book === 1 && read.documents.comicInfo !== null) {
+    patches.push(comicInfoBookPatch(read.documents.comicInfo))
+  }
+  if (library.import_epub_book === 1 && read.documents.packageDocument !== null) {
+    patches.push(epubMetadata(read.documents.packageDocument).book)
+  }
+  if (patches.length === 0) {
+    return { status: 'skipped', changed: [], reason: 'the library does not import the documents this book carries' }
+  }
+
   const state = await metadataState(db, bookId)
   if (state === null) return { status: 'skipped', changed: [], reason: 'the book has no metadata row' }
 
-  const update = applyBookPatch(state, patch, options.capabilities)
+  const update = applyBookPatches(state, patches, options.capabilities)
   if (isEmptyUpdate(update)) return { status: 'unchanged', changed: [], reason: null }
 
   const now = new Date().toISOString()

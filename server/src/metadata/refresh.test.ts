@@ -7,6 +7,7 @@ import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
 import { analyzeBook } from '../media/analyze.js'
+import { epubEntries } from '../testing/epub.js'
 import { writeZip } from '../testing/zip.js'
 import { refreshBookMetadata } from './refresh.js'
 
@@ -41,8 +42,10 @@ interface Fixture {
 }
 
 interface SetupOptions {
-  /** The document to put in the book; null leaves the book without one. */
+  /** The ComicInfo document to put in the book; null leaves the book without one. */
   document?: string | null
+  /** The `<metadata>` section of an EPUB package document, which makes the book an EPUB. */
+  epub?: string
   /** Columns to override on the library row. */
   library?: Record<string, unknown>
 }
@@ -77,11 +80,12 @@ async function setup(options: SetupOptions = {}): Promise<Fixture> {
     })
     .execute()
 
-  const entries = [{ name: 'page1.jpg', data: PAGE }]
-  const document = options.document === undefined ? FULL : options.document
+  const isEpub = options.epub !== undefined
+  const entries = isEpub ? epubEntries(options.epub ?? '') : [{ name: 'page1.jpg', data: PAGE }]
+  const document = options.document === undefined ? (isEpub ? null : FULL) : options.document
   if (document !== null) entries.push({ name: 'ComicInfo.xml', data: Buffer.from(document, 'utf8') })
 
-  const path = join(root, 'Volume 1.cbz')
+  const path = join(root, isEpub ? 'Volume 1.epub' : 'Volume 1.cbz')
   writeFileSync(path, writeZip(entries))
 
   await database.db
@@ -232,7 +236,7 @@ describe('refreshing a book from its own file', () => {
 
     const result = await refreshBookMetadata(database.db, 'B1')
     expect(result.status).toBe('skipped')
-    expect(result.reason).toContain('ComicInfo.xml')
+    expect(result.reason).toContain('no metadata document')
   })
 
   it('reports a file it cannot read instead of throwing', async () => {
@@ -303,5 +307,63 @@ describe('refreshing a book from its own file', () => {
     expect(row.title).toBe('Akira Volume 1')
     expect(row.release_date).toBe('1984-12-06')
     expect(await authors(database)).toHaveLength(2)
+  })
+})
+
+describe('refreshing a book from its EPUB package document', () => {
+  const EPUB = `
+    <dc:title>The Long Way Down</dc:title>
+    <dc:creator>A Writer</dc:creator>
+    <dc:description>&lt;p&gt;A &lt;b&gt;long&lt;/b&gt; way down.&lt;/p&gt;</dc:description>
+    <dc:date>2019-04-02</dc:date>
+    <dc:identifier>urn:isbn:978-1-56619-909-4</dc:identifier>
+    <meta property="belongs-to-collection" id="col1">The Long Series</meta>
+    <meta refines="#col1" property="group-position">3</meta>
+  `
+
+  it('writes what the package document says', async () => {
+    const { database } = await setup({ epub: EPUB })
+
+    const result = await refreshBookMetadata(database.db, 'B1')
+    expect(result.status).toBe('changed')
+
+    const row = await metadata(database)
+    expect(row.title).toBe('The Long Way Down')
+    expect(row.summary).toBe('A long way down.')
+    expect(row.release_date).toBe('2019-04-02')
+    expect(row.isbn).toBe('9781566199094')
+    // The position in the collection it belongs to is the book's number.
+    expect(row.number).toBe('3')
+    expect(row.number_sort).toBe(3)
+    expect(await authors(database)).toEqual([{ name: 'A Writer', role: 'writer' }])
+  })
+
+  it('applies the package document after a ComicInfo document, as the reference does', async () => {
+    const { database } = await setup({
+      epub: EPUB,
+      document: comicInfo({ Title: 'A ComicInfo title', Publisher: 'Kodansha' }),
+    })
+
+    await refreshBookMetadata(database.db, 'B1')
+    expect((await metadata(database)).title).toBe('The Long Way Down')
+  })
+
+  it('is skipped when the library imports neither kind of document', async () => {
+    const { database } = await setup({
+      epub: EPUB,
+      library: { import_comic_info_book: 0, import_epub_book: 0 },
+    })
+
+    const result = await refreshBookMetadata(database.db, 'B1')
+    expect(result.status).toBe('skipped')
+    expect((await metadata(database)).title).toBe('Volume 1')
+  })
+
+  it('is skipped when the library does not import EPUB metadata', async () => {
+    const { database } = await setup({ epub: EPUB, library: { import_epub_book: 0 } })
+
+    const result = await refreshBookMetadata(database.db, 'B1')
+    expect(result.status).toBe('skipped')
+    expect(result.reason).toContain('does not import the documents')
   })
 })

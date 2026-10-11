@@ -99,9 +99,16 @@ is analysed. Like the EPUB reader and the ComicRack list, this is done with
 targeted patterns rather than an XML parser - the documents involved are a flat
 list of elements whose text is wanted.
 
-So far this reads a book's own fields from `ComicInfo.xml`, and the whole of what
-that document says about the series its book belongs to; EPUB metadata and Mylar
+Two documents are read: a `ComicInfo.xml` in any container, which a comic collection
+usually carries, and an EPUB's package document. From the first come the book's
+title, summary, number, release date, credits, tags, links and ISBN, and the series
+it belongs to; from the second the same, plus the publisher, the language, the
+subjects as genres, the reading direction stated on the spine, and the collection the
+book belongs to - with its position in that collection as the book's number. Mylar
 file names are still to come.
+
+When a book carries both documents, both are applied, the package document last,
+which is the order the reference's providers run in.
 
 A series has no file of its own, so its metadata is folded out of its books: the
 value most of them agree on, the highest age rating, the union of the genres, and
@@ -120,6 +127,11 @@ Deliberate differences from the reference:
   is not a URL, a `GTIN` whose check digit does not hold, a release date the
   calendar does not have. In the reference a release date that `LocalDate` refuses
   costs the whole document, because its provider throws and returns nothing.
+- An EPUB's description is stored as the words it carries with its markup removed,
+  and a `dc:date` that is a timestamp keeps its date part. The reference reads the
+  two the same way, but a description written as escaped text rather than as markup
+  keeps its angle brackets there, and an ISBN is only recognised behind an `isbn:`
+  prefix - `urn:isbn:` is understood here as well.
 - A language is checked for the shape of a BCP47 tag rather than against ICU's list
   of ISO languages, and its casing is normalised (`pt_br` becomes `pt-BR`). An
   invented language therefore lands in the field, where the reference would refuse
