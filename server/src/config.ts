@@ -14,6 +14,16 @@ export interface Config {
   configuredPort: number | null
   logLevel: string
   sessionTtlMs: number
+  /**
+   * Where the announcements feed is read from, if anywhere.
+   *
+   * Unset means there is no source to read, which is the honest answer for a
+   * self-hosted install: the endpoint then reports that there is nothing to show
+   * rather than reaching out to somebody else's website.
+   */
+  announcementsUrl: string | null
+  /** Where release notes are read from, if anywhere. */
+  releasesUrl: string | null
 }
 
 export const DEFAULT_PORT = 25600
@@ -27,6 +37,8 @@ interface FileConfig {
   host?: string
   port?: number
   logLevel?: string
+  announcementsUrl?: string
+  releasesUrl?: string
 }
 
 function readFileConfig(path: string): FileConfig {
@@ -43,6 +55,12 @@ function toNumber(value: string | undefined, fallback: number, label: string): n
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) throw new Error(`Invalid ${label}: ${value}`)
   return parsed
+}
+
+function toUrl(value: string | undefined): string | null {
+  if (value === undefined) return null
+  const trimmed = value.trim()
+  return trimmed === '' ? null : trimmed
 }
 
 /**
@@ -70,5 +88,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     configuredPort: configuredPort === undefined || configuredPort === '' ? null : port,
     logLevel,
     sessionTtlMs,
+    announcementsUrl: toUrl(env.KOMGA_ANNOUNCEMENTS_URL ?? fileConfig.announcementsUrl),
+    releasesUrl: toUrl(env.KOMGA_RELEASES_URL ?? fileConfig.releasesUrl),
   }
 }
