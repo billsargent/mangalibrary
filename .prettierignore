@@ -5,3 +5,4 @@ coverage
 *.sqlite
 data
 ui/
+server/src/generated/

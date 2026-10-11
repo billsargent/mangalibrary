@@ -9,7 +9,7 @@ const EPOCH = 1577836800000 // 2020-01-01T00:00:00Z
 
 const MAX_TIME = (1n << 42n) - 1n
 const MAX_NODE = 255
-const COUNTER_MASK = 0x3fffn // 14 bits
+const COUNTER_MASK = 0x3fff // 14 bits
 
 const node: number = (() => {
   const fromEnv = process.env.TSID_NODE ?? process.env.tsidcreator_node
