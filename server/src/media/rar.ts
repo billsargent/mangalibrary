@@ -1,0 +1,36 @@
+import { createExtractorFromData } from 'node-unrar-js'
+
+import type { Container } from './zip.js'
+
+/**
+ * Open a RAR - what a CBR is.
+ *
+ * Unlike a zip, this cannot be read page by page from a random offset: the
+ * library wants the whole archive in memory, which is what it gets.
+ */
+export async function openRar(buffer: Buffer): Promise<Container> {
+  // The library wants an ArrayBuffer, and a Node Buffer may be a view into a
+  // larger one, so the exact window is copied out.
+  const data = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer
+  const extractor = await createExtractorFromData({ data })
+  const list = extractor.getFileList()
+  const headers = [...list.fileHeaders].filter((header) => !header.flags.directory)
+
+  const sizes = new Map<string, number>()
+  for (const header of headers) sizes.set(header.name, header.unpSize)
+
+  return {
+    entries: headers.map((header) => header.name),
+    sizes,
+    read: async (name) => {
+      // The extractor returns contents in the order of the list it was given.
+      const extracted = extractor.extract({ files: [{ name, password: undefined }] as never })
+      const file = [...extracted.files][0]
+      if (!file || file.extraction === undefined) throw new Error(`cannot read ${name}`)
+      return Buffer.from(file.extraction)
+    },
+    close: () => {
+      // Nothing to release: the archive lives in the buffer we were handed.
+    },
+  }
+}
