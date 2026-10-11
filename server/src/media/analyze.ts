@@ -2,9 +2,10 @@ import sharp from 'sharp'
 import type { Kysely } from 'kysely'
 
 import type { DB } from '../db/schema.js'
+import { computePositions } from './epub.js'
 import { openBook } from './index.js'
 import { isImageEntry } from './kinds.js'
-import type { TocEntry } from './types.js'
+import type { Position, TocEntry } from './types.js'
 
 export type AnalysisStatus = 'READY' | 'ERROR' | 'UNSUPPORTED'
 
@@ -58,6 +59,8 @@ export interface BookInspection {
   files: { fileName: string; size: number }[]
   /** The table of contents of an EPUB, or null for the other containers. */
   epubToc: TocEntry[] | null
+  /** The Readium positions of an EPUB, or null for the other containers. */
+  positions: Position[] | null
   comment: string | null
 }
 
@@ -100,6 +103,7 @@ export async function inspectBook(
         pages,
         files: book.files.map((file) => ({ fileName: file.fileName, size: file.size })),
         epubToc: book.epub?.toc ?? null,
+        positions: book.epub ? computePositions(book.pages) : null,
         comment: null,
       }
     } finally {
@@ -116,6 +120,7 @@ export async function inspectBook(
       pages: [],
       files: [],
       epubToc: null,
+      positions: null,
       comment: `${code} ${message}`,
     }
   }
@@ -204,6 +209,14 @@ export async function analyzeBook(
           .values({ book_id: bookId, toc: JSON.stringify(inspection.epubToc) })
           .execute()
       }
+
+      await trx.deleteFrom('epub_positions').where('book_id', '=', bookId).execute()
+      if (inspection.positions) {
+        await trx
+          .insertInto('epub_positions')
+          .values({ book_id: bookId, positions: JSON.stringify(inspection.positions) })
+          .execute()
+      }
     })
 
     return { status: 'READY', mediaType: inspection.mediaType, pageCount: inspection.pages.length, comment: null }
@@ -232,5 +245,6 @@ export async function analyzeBook(
     .execute()
 
   await db.deleteFrom('media_page').where('book_id', '=', bookId).execute()
+  await db.deleteFrom('epub_positions').where('book_id', '=', bookId).execute()
   return { status: inspection.status, mediaType: null, pageCount: 0, comment: inspection.comment }
 }
