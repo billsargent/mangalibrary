@@ -1,8 +1,9 @@
 import { sql, type Kysely } from 'kysely'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { requireAdmin, requireAuth } from '../auth/session.js'
+import { requireAdmin, requireAuth, requireRole } from '../auth/session.js'
 import type { DB } from '../db/schema.js'
 import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
+import { archiveEntries } from './book-files.js'
 import { findBooks, type BookQueryFilters } from './books.js'
 import { buildBookDtos, buildSeriesDtos, loadSeriesCounts } from './content-data.js'
 import type { SeriesCounts, SeriesRow } from './content-dto.js'
@@ -12,6 +13,7 @@ import type { RouteOptions } from './libraries.js'
 import { applySeriesMetadataPatch } from './metadata.js'
 import { toCollectionDto, type CollectionDto, type CollectionRow } from './organisation-dto.js'
 import { applySort, booleanParam, isRegex, likeAny, paging, parseSort, toArray, type SortSpec } from './query.js'
+import { zipStream } from '../zip.js'
 
 /**
  * Series browsing, metadata and series-level progress.
@@ -752,6 +754,51 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
         .where('book_id', 'in', db.selectFrom('books').select('id').where('series_id', '=', req.params.seriesId))
         .execute()
       return reply.code(204).send()
+    },
+  )
+
+  /**
+   * Download a whole series as a ZIP.
+   *
+   * Each entry is named after the book's file, and a book whose file is no longer
+   * on disk is skipped rather than failing the whole download.
+   */
+  app.get<{ Params: { seriesId: string } }>(
+    '/api/v1/series/:seriesId/file',
+    { preHandler: requireRole('FILE_DOWNLOAD') },
+    async (req, reply) => {
+      const context = await contentContext(db, req)
+      const found = await resolve(context, req.params.seriesId)
+      if ('status' in found) {
+        return reply.code(found.status).send({ message: found.status === 404 ? 'Series not found' : 'Forbidden' })
+      }
+
+      const metadata = await db
+        .selectFrom('series_metadata')
+        .select('title')
+        .where('series_id', '=', req.params.seriesId)
+        .executeTakeFirst()
+      const books = await db
+        .selectFrom('books')
+        .select('id')
+        .where('series_id', '=', req.params.seriesId)
+        .where('deleted_date', 'is', null)
+        .orderBy('number')
+        .execute()
+
+      const entries = await archiveEntries(
+        db,
+        books.map((book) => book.id),
+        (fileName) => fileName,
+      )
+      const fileName = `${metadata?.title ?? found.row.name}.zip`.replace(/"/g, "'")
+      return reply
+        .header(
+          'content-disposition',
+          `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        )
+        .type('application/zip')
+        .send(zipStream(entries))
     },
   )
 }

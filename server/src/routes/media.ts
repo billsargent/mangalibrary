@@ -1,28 +1,27 @@
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
-import { basename, extname, isAbsolute, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { basename, extname } from 'node:path'
 import { type Kysely } from 'kysely'
-import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import sharp from 'sharp'
 import { requireAdmin, requireRole } from '../auth/session.js'
 import type { DB } from '../db/schema.js'
 import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
 import { openBook } from '../media/index.js'
 import { mediaTypeFor, profileFor } from '../media/kinds.js'
-import { insideRoot } from '../media/scan.js'
+import { bookFilePath, findBookRecord, type BookFileRecord } from './book-files.js'
 import { cacheHeaders, isNotModified } from './cache-headers.js'
 import { humanSize } from './content-dto.js'
 import { contentContext, seriesAllowed, type ContentContext } from './context.js'
 import type { RouteOptions } from './libraries.js'
 
 /**
- * Media: the page list of a book, the image of a page, downloading a book's
- * file, and the jobs that remove or regenerate derived data.
+ * Media: the page list of a book, the image of a page, a book's own resources,
+ * downloading a book's file, and the jobs that remove or regenerate derived data.
  *
- * A page image is read by opening the archive or PDF, which the media layer
- * owns. The manifests, `resource/{resource}`, `file/*` and the series and read
- * list archives still belong to that layer and are not here yet.
+ * A page image and a resource are read by opening the archive or PDF, which the
+ * media layer owns. The series and read list archives that build on them are the
+ * sibling route groups.
  */
 
 /** Content type for a download, by extension. */
@@ -40,75 +39,7 @@ const FILE_MEDIA_TYPES: Record<string, string> = {
   '.kepub': 'application/kepub+zip',
 }
 
-interface BookRecord {
-  libraryId: string
-  seriesId: string
-  name: string
-  /** Where the row says the file is: an absolute `file:` URL, or a relative path. */
-  url: string
-  /** The library root, as configured. */
-  root: string
-}
-
-/** The book as stored, without touching the filesystem. */
-async function findBook(db: Kysely<DB>, bookId: string): Promise<BookRecord | null> {
-  const row = await db
-    .selectFrom('books')
-    .innerJoin('libraries', 'libraries.id', 'books.library_id')
-    .select(['books.url', 'books.name', 'books.library_id', 'books.series_id', 'libraries.root'])
-    .where('books.id', '=', bookId)
-    .executeTakeFirst()
-  if (!row) return null
-
-  return {
-    libraryId: row.library_id,
-    seriesId: row.series_id,
-    name: row.name,
-    url: row.url,
-    root: row.root,
-  }
-}
-
-/**
- * Paths a stored location could mean, most specific first.
- *
- * Komga stores absolute `file:` URLs - the importer copies them across
- * unchanged - while a row written by hand or by a future scanner may hold a path
- * relative to the library root. Both are accepted so that a migrated library and
- * a freshly scanned one behave the same way.
- */
-function storedPathCandidates(root: string, url: string): string[] {
-  const candidates: string[] = []
-  if (url.startsWith('file:')) {
-    try {
-      candidates.push(fileURLToPath(url))
-    } catch {
-      // Not a usable file URL; the relative interpretation below may still work.
-    }
-  } else if (isAbsolute(url)) {
-    candidates.push(url)
-  }
-  candidates.push(resolve(root, url))
-  return candidates
-}
-
-/**
- * The book's file on disk, or null.
- *
- * Every candidate is confined to the library root, so a row can never point the
- * server at an arbitrary file - including one that arrives from an imported
- * database.
- */
-async function bookFile(record: BookRecord): Promise<string | null> {
-  for (const candidate of storedPathCandidates(record.root, record.url)) {
-    if (!insideRoot(record.root, candidate)) continue
-    const info = await stat(candidate).catch(() => undefined)
-    if (info?.isFile()) return candidate
-  }
-  return null
-}
-
-function bookAccess(context: ContentContext, book: BookRecord): boolean {
+function bookAccess(context: ContentContext, book: BookFileRecord): boolean {
   return seriesAllowed(context, book.seriesId, book.libraryId)
 }
 
@@ -139,7 +70,7 @@ const FONT_EXTENSIONS = ['otf', 'woff', 'woff2', 'eot', 'ttf', 'svg']
 const RESOURCE_CSP = "script-src 'none'; object-src 'none';"
 
 interface PageMeta {
-  book: BookRecord
+  book: BookFileRecord
   lastModified: Date
   pageNumber: number
   /** The page's own media type, before any conversion. */
@@ -163,7 +94,7 @@ async function pageFor(
   zeroBased: boolean,
 ): Promise<{ code: number; message: string } | PageMeta> {
   const context = await contentContext(db, req)
-  const book = await findBook(db, bookId)
+  const book = await findBookRecord(db, bookId)
   if (!book) return { code: 404, message: 'Book not found' }
   if (!bookAccess(context, book)) return { code: 403, message: 'Forbidden' }
 
@@ -197,10 +128,10 @@ async function pageFor(
 
 /** Read one page out of a book's file, reporting what a reader can act on. */
 async function readPage(
-  book: BookRecord,
+  book: BookFileRecord,
   pageNumber: number,
 ): Promise<{ code: number; message: string } | { bytes: Buffer }> {
-  const path = await bookFile(book)
+  const path = await bookFilePath(book)
   if (!path) return { code: 404, message: 'File not found, it may have moved' }
 
   let contents
@@ -253,7 +184,7 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
     { preHandler: requireRole('PAGE_STREAMING') },
     async (req, reply) => {
       const context = await contentContext(db, req)
-      const book = await findBook(db, req.params.bookId)
+      const book = await findBookRecord(db, req.params.bookId)
       if (!book) return reply.code(404).send({ message: 'Book not found' })
       if (!bookAccess(context, book)) return reply.code(403).send({ message: 'Forbidden' })
 
@@ -358,7 +289,7 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
     const isFont = FONT_EXTENSIONS.includes(extension)
     if (!isFont && !req.user) return reply.code(401).send({ message: 'Unauthorized' })
 
-    const book = await findBook(db, req.params.bookId)
+    const book = await findBookRecord(db, req.params.bookId)
     if (!book) return reply.code(404).send({ message: 'Book not found' })
 
     const media = await db
@@ -391,7 +322,7 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
       .executeTakeFirst()
     if (!known) return reply.code(404).send({ message: 'Resource not found' })
 
-    const path = await bookFile(book)
+    const path = await bookFilePath(book)
     if (!path) return reply.code(404).send({ message: 'File not found, it may have moved' })
 
     let contents
@@ -419,31 +350,47 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
     }
   })
 
-  /** Download the book file itself. */
-  app.get<{ Params: { bookId: string } }>(
+  /**
+   * Download the book file itself.
+   *
+   * The reference also answers on `file/*`, where a client may append a file name
+   * of its own choosing; the path after `file/` is ignored and the book's own file
+   * is sent either way.
+   */
+  const downloadBookFile = async (
+    req: FastifyRequest<{ Params: { bookId: string; '*'?: string } }>,
+    reply: FastifyReply,
+  ): Promise<unknown> => {
+    const context = await contentContext(db, req)
+    const book = await findBookRecord(db, req.params.bookId)
+    if (!book) return reply.code(404).send({ message: 'Book not found' })
+    if (!bookAccess(context, book)) return reply.code(403).send({ message: 'Forbidden' })
+
+    const path = await bookFilePath(book)
+    if (!path) return reply.code(404).send({ message: 'Book file not found' })
+    const info = await stat(path)
+
+    const fileName = basename(path).replace(/"/g, "'")
+    return reply
+      .header('content-length', info.size)
+      .header(
+        'content-disposition',
+        `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      )
+      .header('last-modified', info.mtime.toUTCString())
+      .type(FILE_MEDIA_TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream')
+      .send(createReadStream(path))
+  }
+
+  app.get<{ Params: { bookId: string; '*'?: string } }>(
     '/api/v1/books/:bookId/file',
     { preHandler: requireRole('FILE_DOWNLOAD') },
-    async (req, reply) => {
-      const context = await contentContext(db, req)
-      const book = await findBook(db, req.params.bookId)
-      if (!book) return reply.code(404).send({ message: 'Book not found' })
-      if (!bookAccess(context, book)) return reply.code(403).send({ message: 'Forbidden' })
-
-      const path = await bookFile(book)
-      if (!path) return reply.code(404).send({ message: 'Book file not found' })
-      const info = await stat(path)
-
-      const fileName = basename(path).replace(/"/g, "'")
-      return reply
-        .header('content-length', info.size)
-        .header(
-          'content-disposition',
-          `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-        )
-        .header('last-modified', info.mtime.toUTCString())
-        .type(FILE_MEDIA_TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream')
-        .send(createReadStream(path))
-    },
+    downloadBookFile,
+  )
+  app.get<{ Params: { bookId: string; '*'?: string } }>(
+    '/api/v1/books/:bookId/file/*',
+    { preHandler: requireRole('FILE_DOWNLOAD') },
+    downloadBookFile,
   )
 
   /**
