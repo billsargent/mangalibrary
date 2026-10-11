@@ -6,6 +6,13 @@ import type { Kysely } from 'kysely'
 import type { DB } from '../db/schema.js'
 import { insideRoot } from '../media/scan.js'
 
+/**
+ * Where a book's file is, and what it is called.
+ *
+ * This lives outside the routes because more than the routes need it: a download
+ * has to find the file, and so does reading metadata out of it.
+ */
+
 /** A book and its library root, as stored, without touching the filesystem. */
 export interface BookFileRecord {
   libraryId: string

@@ -2,6 +2,7 @@ import sharp from 'sharp'
 import type { Kysely } from 'kysely'
 
 import type { DB } from '../db/schema.js'
+import { refreshBookMetadata } from '../metadata/refresh.js'
 import { computePositions } from './epub.js'
 import { openBook } from './index.js'
 import { isImageEntry } from './kinds.js'
@@ -218,6 +219,13 @@ export async function analyzeBook(
           .execute()
       }
     })
+
+    // Reading metadata out of the file is its own task in the reference, which
+    // schedules the refresh once analysis reports what it learned; until the job
+    // worker exists it happens here, so that analysing a book is all a caller has
+    // to do. A document that cannot be read is reported, never thrown, so it
+    // cannot fail an analysis that otherwise worked.
+    await refreshBookMetadata(db, bookId, { path })
 
     return { status: 'READY', mediaType: inspection.mediaType, pageCount: inspection.pages.length, comment: null }
   }

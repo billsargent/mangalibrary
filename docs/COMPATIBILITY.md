@@ -93,6 +93,37 @@ Komga leaves room for interpretation. Clients see the same shape either way.
 | `POST /api/v1/transient-books`, `POST /api/v1/transient-books/{id}/analyze`                         | Admin-only, and nothing is written to the database: a transient book is held in memory and forgotten an hour after it was last read, as the reference does with its cache, so a restart clears an import that was never completed. A folder inside an existing library is refused with `400` and the code `ERR_1017`, and one that cannot be read with `400` and `ERR_1016`, as the reference reports them. A symlink that resolves outside the scanned folder is skipped, the same guard the file download endpoint uses. `number` and `seriesId` are always `null` until the metadata pipeline exists.                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `GET /api/v1/transient-books/{id}/pages/{pageNumber}`                                               | Serves the page image with its container's media type, plus `Last-Modified` and `Cache-Control: max-age=0, private, must-revalidate`, and answers `304` on a matching `If-Modified-Since`. A book that has not been analysed, or whose analysis failed, answers `404`; a page number outside the list answers `400`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
+## Metadata
+
+What a book carries in its own file is read into the metadata tables when the book
+is analysed. Like the EPUB reader and the ComicRack list, this is done with
+targeted patterns rather than an XML parser - the documents involved are a flat
+list of elements whose text is wanted.
+
+So far this reads a book's own fields from `ComicInfo.xml`; the series half of the
+same document, EPUB metadata and Mylar file names are still to come.
+
+Deliberate differences from the reference:
+
+- `ComicInfo.xml` is found wherever it sits in the archive, and however it is
+  capitalised; the reference insists on that exact name at the root of the
+  archive.
+- A value that is present but unusable is dropped on its own: a `Web` entry that
+  is not a URL, a `GTIN` whose check digit does not hold, a release date the
+  calendar does not have. In the reference a release date that `LocalDate` refuses
+  costs the whole document, because its provider throws and returns nothing.
+- A field is written only when its value would change, so re-analysing a book
+  leaves the metadata rows - and their timestamps - alone.
+- Reading a book's metadata is part of analysing it here, where the reference
+  schedules it as its own task. The effect is the same; the book is read once
+  more, which is cheaper than threading an open container through both steps.
+
+The per-field locks (`titleLock`, `authorsLock`, and the rest) are honoured
+exactly as the reference honours them: a locked field, and a locked list, is left
+as the user set it. Lists are replaced rather than merged, because the file is read
+as a whole, and are compared as sets so that re-ordering credits in a file does not
+rewrite the book.
+
 ## Scanning
 
 How a library directory is read - which directory becomes a series, how

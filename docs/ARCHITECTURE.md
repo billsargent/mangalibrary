@@ -26,7 +26,7 @@ API but replaces everything behind it.
 | Search     | SQLite FTS5 (`bm25` relevance)                                            |
 | Images     | `sharp`                                                                   |
 | Archives   | `yauzl` (cbz), `node-unrar-js` (cbr), 7z (cb7)                            |
-| EPUB / PDF | `jszip` + `fast-xml-parser` + `cheerio` / `mupdf`                         |
+| EPUB / PDF | `mupdf` for PDF; EPUB packages are read with targeted patterns            |
 | Auth       | Session cookie, `X-Auth-Token`, Basic, API key, remember-me; bcrypt       |
 | Logging    | `pino`                                                                    |
 
