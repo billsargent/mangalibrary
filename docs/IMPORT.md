@@ -25,10 +25,23 @@ Options:
 | `--from <dir>` | Legacy Komga config dir (contains `database.sqlite`) |
 | `--to <dir>` | Destination config dir for the new database |
 | `--dry-run` | Report what would be imported, write nothing |
-| `--rescan-only` | Import users/settings/collections/read lists, then rescan libraries from disk |
+| `--rescan-only` | Import identity and settings only, then rescan libraries from disk |
+| `--force` | Clear the destination tables, then import (back up first) |
 
-The importer is idempotent for a clean destination. It refuses to write into a
-destination that already contains data unless `--force` is given (make a backup first).
+The importer refuses to write into a destination that already contains data
+unless `--force` is given; `--force` clears the destination tables first, so take
+a backup beforehand.
+
+## What is imported
+
+Libraries (and directory exclusions), users with roles and library sharing,
+series and book metadata with per-field locks, authors/tags/genres/links,
+media and pages, artwork, read progress, collections, read lists, server and
+client settings, and page hashes.
+
+Not imported: series/book "deleted" trash state is preserved where present, but
+Kobo sync points, EPUB reading positions and aggregated series metadata are
+rebuilt by the server (`--rescan-only` skips all content).
 
 ## After importing
 
