@@ -3,6 +3,7 @@ import { registerBookRoutes } from './books.js'
 import { registerClaimRoutes } from './claim.js'
 import { registerCollectionRoutes } from './collections.js'
 import { registerLibraryRoutes, type RouteOptions } from './libraries.js'
+import { registerMaintenanceRoutes } from './maintenance.js'
 import { registerMediaRoutes } from './media.js'
 import { registerReadListRoutes } from './readlists.js'
 import { registerReferentialRoutes } from './referential.js'
@@ -26,4 +27,5 @@ export async function registerRoutes(app: FastifyInstance, opts: RouteOptions): 
   await registerSettingsRoutes(app, opts)
   await registerClaimRoutes(app, opts)
   await registerSystemRoutes(app, opts)
+  await registerMaintenanceRoutes(app, opts)
 }
