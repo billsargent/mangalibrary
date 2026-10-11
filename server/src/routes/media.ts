@@ -9,6 +9,7 @@ import { requireAdmin, requireRole } from '../auth/session.js'
 import type { DB } from '../db/schema.js'
 import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
 import { openBook } from '../media/index.js'
+import { mediaTypeFor, profileFor } from '../media/kinds.js'
 import { insideRoot } from '../media/scan.js'
 import { cacheHeaders, isNotModified } from './cache-headers.js'
 import { humanSize } from './content-dto.js'
@@ -111,21 +112,6 @@ function bookAccess(context: ContentContext, book: BookRecord): boolean {
   return seriesAllowed(context, book.seriesId, book.libraryId)
 }
 
-/** The reading profile of a book, from the media type its analysis recorded. */
-function mediaProfile(mediaType: string | null): 'DIVINA' | 'PDF' | 'EPUB' | null {
-  switch (mediaType) {
-    case 'application/zip':
-    case 'application/x-rar-compressed':
-      return 'DIVINA'
-    case 'application/pdf':
-      return 'PDF'
-    case 'application/epub+zip':
-      return 'EPUB'
-    default:
-      return null
-  }
-}
-
 /** File extension for an image, for the inline `Content-Disposition`. */
 const PAGE_IMAGE_EXTENSIONS: Record<string, string> = {
   'image/jpeg': '.jpeg',
@@ -140,6 +126,17 @@ const PAGE_IMAGE_EXTENSIONS: Record<string, string> = {
 
 /** A page thumbnail is resized to this many pixels on its longest edge. */
 const PAGE_THUMBNAIL_SIZE = 300
+
+/**
+ * Extensions a book's own fonts can carry.
+ *
+ * A reader loads a font from inside a book with no session to send, so a font is
+ * served without credentials; anything else needs one.
+ */
+const FONT_EXTENSIONS = ['otf', 'woff', 'woff2', 'eot', 'ttf', 'svg']
+
+/** A document loaded from inside a book must not be able to run script. */
+const RESOURCE_CSP = "script-src 'none'; object-src 'none';"
 
 interface PageMeta {
   book: BookRecord
@@ -177,7 +174,7 @@ async function pageFor(
     .executeTakeFirst()
   if (!media || media.status !== 'READY') return { code: 404, message: 'Book analysis failed' }
 
-  const profile = mediaProfile(media.media_type)
+  const profile = profileFor(media.media_type)
   if (profile === null) return { code: 404, message: 'Book analysis failed' }
 
   const requested = Number.parseInt(rawPageNumber, 10)
@@ -345,6 +342,82 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
       return reply.headers(cacheHeaders(lastModified)).type('image/jpeg').send(thumbnail)
     },
   )
+
+  /**
+   * A file from inside a book, addressed by its path within the book.
+   *
+   * This is how a reader loads the parts of an EPUB - its stylesheets, images and
+   * chapters - so it is the EPUB profile only. A font is served without
+   * credentials, because the reader fetches it from inside a book where it has no
+   * session to send; everything else requires one, and is confined by the same
+   * access rules as the book itself.
+   */
+  app.get<{ Params: { bookId: string; '*': string } }>('/api/v1/books/:bookId/resource/*', async (req, reply) => {
+    const resourceName = (req.params['*'] ?? '').replace(/^\/+/, '')
+    const extension = resourceName.split('.').pop()?.toLowerCase() ?? ''
+    const isFont = FONT_EXTENSIONS.includes(extension)
+    if (!isFont && !req.user) return reply.code(401).send({ message: 'Unauthorized' })
+
+    const book = await findBook(db, req.params.bookId)
+    if (!book) return reply.code(404).send({ message: 'Book not found' })
+
+    const media = await db
+      .selectFrom('media')
+      .select(['status', 'media_type', 'last_modified_date'])
+      .where('book_id', '=', req.params.bookId)
+      .executeTakeFirst()
+    if (!media || media.status !== 'READY') return reply.code(404).send({ message: 'Book analysis failed' })
+
+    const lastModified = new Date(media.last_modified_date)
+    const headers = { ...cacheHeaders(lastModified), 'content-security-policy': RESOURCE_CSP }
+    if (isNotModified(req, lastModified)) return reply.headers(headers).code(304).send()
+
+    if (profileFor(media.media_type) !== 'EPUB') {
+      return reply
+        .code(400)
+        .send({ message: `Book media type '${media.media_type ?? ''}' not compatible with requested profile` })
+    }
+
+    if (!isFont) {
+      const context = await contentContext(db, req)
+      if (!bookAccess(context, book)) return reply.code(403).send({ message: 'Forbidden' })
+    }
+
+    const known = await db
+      .selectFrom('media_file')
+      .select('file_name')
+      .where('book_id', '=', req.params.bookId)
+      .where('file_name', '=', resourceName)
+      .executeTakeFirst()
+    if (!known) return reply.code(404).send({ message: 'Resource not found' })
+
+    const path = await bookFile(book)
+    if (!path) return reply.code(404).send({ message: 'File not found, it may have moved' })
+
+    let contents
+    try {
+      contents = await openBook(path)
+    } catch {
+      return reply.code(404).send({ message: 'File not found, it may have moved' })
+    }
+
+    try {
+      const bytes = await contents.readResource(resourceName)
+      const fileName = (resourceName.split('/').pop() ?? resourceName).replace(/"/g, "'")
+      return reply
+        .headers(headers)
+        .header(
+          'content-disposition',
+          `inline; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        )
+        .type(mediaTypeFor(resourceName))
+        .send(bytes)
+    } catch {
+      return reply.code(404).send({ message: 'Resource not found' })
+    } finally {
+      contents.close()
+    }
+  })
 
   /** Download the book file itself. */
   app.get<{ Params: { bookId: string } }>(

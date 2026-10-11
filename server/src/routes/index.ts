@@ -5,6 +5,7 @@ import { registerCollectionRoutes } from './collections.js'
 import { registerFontRoutes } from './fonts.js'
 import { registerLibraryRoutes, type RouteOptions } from './libraries.js'
 import { registerMaintenanceRoutes } from './maintenance.js'
+import { registerManifestRoutes } from './manifest.js'
 import { registerMediaRoutes } from './media.js'
 import { registerReadListRoutes } from './readlists.js'
 import { registerReferentialRoutes } from './referential.js'
@@ -26,6 +27,7 @@ export async function registerRoutes(app: FastifyInstance, opts: RouteOptions): 
   await registerCollectionRoutes(app, opts)
   await registerReadListRoutes(app, opts)
   await registerMediaRoutes(app, opts)
+  await registerManifestRoutes(app, opts)
   await registerThumbnailRoutes(app, opts)
   await registerSettingsRoutes(app, opts)
   await registerClaimRoutes(app, opts)
