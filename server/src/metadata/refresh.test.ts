@@ -310,6 +310,58 @@ describe('refreshing a book from its own file', () => {
   })
 })
 
+describe('putting a book in the read lists its document names', () => {
+  const ARCS = comicInfo({ Title: 'Akira', StoryArc: 'The Long Way, The Short Way', StoryArcNumber: '2, 5' })
+
+  it('creates the read lists and puts the book in them', async () => {
+    const { database } = await setup({ document: ARCS })
+
+    const result = await refreshBookMetadata(database.db, 'B1')
+    expect(result.readLists).toEqual(['The Long Way', 'The Short Way'])
+
+    const lists = await database.db.selectFrom('readlists').selectAll().orderBy('name').execute()
+    expect(lists.map((row) => row.name)).toEqual(['The Long Way', 'The Short Way'])
+
+    const members = await database.db.selectFrom('readlist_book').selectAll().orderBy('number').execute()
+    expect(members.map((row) => [row.readlist_id, row.number])).toEqual([
+      [lists[0]!.id, 2],
+      [lists[1]!.id, 5],
+    ])
+  })
+
+  it('adds nothing the second time', async () => {
+    const { database } = await setup({ document: ARCS })
+
+    await refreshBookMetadata(database.db, 'B1')
+    const result = await refreshBookMetadata(database.db, 'B1')
+    expect(result.readLists).toEqual([])
+
+    const members = await database.db.selectFrom('readlist_book').selectAll().execute()
+    expect(members).toHaveLength(2)
+  })
+
+  it('is left alone when the library is set not to import read lists', async () => {
+    const { database } = await setup({ document: ARCS, library: { import_comic_info_read_list: 0 } })
+
+    const result = await refreshBookMetadata(database.db, 'B1')
+    expect(result.readLists).toEqual([])
+    expect(await database.db.selectFrom('readlists').selectAll().execute()).toHaveLength(0)
+  })
+
+  it('happens even when every field of the book is locked', async () => {
+    const { database } = await setup({ document: ARCS })
+    await database.db
+      .updateTable('book_metadata')
+      .set({ title_lock: 1, summary_lock: 1, number_lock: 1, number_sort_lock: 1, isbn_lock: 1, authors_lock: 1 })
+      .where('book_id', '=', 'B1')
+      .execute()
+
+    const result = await refreshBookMetadata(database.db, 'B1')
+    // Organisation is not a field, so a lock does not stop it.
+    expect(result.readLists).toEqual(['The Long Way', 'The Short Way'])
+  })
+})
+
 describe('refreshing a book from its EPUB package document', () => {
   const EPUB = `
     <dc:title>The Long Way Down</dc:title>

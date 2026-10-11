@@ -21,6 +21,18 @@ export interface WebLink {
 }
 
 /**
+ * A read list a book says it belongs to.
+ *
+ * The number is where in the list the book claims to sit, and is null when the
+ * document names the list without saying - a story arc with no number, or an
+ * alternate series without one.
+ */
+export interface ReadListEntry {
+  name: string
+  number: number | null
+}
+
+/**
  * The parts of a book a provider can contribute.
  *
  * A caller can ask for a subset - renumbering a series only wants the number, for
@@ -52,6 +64,8 @@ export interface BookMetadataPatch {
   tags?: readonly string[]
   links?: readonly WebLink[]
   isbn?: string
+  /** Read lists the book claims membership of, which are handled apart from its fields. */
+  readLists?: readonly ReadListEntry[]
 }
 
 /** The stored metadata of a book, and which of its fields a user has locked. */
@@ -252,6 +266,8 @@ export interface SeriesMetadataPatch {
   language?: string
   genres?: readonly string[]
   totalBookCount?: number
+  /** Collections the series claims membership of, which are handled apart from its fields. */
+  collections?: readonly string[]
 }
 
 /** The stored metadata of a series, and which of its fields a user has locked. */

@@ -16,6 +16,7 @@ import type { Kysely } from 'kysely'
 
 import { bookFilePath, findBookRecord } from '../content/files.js'
 import type { DB } from '../db/schema.js'
+import { addBookToReadList } from '../organisation/membership.js'
 import { comicInfoBookPatch } from './comicinfo.js'
 import { readBookDocuments } from './document.js'
 import { epubMetadata } from './epub.js'
@@ -27,6 +28,7 @@ import {
   type BookMetadataPatch,
   type BookMetadataState,
   type BookMetadataUpdate,
+  type ReadListEntry,
   type WebLink,
 } from './patches.js'
 
@@ -45,6 +47,8 @@ export interface MetadataRefreshResult {
   status: MetadataRefreshStatus
   /** The fields written, named as the API names them. */
   changed: string[]
+  /** The read lists the book was put in, by name. */
+  readLists: string[]
   /** Why nothing was read or written, when nothing was. */
   reason: string | null
 }
@@ -170,19 +174,24 @@ export async function refreshBookMetadata(
 
   const library = await db
     .selectFrom('libraries')
-    .select(['import_comic_info_book', 'import_epub_book'])
+    .select(['import_comic_info_book', 'import_epub_book', 'import_comic_info_read_list'])
     .where('id', '=', record.libraryId)
     .executeTakeFirst()
   if (!library) throw new Error(`library ${record.libraryId} does not exist`)
   if (library.import_comic_info_book !== 1 && library.import_epub_book !== 1) {
-    return { status: 'skipped', changed: [], reason: 'the library does not import a book\u2019s metadata documents' }
+    return {
+      status: 'skipped',
+      changed: [],
+      readLists: [],
+      reason: 'the library does not import a book\u2019s metadata documents',
+    }
   }
 
   const path = options.path ?? (await bookFilePath(record))
-  if (path === null) return { status: 'skipped', changed: [], reason: 'the file is not there' }
+  if (path === null) return { status: 'skipped', changed: [], readLists: [], reason: 'the file is not there' }
 
   const read = await readBookDocuments(path)
-  if (read.status !== 'ok') return { status: read.status, changed: [], reason: read.reason }
+  if (read.status !== 'ok') return { status: read.status, changed: [], readLists: [], reason: read.reason }
 
   // The documents are applied in the reference's provider order, so that where two
   // of them disagree the later one wins.
@@ -194,22 +203,52 @@ export async function refreshBookMetadata(
     patches.push(epubMetadata(read.documents.packageDocument).book)
   }
   if (patches.length === 0) {
-    return { status: 'skipped', changed: [], reason: 'the library does not import the documents this book carries' }
+    return {
+      status: 'skipped',
+      changed: [],
+      readLists: [],
+      reason: 'the library does not import the documents this book carries',
+    }
   }
 
   const state = await metadataState(db, bookId)
-  if (state === null) return { status: 'skipped', changed: [], reason: 'the book has no metadata row' }
+  if (state === null) return { status: 'skipped', changed: [], readLists: [], reason: 'the book has no metadata row' }
 
   const update = applyBookPatches(state, patches, options.capabilities)
-  if (isEmptyUpdate(update)) return { status: 'unchanged', changed: [], reason: null }
-
-  const now = new Date().toISOString()
-  await writeUpdate(db, bookId, update, now)
-
   const changed = Object.keys(update.values).map((column) => VALUE_NAMES[column] ?? column)
   if (update.authors !== undefined) changed.push('authors')
   if (update.tags !== undefined) changed.push('tags')
   if (update.links !== undefined) changed.push('links')
 
-  return { status: 'changed', changed, reason: null }
+  if (!isEmptyUpdate(update)) {
+    const now = new Date().toISOString()
+    await writeUpdate(db, bookId, update, now)
+  }
+
+  // Read lists are organisation rather than metadata: a document saying a book
+  // belongs to a story arc does not depend on the book's own fields being written,
+  // and a locked title does not stop it - which is how the reference treats them.
+  const readLists =
+    library.import_comic_info_read_list === 1
+      ? await addReadLists(
+          db,
+          bookId,
+          patches.flatMap((patch) => patch.readLists ?? []),
+        )
+      : []
+
+  if (changed.length === 0 && readLists.length === 0) {
+    return { status: 'unchanged', changed: [], readLists: [], reason: null }
+  }
+  return { status: 'changed', changed, readLists, reason: null }
+}
+
+/** Put a book in each read list a document names, and report the ones it was put in. */
+async function addReadLists(db: Kysely<DB>, bookId: string, entries: readonly ReadListEntry[]): Promise<string[]> {
+  const added: string[] = []
+  for (const entry of entries) {
+    const outcome = await addBookToReadList(db, entry.name, bookId, entry.number)
+    if (outcome !== 'present') added.push(entry.name)
+  }
+  return added
 }

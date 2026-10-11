@@ -17,6 +17,7 @@ import type { Kysely } from 'kysely'
 
 import { bookFilePath, seriesFolderPath, type SeriesFolderRecord } from '../content/files.js'
 import type { DB } from '../db/schema.js'
+import { addSeriesToCollection } from '../organisation/membership.js'
 import { aggregateSeriesMetadata } from './aggregation.js'
 import { comicInfoSeriesPatch } from './comicinfo.js'
 import { readBookDocuments } from './document.js'
@@ -48,6 +49,8 @@ export interface SeriesRefreshResult {
   changed: string[]
   /** Whether the aggregation of its books was rewritten. */
   aggregationChanged: boolean
+  /** The collections the series was put in, by name. */
+  collections: string[]
   reason: string | null
 }
 
@@ -206,6 +209,7 @@ export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): P
       'import_comic_info_series_append_volume',
       'import_epub_series',
       'import_mylar_series',
+      'import_comic_info_collection',
     ])
     .where('id', '=', series.library_id)
     .executeTakeFirst()
@@ -222,6 +226,7 @@ export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): P
       status: 'skipped',
       changed: [],
       aggregationChanged: false,
+      collections: [],
       reason: 'the library does not import series metadata',
     }
   }
@@ -268,7 +273,13 @@ export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): P
 
   const state = await seriesMetadataState(db, seriesId)
   if (state === null) {
-    return { status: 'skipped', changed: [], aggregationChanged: false, reason: 'the series has no metadata row' }
+    return {
+      status: 'skipped',
+      changed: [],
+      aggregationChanged: false,
+      collections: [],
+      reason: 'the series has no metadata row',
+    }
   }
 
   // The books have said what they can. What follows speaks for the series itself: a
@@ -318,9 +329,31 @@ export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): P
     if (update.genres !== undefined) changed.push('genres')
   }
 
+  // Collections are organisation rather than metadata, so they are gathered from
+  // every book's patch rather than from the aggregated one - a series belongs to
+  // every group its books name - and they are honoured whether or not a field was
+  // written.
+  const collections: string[] = []
+  if (library.import_comic_info_collection === 1) {
+    for (const name of new Set(patches.flatMap((patch) => patch.collections ?? []))) {
+      const outcome = await addSeriesToCollection(db, name, seriesId)
+      if (outcome !== 'present') collections.push(name)
+    }
+  }
+
   const aggregationChanged = await aggregateSeriesMetadata(db, seriesId)
 
-  if (changed.length > 0 || aggregationChanged) return { status: 'changed', changed, aggregationChanged, reason: null }
-  if (failed) return { status: 'failed', changed: [], aggregationChanged: false, reason: 'a book could not be read' }
-  return { status: 'unchanged', changed: [], aggregationChanged: false, reason: null }
+  if (changed.length > 0 || aggregationChanged || collections.length > 0) {
+    return { status: 'changed', changed, aggregationChanged, collections, reason: null }
+  }
+  if (failed) {
+    return {
+      status: 'failed',
+      changed: [],
+      aggregationChanged: false,
+      collections: [],
+      reason: 'a book could not be read',
+    }
+  }
+  return { status: 'unchanged', changed: [], aggregationChanged: false, collections: [], reason: null }
 }

@@ -115,6 +115,15 @@ folder - is described by its single book instead: its title, its summary, a stat
 does. The sidecar is not read for a oneshot series, and a document that cannot be
 read contributes nothing rather than failing the series.
 
+The organisation a document describes is applied as well: a `StoryArc` or an
+`AlternateSeries` puts the book in a read list of that name, created when it does not
+exist yet, at the place the document states when that place is free and at the end
+otherwise; a `SeriesGroup` puts the series in the collections it names. These are
+organisation rather than fields, so a locked title does not stop them, and nothing is
+ever taken _out_ of a read list or a collection by a document - a list a user has
+curated is theirs. The library settings (`importComicInfoReadList`,
+`importComicInfoCollection`) turn each of them off.
+
 When a book carries both documents, both are applied, the package document last,
 which is the order the reference's providers run in.
 
