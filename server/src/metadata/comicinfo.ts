@@ -40,11 +40,15 @@ export const COMIC_INFO_ROLES: readonly { element: string; role: string }[] = [
  *
  * The reference insists on the document sitting at the root of the archive with
  * that exact spelling. Collections assembled by hand often put it next to the
- * pages instead, so any entry whose name ends in `ComicInfo.xml` counts, and the
- * capitalisation is not held against it.
+ * pages instead, so any directory counts, but the file name itself has to be the
+ * document's - `notComicInfo.xml` is somebody else's file - and the capitalisation
+ * is not held against it.
  */
 export function comicInfoEntry(files: readonly FileEntry[]): string | null {
-  const found = files.find((file) => file.fileName.toLowerCase().endsWith(COMIC_INFO_FILE))
+  const found = files.find((file) => {
+    const name = file.fileName.split('/').pop() ?? file.fileName
+    return name.toLowerCase() === COMIC_INFO_FILE
+  })
   return found?.fileName ?? null
 }
 

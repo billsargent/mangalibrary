@@ -174,6 +174,10 @@ describe('finding the document in a book', () => {
   it('is null when the book carries none', () => {
     expect(comicInfoEntry([{ fileName: 'page1.jpg', mediaType: 'image/jpeg', size: 1 }])).toBeNull()
   })
+
+  it('is not fooled by a file that merely ends in the same way', () => {
+    expect(comicInfoEntry([{ fileName: 'notComicInfo.xml', mediaType: 'application/xml', size: 1 }])).toBeNull()
+  })
 })
 
 describe('validating an ISBN', () => {
