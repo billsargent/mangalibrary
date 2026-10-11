@@ -7,6 +7,7 @@ import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
 import { writeZip } from '../testing/zip.js'
+import { epubEntries } from '../testing/epub.js'
 import { refreshBookMetadata } from './refresh.js'
 import { refreshSeriesMetadata } from './series.js'
 
@@ -23,6 +24,8 @@ interface BookSpec {
   name: string
   /** The document to put in the book; null or absent leaves the book without one. */
   document?: string | null
+  /** The `<metadata>` section of an EPUB package document, which makes the book an EPUB. */
+  epub?: string
   /** Write a file that is not a container at all. */
   broken?: boolean
   metadata?: { number?: string; summary?: string; releaseDate?: string | null }
@@ -56,11 +59,12 @@ async function setup(books: readonly BookSpec[], library: Record<string, unknown
     .execute()
 
   for (const [index, book] of books.entries()) {
-    const path = join(root, `${book.name}.cbz`)
+    const isEpub = book.epub !== undefined
+    const path = join(root, `${book.name}.${isEpub ? 'epub' : 'cbz'}`)
     if (book.broken === true) {
       writeFileSync(path, Buffer.from('this is not a container'))
     } else {
-      const entries = [{ name: 'page1.jpg', data: PAGE }]
+      const entries = isEpub ? epubEntries(book.epub ?? '') : [{ name: 'page1.jpg', data: PAGE }]
       if (book.document !== null && book.document !== undefined) {
         entries.push({ name: 'ComicInfo.xml', data: Buffer.from(book.document, 'utf8') })
       }
@@ -301,11 +305,22 @@ describe('refreshing a series from its books', () => {
   it('imports nothing when the library is set not to', async () => {
     const database = await setup(
       [{ name: 'Volume 1', document: comicInfo({ Series: 'Akira', Publisher: 'Kodansha' }) }],
-      { import_comic_info_series: 0 },
+      { import_comic_info_series: 0, import_epub_series: 0 },
     )
 
     const result = await refreshSeriesMetadata(database.db, 'S1')
     expect(result.status).toBe('skipped')
+    expect((await seriesMetadata(database)).publisher).toBe('')
+  })
+
+  it('leaves the document it is set not to import alone', async () => {
+    const database = await setup(
+      [{ name: 'Volume 1', document: comicInfo({ Series: 'Akira', Publisher: 'Kodansha' }) }],
+      { import_comic_info_series: 0 },
+    )
+
+    const result = await refreshSeriesMetadata(database.db, 'S1')
+    expect(result.status).not.toBe('skipped')
     expect((await seriesMetadata(database)).publisher).toBe('')
   })
 
@@ -331,5 +346,48 @@ describe('refreshing a series from its books', () => {
     expect(row?.summary).toBe('A city rebuilt.')
     expect(row?.summary_number).toBe('2')
     expect(row?.release_date).toBe('1982-01-01')
+  })
+})
+
+describe('refreshing a series from its EPUBs', () => {
+  const epub = (title: string) => `
+    <dc:title>${title}</dc:title>
+    <dc:publisher>Some Press</dc:publisher>
+    <dc:language>en-GB</dc:language>
+    <dc:subject>Science Fiction</dc:subject>
+    <meta property="belongs-to-collection" id="col1">The Long Series</meta>
+  `
+
+  it('takes the collection, the publisher, the language and the genres from the package document', async () => {
+    const database = await setup([
+      { name: 'Volume 1', epub: epub('The Long Way Down'), document: null },
+      { name: 'Volume 2', epub: epub('The Longer Way Up'), document: null },
+    ])
+
+    const result = await refreshSeriesMetadata(database.db, 'S1')
+    expect(result.status).toBe('changed')
+
+    const row = await seriesMetadata(database)
+    expect(row.title).toBe('The Long Series')
+    expect(row.publisher).toBe('Some Press')
+    expect(row.language).toBe('en-GB')
+    expect((await genres(database)).map((genre) => genre.genre)).toEqual(['Science Fiction'])
+  })
+
+  it('never appends a volume to an EPUB series', async () => {
+    const database = await setup([{ name: 'Volume 1', epub: epub('The Long Way Down'), document: null }])
+
+    await refreshSeriesMetadata(database.db, 'S1')
+    expect((await seriesMetadata(database)).title).toBe('The Long Series')
+  })
+
+  it('imports nothing when the library does not import EPUB series metadata', async () => {
+    const database = await setup([{ name: 'Volume 1', epub: epub('The Long Way Down'), document: null }], {
+      import_epub_series: 0,
+    })
+
+    const result = await refreshSeriesMetadata(database.db, 'S1')
+    expect((await seriesMetadata(database)).publisher).toBe('')
+    expect(result.changed).not.toContain('publisher')
   })
 })

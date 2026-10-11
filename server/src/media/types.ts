@@ -54,6 +54,14 @@ export interface EpubInfo {
    * decide which way to open the book.
    */
   divinaCompatible: boolean
+  /**
+   * The package document, as it was read.
+   *
+   * An EPUB keeps its title, its authors, its publisher and the collection it
+   * belongs to here, so the metadata reader wants the document itself rather than
+   * a second set of fields to keep in step.
+   */
+  packageDocument: string
 }
 
 /** An open book. Closing releases whatever the container holds. */

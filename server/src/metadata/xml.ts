@@ -32,6 +32,50 @@ function withoutCdata(text: string): string {
   return text.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
 }
 
+/** An element as it was written: its opening tag, and the markup inside it. */
+export interface XmlElement {
+  /** The opening tag, so a caller can read its attributes. */
+  tag: string
+  /** The raw markup between the tags, entities and all. */
+  inner: string
+}
+
+/**
+ * Every `<name>` element, in document order.
+ *
+ * The name is matched with or without a namespace prefix, because an EPUB writes
+ * its metadata as `dc:title` in one package document and `title` in the next, and
+ * both mean the same thing.
+ */
+export function elementsNamed(xml: string, name: string): XmlElement[] {
+  return [...xml.matchAll(new RegExp(`<((?:[\\w.-]+:)?${name})\\b([^>]*)>([\\s\\S]*?)</\\1\\s*>`, 'gi'))].map(
+    (match) => ({
+      tag: `<${match[1]}${match[2] ?? ''}>`,
+      inner: match[3] ?? '',
+    }),
+  )
+}
+
+/** The value of an attribute of an opening tag, or null when it is not there. */
+export function attribute(tag: string, name: string): string | null {
+  const match = new RegExp(`${name}\\s*=\\s*"([^"]*)"`, 'i').exec(tag)
+  return match?.[1] === undefined ? null : unescapeXml(match[1])
+}
+
+/**
+ * Markup reduced to the text it carries, as a reader would show it.
+ *
+ * An HTML description arrives either as markup or escaped as text, so the entities
+ * are resolved first as well as afterwards: whichever way it was written, what is
+ * left is the words.
+ */
+export function plainText(markup: string): string {
+  const resolved = unescapeXml(withoutCdata(markup))
+  return unescapeXml(resolved.replace(/<[^>]*>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 /**
  * The text of the first `<name>` element, or null when it is absent or blank.
  *
@@ -40,10 +84,24 @@ function withoutCdata(text: string): string {
  * reader taking the first of a repeated mapping would.
  */
 export function elementText(xml: string, name: string): string | null {
-  const match = new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}\\s*>`, 'i').exec(xml)
-  if (match === null) return null
+  const element = elementsNamed(xml, name)[0]
+  if (element === undefined) return null
 
-  const text = unescapeXml(withoutCdata(match[1] ?? '')).trim()
+  const text = unescapeXml(withoutCdata(element.inner)).trim()
+  return text === '' ? null : text
+}
+
+/**
+ * The text of the first `<name>` element with any markup inside it removed.
+ *
+ * An EPUB writes its description as HTML, so what is wanted there is the words a
+ * reader would see rather than the markup that carries them.
+ */
+export function elementPlainText(xml: string, name: string): string | null {
+  const element = elementsNamed(xml, name)[0]
+  if (element === undefined) return null
+
+  const text = plainText(element.inner)
   return text === '' ? null : text
 }
 

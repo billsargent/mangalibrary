@@ -17,7 +17,8 @@ import { bookFilePath } from '../books/files.js'
 import type { DB } from '../db/schema.js'
 import { aggregateSeriesMetadata } from './aggregation.js'
 import { comicInfoSeriesPatch } from './comicinfo.js'
-import { readComicInfo } from './document.js'
+import { readBookDocuments } from './document.js'
+import { epubMetadata } from './epub.js'
 import { applySeriesPatch, isEmptySeriesUpdate, type SeriesMetadataPatch, type SeriesMetadataState } from './patches.js'
 
 /** What refreshing a series did. */
@@ -179,12 +180,12 @@ export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): P
 
   const library = await db
     .selectFrom('libraries')
-    .select(['import_comic_info_series', 'import_comic_info_series_append_volume'])
+    .select(['import_comic_info_series', 'import_comic_info_series_append_volume', 'import_epub_series'])
     .where('id', '=', series.library_id)
     .executeTakeFirst()
   if (!library) throw new Error(`library ${series.library_id} does not exist`)
 
-  if (library.import_comic_info_series !== 1) {
+  if (library.import_comic_info_series !== 1 && library.import_epub_series !== 1) {
     return {
       status: 'skipped',
       changed: [],
@@ -215,15 +216,22 @@ export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): P
     })
     if (path === null) continue
 
-    const read = await readComicInfo(path)
+    const read = await readBookDocuments(path)
     if (read.status === 'failed') failed = true
     if (read.status !== 'ok') continue
 
-    patches.push(
-      comicInfoSeriesPatch(read.xml, {
-        appendVolume: library.import_comic_info_series_append_volume === 1,
-      }),
-    )
+    if (library.import_comic_info_series === 1 && read.documents.comicInfo !== null) {
+      patches.push(
+        comicInfoSeriesPatch(read.documents.comicInfo, {
+          appendVolume: library.import_comic_info_series_append_volume === 1,
+        }),
+      )
+    }
+    if (library.import_epub_series === 1 && read.documents.packageDocument !== null) {
+      // An EPUB states its own collection and never appends a volume, so the
+      // library's append setting does not apply to it.
+      patches.push(epubMetadata(read.documents.packageDocument).series)
+    }
   }
 
   const state = await seriesMetadataState(db, seriesId)
