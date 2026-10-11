@@ -17,6 +17,7 @@ The server reads configuration from environment variables, falling back to
 | Session lifetime   | `KOMGA_SESSION_TTL_MS`    | —                  | `604800000` (7 days)          |
 | Announcements feed | `KOMGA_ANNOUNCEMENTS_URL` | `announcementsUrl` | unset                         |
 | Release notes      | `KOMGA_RELEASES_URL`      | `releasesUrl`      | unset                         |
+| Fonts directory    | `KOMGA_FONTS_DIR`         | `fontsDir`         | `<configDir>/fonts`           |
 
 The last two are where the server reads something hosted elsewhere from. Unset means there is
 no source, and the endpoints that use them answer `404` rather than reaching out to a website

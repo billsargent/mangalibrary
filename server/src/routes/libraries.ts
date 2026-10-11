@@ -19,6 +19,8 @@ export interface RouteOptions {
   announcementsUrl: string | null
   /** Where release notes live, if anywhere. */
   releasesUrl: string | null
+  /** Where the fonts offered to the EPUB reader live. */
+  fontsDir: string
   /** Port the server is listening on, as reported by the settings endpoint. */
   port?: number
   /** Port the configuration asks for, when it asks for one at all. */

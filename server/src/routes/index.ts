@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerBookRoutes } from './books.js'
 import { registerClaimRoutes } from './claim.js'
 import { registerCollectionRoutes } from './collections.js'
+import { registerFontRoutes } from './fonts.js'
 import { registerLibraryRoutes, type RouteOptions } from './libraries.js'
 import { registerMaintenanceRoutes } from './maintenance.js'
 import { registerMediaRoutes } from './media.js'
@@ -30,4 +31,5 @@ export async function registerRoutes(app: FastifyInstance, opts: RouteOptions): 
   await registerSystemRoutes(app, opts)
   await registerMaintenanceRoutes(app, opts)
   await registerSseRoutes(app, opts)
+  await registerFontRoutes(app, opts)
 }
