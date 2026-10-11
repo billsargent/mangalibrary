@@ -406,6 +406,27 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
     .execute()
 
   await db
+    .insertInto('epub_positions')
+    .values({
+      book_id: 'B3',
+      positions: JSON.stringify([
+        {
+          href: 'OEBPS/chapter1.xhtml',
+          type: 'application/xhtml+xml',
+          koboSpan: 'kobo.1.1',
+          locations: { progression: 0, position: 1, totalProgression: 0.5 },
+        },
+        {
+          href: 'OEBPS/chapter2.xhtml',
+          type: 'application/xhtml+xml',
+          koboSpan: 'kobo.1.1',
+          locations: { progression: 0, position: 2, totalProgression: 1 },
+        },
+      ]),
+    })
+    .execute()
+
+  await db
     .insertInto('thumbnails')
     .values({
       id: 'T1',
@@ -655,6 +676,25 @@ describe('book resources', () => {
       headers: { ...reader, 'if-modified-since': lastModified },
     })
     expect(cached.statusCode).toBe(304)
+
+    await app.close()
+  })
+})
+
+describe('book positions', () => {
+  it('returns the positions analysis recorded, and nothing for a book without them', async () => {
+    const { app } = await setup()
+
+    const res = await app.inject({ method: 'GET', url: '/api/v1/books/B3/positions', headers: reader })
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { positions: { href: string; locations: { position: number } }[]; total: number }
+    expect(body.total).toBe(2)
+    expect(body.positions.map((position) => position.href)).toEqual(['OEBPS/chapter1.xhtml', 'OEBPS/chapter2.xhtml'])
+    expect(body.positions[1]?.locations.position).toBe(2)
+
+    // A book that is not an EPUB has no positions at all.
+    const divina = await app.inject({ method: 'GET', url: '/api/v1/books/B1/positions', headers: reader })
+    expect(divina.json()).toEqual({ positions: [], total: 0 })
 
     await app.close()
   })

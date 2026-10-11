@@ -15,6 +15,28 @@ export interface FileEntry {
   size: number
 }
 
+/**
+ * A Readium position: a fixed-size step through a book.
+ *
+ * A reader addresses a place in a book with these rather than with a page number,
+ * so that a reflowable EPUB - whose text moves with the reader's font and window
+ * - still has somewhere stable to resume from.
+ */
+export interface Position {
+  href: string
+  type: string
+  /** Set when the position is the first of a resource, as the reference does. */
+  koboSpan?: string
+  locations: {
+    /** Progression within the resource, between 0 and 1. */
+    progression: number
+    /** Index of the position in the whole book, starting at 1. */
+    position: number
+    /** Progression within the whole book, between 0 and 1. */
+    totalProgression: number
+  }
+}
+
 export interface TocEntry {
   title: string
   href: string

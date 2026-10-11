@@ -331,6 +331,29 @@ describe('epub books', () => {
       { title: 'Chapter Two', href: 'OEBPS/chapter2.xhtml', children: [] },
     ])
 
+    // Positions place a reader in the book without a page number. Each chapter is
+    // far shorter than one position, so it gets exactly one, and the second of the
+    // two ends the book.
+    const positions = await db.db
+      .selectFrom('epub_positions')
+      .selectAll()
+      .where('book_id', '=', 'B1')
+      .executeTakeFirstOrThrow()
+    expect(JSON.parse(positions.positions)).toEqual([
+      {
+        href: 'OEBPS/chapter1.xhtml',
+        type: 'application/xhtml+xml',
+        koboSpan: 'kobo.1.1',
+        locations: { progression: 0, position: 1, totalProgression: 0.5 },
+      },
+      {
+        href: 'OEBPS/chapter2.xhtml',
+        type: 'application/xhtml+xml',
+        koboSpan: 'kobo.1.1',
+        locations: { progression: 0, position: 2, totalProgression: 1 },
+      },
+    ])
+
     // A resource inside the book can be read by name, which the reader needs.
     const { openBook } = await import('./index.js')
     const book = await openBook(path)

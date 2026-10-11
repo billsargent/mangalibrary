@@ -1,5 +1,5 @@
 import { isImageEntry, mediaTypeFor, naturalCompare } from './kinds.js'
-import type { TocEntry } from './types.js'
+import type { PageEntry, Position, TocEntry } from './types.js'
 import { openZip, type Container } from './zip.js'
 
 interface ManifestItem {
@@ -215,4 +215,43 @@ export async function openEpub(buffer: Buffer): Promise<{
     }))
 
   return { container, pages, files, toc: await readToc(container, pkg), divinaCompatible }
+}
+
+/** How much of a resource one position covers, as the Readium algorithm does. */
+const POSITION_LENGTH = 1024
+
+/**
+ * The positions of a book: one every 1024 bytes of each resource.
+ *
+ * A reader addresses a place in a book with these rather than with a page number,
+ * which is what lets a reflowable EPUB - whose text moves with the reader's font
+ * and window - resume somewhere stable. A resource shorter than one step still
+ * gets a single position, so a short chapter is not skipped, and the first
+ * position of each resource carries the reference's Kobo span.
+ */
+export function computePositions(pages: PageEntry[]): Position[] {
+  // Built without `totalProgression`, which is only known once they are all here.
+  const steps: {
+    href: string
+    type: string
+    koboSpan?: string
+    locations: { progression: number; position: number }
+  }[] = []
+  for (const page of pages) {
+    const count = Math.max(1, Math.ceil((page.size ?? 0) / POSITION_LENGTH))
+    for (let index = 0; index < count; index += 1) {
+      steps.push({
+        href: page.fileName,
+        type: page.mediaType,
+        ...(index === 0 ? { koboSpan: 'kobo.1.1' } : {}),
+        locations: { progression: index / count, position: steps.length + 1 },
+      })
+    }
+  }
+
+  const total = steps.length
+  return steps.map((step) => ({
+    ...step,
+    locations: { ...step.locations, totalProgression: step.locations.position / total },
+  }))
 }
