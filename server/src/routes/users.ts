@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { Kysely } from 'kysely'
 import { hashPassword } from '../auth/passwords.js'
 import { requireAdmin, requireAuth, requireRole } from '../auth/session.js'
-import { USER_ROLES, isUserRole, type AuthUser } from '../auth/types.js'
+import { USER_ROLES, isUserRole, type AuthUser, type UserRole } from '../auth/types.js'
 import { findUserById } from '../auth/users.js'
 import type { DB } from '../db/schema.js'
 import { nextTsid } from '../tsid.js'
@@ -21,9 +21,32 @@ function currentUser(req: FastifyRequest): AuthUser {
   return user
 }
 
-function rolesFrom(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
+/**
+ * Read a role list from a request body.
+ *
+ * An unknown role name is dropped rather than refused, which is what the reference
+ * does: a client that sends a role this server does not know still gets an account
+ * with the roles that exist. What is refused is a value that is not an array at all,
+ * because sending a bare string is a plausible mistake, and answering it by silently
+ * stripping every role is worse than saying no.
+ *
+ * `null` means "not an array", which the callers report as a validation error.
+ */
+function rolesFrom(value: unknown): UserRole[] | null {
+  if (!Array.isArray(value)) return null
   return value.map(String).filter(isUserRole)
+}
+
+/**
+ * Whether a newly created user sees every library.
+ *
+ * The reference defaults to yes when the request says nothing about libraries: the
+ * field was added after the endpoint existed, and a user created before that saw
+ * everything. Defaulting to no would quietly take away access instead.
+ */
+function sharedAllLibrariesOnCreate(value: unknown): number {
+  const shared = (value ?? {}) as { all?: unknown }
+  return shared.all === false ? 0 : 1
 }
 
 async function loadLibrarySharing(db: Kysely<DB>, userId: string) {
@@ -49,7 +72,12 @@ async function writeLibrarySharing(db: Kysely<DB>, userId: string, value: unknow
   }
   if (Array.isArray(shared.libraryIds)) {
     await db.deleteFrom('user_library_sharing').where('user_id', '=', userId).execute()
-    const ids = shared.libraryIds.map(String).filter((id) => id !== '')
+    const requested = shared.libraryIds.map(String).filter((id) => id !== '')
+    // Only libraries that exist are shared: a row for an id that is gone would
+    // be a share nobody can ever see.
+    const known =
+      requested.length === 0 ? [] : await db.selectFrom('libraries').select('id').where('id', 'in', requested).execute()
+    const ids = known.map((row) => row.id)
     if (ids.length > 0) {
       await db
         .insertInto('user_library_sharing')
@@ -150,6 +178,13 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
     const password = typeof body.password === 'string' ? body.password : ''
     if (!email || !password) return reply.code(400).send({ message: 'email and password are required' })
 
+    // The role list is required, as it is in the contract: an account with no roles
+    // can sign in and do nothing but read its own profile.
+    const roles = rolesFrom(body.roles)
+    if (roles === null) {
+      return reply.code(400).send({ message: 'roles is required and must be an array of role names' })
+    }
+
     const existing = await db.selectFrom('users').select('id').where('email', '=', email).executeTakeFirst()
     if (existing) return reply.code(400).send({ message: 'email already in use' })
 
@@ -161,8 +196,8 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
         id,
         email,
         password: hashPassword(password),
-        roles: JSON.stringify(rolesFrom(body.roles)),
-        shared_all_libraries: 0,
+        roles: JSON.stringify(roles),
+        shared_all_libraries: sharedAllLibrariesOnCreate(body.sharedLibraries),
         age_restriction: null,
         age_restriction_allow_only: null,
         created_date: now,
@@ -187,15 +222,26 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
   })
 
   app.patch<{ Params: { id: string } }>('/api/v2/users/:id', { preHandler: requireAdmin }, async (req, reply) => {
+    // The reference refuses this too, and for a good reason: an admin who could
+    // change their own roles here could remove their own access and leave the
+    // instance with nobody able to administer it. Their own account is reachable
+    // through the `me` routes.
+    if (req.params.id === currentUser(req).id) {
+      return reply.code(403).send({ message: 'You cannot change your own account through this endpoint' })
+    }
+
     const existing = await db.selectFrom('users').select('id').where('id', '=', req.params.id).executeTakeFirst()
     if (!existing) return reply.code(404).send({ message: 'User not found' })
 
     const before = await permissionSnapshot(db, req.params.id)
     const body = (req.body ?? {}) as Record<string, unknown>
     if ('roles' in body) {
+      const roles = rolesFrom(body.roles)
+      if (roles === null) return reply.code(400).send({ message: 'roles must be an array of role names' })
+
       await db
         .updateTable('users')
-        .set({ roles: JSON.stringify(rolesFrom(body.roles)), last_modified_date: new Date().toISOString() })
+        .set({ roles: JSON.stringify(roles), last_modified_date: new Date().toISOString() })
         .where('id', '=', req.params.id)
         .execute()
     }
@@ -213,6 +259,12 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
   })
 
   app.delete<{ Params: { id: string } }>('/api/v2/users/:id', { preHandler: requireAdmin }, async (req, reply) => {
+    // Same reason as the update above: an admin deleting their own account here
+    // would take the instance's administration with it.
+    if (req.params.id === currentUser(req).id) {
+      return reply.code(403).send({ message: 'You cannot delete your own account through this endpoint' })
+    }
+
     const existing = await db.selectFrom('users').select('id').where('id', '=', req.params.id).executeTakeFirst()
     if (!existing) return reply.code(404).send({ message: 'User not found' })
     await db.deleteFrom('users').where('id', '=', req.params.id).execute()
