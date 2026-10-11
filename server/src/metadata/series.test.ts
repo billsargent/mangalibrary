@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -31,7 +31,11 @@ interface BookSpec {
   metadata?: { number?: string; summary?: string; releaseDate?: string | null }
 }
 
-async function setup(books: readonly BookSpec[], library: Record<string, unknown> = {}): Promise<Database> {
+async function setup(
+  books: readonly BookSpec[],
+  library: Record<string, unknown> = {},
+  options: { sidecar?: string; series?: Record<string, unknown> } = {},
+): Promise<Database> {
   const root = mkdtempSync(join(tmpdir(), 'ml-series-'))
   const database = createDatabase(':memory:')
   await migrate(database.db, migrations)
@@ -51,12 +55,19 @@ async function setup(books: readonly BookSpec[], library: Record<string, unknown
       file_last_modified: now,
       created_date: now,
       last_modified_date: now,
-    })
+      ...options.series,
+    } as never)
     .execute()
   await database.db
     .insertInto('series_metadata')
     .values({ series_id: 'S1', title: 'Akira', title_sort: 'Akira', created_date: now, last_modified_date: now })
     .execute()
+
+  if (options.sidecar !== undefined) {
+    // The series' folder, which is where a sidecar is looked for.
+    mkdirSync(join(root, 'akira'), { recursive: true })
+    writeFileSync(join(root, 'akira', 'series.json'), options.sidecar)
+  }
 
   for (const [index, book] of books.entries()) {
     const isEpub = book.epub !== undefined
@@ -305,7 +316,7 @@ describe('refreshing a series from its books', () => {
   it('imports nothing when the library is set not to', async () => {
     const database = await setup(
       [{ name: 'Volume 1', document: comicInfo({ Series: 'Akira', Publisher: 'Kodansha' }) }],
-      { import_comic_info_series: 0, import_epub_series: 0 },
+      { import_comic_info_series: 0, import_epub_series: 0, import_mylar_series: 0 },
     )
 
     const result = await refreshSeriesMetadata(database.db, 'S1')
@@ -389,5 +400,87 @@ describe('refreshing a series from its EPUBs', () => {
     const result = await refreshSeriesMetadata(database.db, 'S1')
     expect((await seriesMetadata(database)).publisher).toBe('')
     expect(result.changed).not.toContain('publisher')
+  })
+})
+
+describe('refreshing a series from its sidecar', () => {
+  const SIDECAR = JSON.stringify({
+    metadata: {
+      name: 'Akira',
+      publisher: 'Kodansha',
+      year: 1984,
+      volume: 2,
+      description_text: 'Neo-Tokyo.',
+      status: 'Continuing',
+      total_issues: 6,
+      age_rating: '17+',
+    },
+  })
+
+  it('takes what series.json says about the series', async () => {
+    const database = await setup([{ name: 'Volume 1' }], {}, { sidecar: SIDECAR })
+
+    const result = await refreshSeriesMetadata(database.db, 'S1')
+    expect(result.status).toBe('changed')
+
+    const row = await seriesMetadata(database)
+    // Volume 2 of the run, so the year tells it apart from the series itself.
+    expect(row.title).toBe('Akira (1984)')
+    expect(row.publisher).toBe('Kodansha')
+    expect(row.summary).toBe('Neo-Tokyo.')
+    expect(row.status).toBe('ONGOING')
+    expect(row.age_rating).toBe(17)
+    expect(row.total_book_count).toBe(6)
+  })
+
+  it('is not read when the library is set not to', async () => {
+    const database = await setup([{ name: 'Volume 1' }], { import_mylar_series: 0 }, { sidecar: SIDECAR })
+
+    await refreshSeriesMetadata(database.db, 'S1')
+    expect((await seriesMetadata(database)).publisher).toBe('')
+  })
+
+  it('says nothing when the file is not there or is not readable', async () => {
+    const missing = await setup([{ name: 'Volume 1' }])
+    await refreshSeriesMetadata(missing.db, 'S1')
+    expect((await seriesMetadata(missing)).publisher).toBe('')
+
+    const broken = await setup([{ name: 'Volume 1' }], {}, { sidecar: 'this is not json' })
+    await refreshSeriesMetadata(broken.db, 'S1')
+    expect((await seriesMetadata(broken)).publisher).toBe('')
+  })
+})
+
+describe('refreshing a oneshot series', () => {
+  it('is its book: its title, its summary, an ended status and one book', async () => {
+    const database = await setup(
+      [{ name: 'One Shot', metadata: { summary: 'A single story.', releaseDate: '2020-01-01' } }],
+      { import_comic_info_series: 0, import_epub_series: 0, import_mylar_series: 0 },
+      { series: { oneshot: 1 } },
+    )
+
+    const result = await refreshSeriesMetadata(database.db, 'S1')
+    expect(result.status).toBe('changed')
+
+    const row = await seriesMetadata(database)
+    expect(row.title).toBe('One Shot')
+    expect(row.summary).toBe('A single story.')
+    expect(row.status).toBe('ENDED')
+    expect(row.total_book_count).toBe(1)
+  })
+
+  it('is not described by a sidecar, even when one is there', async () => {
+    const database = await setup(
+      [{ name: 'One Shot' }],
+      {},
+      { series: { oneshot: 1 }, sidecar: JSON.stringify({ metadata: { name: 'Akira', publisher: 'Kodansha' } }) },
+    )
+
+    await refreshSeriesMetadata(database.db, 'S1')
+    const row = await seriesMetadata(database)
+    expect(row.title).toBe('One Shot')
+    expect(row.publisher).toBe('')
+    expect(row.status).toBe('ENDED')
+    expect(row.total_book_count).toBe(1)
   })
 })

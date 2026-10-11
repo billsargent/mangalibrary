@@ -11,15 +11,35 @@
  * A value a user has locked survives, as it does for a book.
  */
 
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { Kysely } from 'kysely'
 
-import { bookFilePath } from '../books/files.js'
+import { bookFilePath, seriesFolderPath, type SeriesFolderRecord } from '../content/files.js'
 import type { DB } from '../db/schema.js'
 import { aggregateSeriesMetadata } from './aggregation.js'
 import { comicInfoSeriesPatch } from './comicinfo.js'
 import { readBookDocuments } from './document.js'
 import { epubMetadata } from './epub.js'
-import { applySeriesPatch, isEmptySeriesUpdate, type SeriesMetadataPatch, type SeriesMetadataState } from './patches.js'
+import {
+  applySeriesPatches,
+  isEmptySeriesUpdate,
+  type SeriesMetadataPatch,
+  type SeriesMetadataState,
+} from './patches.js'
+import { mylarSeriesPatch } from './sidecar.js'
+
+/** The sidecar Mylar writes into a series folder. */
+export const MYLAR_SIDECAR = 'series.json'
+
+/** What a series folder's sidecar says, or null when there is none or it is unusable. */
+async function sidecarPatch(record: SeriesFolderRecord): Promise<SeriesMetadataPatch | null> {
+  const folder = await seriesFolderPath(record)
+  if (folder === null) return null
+
+  const content = await readFile(join(folder, MYLAR_SIDECAR), 'utf8').catch(() => null)
+  return content === null ? null : mylarSeriesPatch(content)
+}
 
 /** What refreshing a series did. */
 export interface SeriesRefreshResult {
@@ -173,19 +193,31 @@ async function writeSeriesUpdate(
 export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): Promise<SeriesRefreshResult> {
   const series = await db
     .selectFrom('series')
-    .select(['id', 'library_id'])
+    .select(['id', 'library_id', 'name', 'url', 'oneshot'])
     .where('id', '=', seriesId)
     .executeTakeFirst()
   if (!series) throw new Error(`series ${seriesId} does not exist`)
 
   const library = await db
     .selectFrom('libraries')
-    .select(['import_comic_info_series', 'import_comic_info_series_append_volume', 'import_epub_series'])
+    .select([
+      'root',
+      'import_comic_info_series',
+      'import_comic_info_series_append_volume',
+      'import_epub_series',
+      'import_mylar_series',
+    ])
     .where('id', '=', series.library_id)
     .executeTakeFirst()
   if (!library) throw new Error(`library ${series.library_id} does not exist`)
 
-  if (library.import_comic_info_series !== 1 && library.import_epub_series !== 1) {
+  // A series is described by its books and by its own sidecars, and a oneshot series
+  // is its single book whatever the settings say - which is what the reference does.
+  const readsBooks = library.import_comic_info_series === 1 || library.import_epub_series === 1
+  const readsSidecar = library.import_mylar_series === 1 && series.oneshot !== 1
+  const isOneshot = series.oneshot === 1
+
+  if (!readsBooks && !readsSidecar && !isOneshot) {
     return {
       status: 'skipped',
       changed: [],
@@ -206,7 +238,7 @@ export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): P
 
   const patches: SeriesMetadataPatch[] = []
   let failed = false
-  for (const book of books) {
+  for (const book of readsBooks ? books : []) {
     const path = await bookFilePath({
       libraryId: series.library_id,
       seriesId,
@@ -239,7 +271,44 @@ export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): P
     return { status: 'skipped', changed: [], aggregationChanged: false, reason: 'the series has no metadata row' }
   }
 
-  const update = applySeriesPatch(state, aggregateSeriesPatches(patches))
+  // The books have said what they can. What follows speaks for the series itself: a
+  // Mylar sidecar names the collection, and a oneshot series is its single book.
+  // That is the order the reference's providers run in, so a source that speaks for
+  // the series wins over what its books say.
+  const later: SeriesMetadataPatch[] = []
+
+  if (readsSidecar) {
+    const sidecar = await sidecarPatch({
+      libraryId: series.library_id,
+      name: series.name,
+      url: series.url,
+      root: library.root,
+    })
+    if (sidecar !== null) later.push(sidecar)
+  }
+
+  if (series.oneshot === 1) {
+    const first = books[0]
+    const metadata =
+      first === undefined
+        ? undefined
+        : await db
+            .selectFrom('book_metadata')
+            .select(['title', 'summary'])
+            .where('book_id', '=', first.id)
+            .executeTakeFirst()
+    if (metadata) {
+      later.push({
+        title: metadata.title,
+        titleSort: metadata.title,
+        summary: metadata.summary,
+        status: 'ENDED',
+        totalBookCount: 1,
+      })
+    }
+  }
+
+  const update = applySeriesPatches(state, [aggregateSeriesPatches(patches), ...later])
   let changed: string[] = []
 
   if (!isEmptySeriesUpdate(update)) {
