@@ -1,0 +1,317 @@
+/**
+ * The job handlers: what each queued type actually does.
+ *
+ * A handler is the whole of a job's behaviour, and it is written to be safe to run
+ * twice: the queue deduplicates by unique key, but a job that was interrupted is
+ * picked up again after a restart, so everything here checks what it finds rather
+ * than assuming it is the first to arrive.
+ *
+ * A handler that cannot do its work because the thing it needs is gone - a book
+ * whose file has been removed, a library that was deleted while its scan waited -
+ * says so and returns: the job is done with either way.
+ */
+
+import { unlink } from 'node:fs/promises'
+import type { Kysely } from 'kysely'
+
+import { bookFilePath, findBookRecord } from './content/files.js'
+import type { DB } from './db/schema.js'
+import { JOB_PRIORITY, enqueueJob, type JobRecord } from './jobs.js'
+import { analyzeBook } from './media/analyze.js'
+import { refreshBookMetadata } from './metadata/refresh.js'
+import { refreshSeriesMetadata } from './metadata/series.js'
+import { scanLibrary } from './scan/reconcile.js'
+
+/**
+ * What a handler needs from a logger.
+ *
+ * Narrower than pino's and than Fastify's, so the worker can be given either -
+ * and a test can be given a stub that records what was said.
+ */
+export interface JobLogger {
+  debug(context: Record<string, unknown>, message: string): void
+  info(context: Record<string, unknown>, message: string): void
+  warn(context: Record<string, unknown>, message: string): void
+  error(context: Record<string, unknown>, message: string): void
+}
+
+export interface JobContext {
+  db: Kysely<DB>
+  log: JobLogger
+}
+
+/** The payloads the routes queue, as they were written. */
+interface LibraryPayload {
+  libraryId?: unknown
+  scanDeep?: unknown
+}
+interface SeriesPayload {
+  seriesId?: unknown
+}
+interface BookPayload {
+  bookId?: unknown
+}
+
+function text(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null
+}
+
+/**
+ * Queue analysis for the books of a library that need it.
+ *
+ * A book needs analysing when nothing has described it yet, or when what described
+ * it no longer matches the file - which is what a scan marks a changed book as.
+ */
+async function analyzeMissingBooks(context: JobContext, libraryId: string): Promise<number> {
+  const books = await context.db
+    .selectFrom('books')
+    .leftJoin('media', 'media.book_id', 'books.id')
+    .select(['books.id', 'books.series_id'])
+    .where('books.library_id', '=', libraryId)
+    .where('books.deleted_date', 'is', null)
+    .where((eb) => eb.or([eb('media.book_id', 'is', null), eb('media.status', 'in', ['UNKNOWN', 'OUTDATED'])]))
+    .orderBy('books.series_id')
+    .orderBy('books.number')
+    .execute()
+
+  for (const book of books) {
+    await enqueueJob(context.db, {
+      type: 'AnalyzeBook',
+      uniqueKey: `ANALYZE_BOOK_${book.id}`,
+      priority: JOB_PRIORITY.HIGH,
+      // A series' books are analysed one at a time, in order, so a reader never
+      // sees half a series renumbered.
+      groupId: book.series_id,
+      payload: { bookId: book.id },
+    })
+  }
+  return books.length
+}
+
+/** Analyse one book, if its file is still there. */
+async function analyzeOne(context: JobContext, bookId: string): Promise<void> {
+  const record = await findBookRecord(context.db, bookId)
+  if (record === null) {
+    context.log.warn({ bookId }, 'book to analyse is gone')
+    return
+  }
+
+  const path = await bookFilePath(record)
+  if (path === null) {
+    context.log.warn({ bookId }, 'book to analyse has no file')
+    return
+  }
+
+  const library = await context.db
+    .selectFrom('libraries')
+    .select('analyze_dimensions')
+    .where('id', '=', record.libraryId)
+    .executeTakeFirst()
+
+  const analysis = await analyzeBook(context.db, bookId, path, {
+    analyzeDimensions: library?.analyze_dimensions === 1,
+  })
+  if (analysis.status !== 'READY') {
+    context.log.warn({ bookId, status: analysis.status, comment: analysis.comment }, 'analysis did not succeed')
+  }
+}
+
+/** Delete what a scan soft-deleted, which is the only thing that removes rows. */
+async function emptyTrash(context: JobContext, libraryId: string): Promise<number> {
+  const books = await context.db
+    .deleteFrom('books')
+    .where('library_id', '=', libraryId)
+    .where('deleted_date', 'is not', null)
+    .executeTakeFirst()
+  const series = await context.db
+    .deleteFrom('series')
+    .where('library_id', '=', libraryId)
+    .where('deleted_date', 'is not', null)
+    .executeTakeFirst()
+  return Number(books.numDeletedRows ?? 0) + Number(series.numDeletedRows ?? 0)
+}
+
+/** Remove a book's file, then record the book as deleted the way a scan would. */
+async function deleteBookFile(context: JobContext, bookId: string): Promise<void> {
+  const record = await findBookRecord(context.db, bookId)
+  if (record === null) return
+
+  const path = await bookFilePath(record)
+  if (path !== null) {
+    await unlink(path).catch((error: unknown) => {
+      context.log.warn({ bookId, err: String(error) }, 'could not remove a book file')
+    })
+  }
+
+  const now = new Date().toISOString()
+  await context.db
+    .updateTable('books')
+    .set({ deleted_date: now, last_modified_date: now })
+    .where('id', '=', bookId)
+    .execute()
+}
+
+/** Remove every file of a series, and the series with them. */
+async function deleteSeriesFiles(context: JobContext, seriesId: string): Promise<void> {
+  const books = await context.db
+    .selectFrom('books')
+    .select('id')
+    .where('series_id', '=', seriesId)
+    .where('deleted_date', 'is', null)
+    .execute()
+
+  for (const book of books) await deleteBookFile(context, book.id)
+
+  const now = new Date().toISOString()
+  await context.db
+    .updateTable('series')
+    .set({ deleted_date: now, last_modified_date: now })
+    .where('id', '=', seriesId)
+    .execute()
+}
+
+/** Run one job. Throwing is allowed: the worker logs it and drops the job. */
+export async function handleJob(context: JobContext, job: JobRecord): Promise<void> {
+  const { db, log } = context
+
+  switch (job.type) {
+    case 'ScanLibrary': {
+      const payload = job.payload as LibraryPayload
+      const libraryId = text(payload.libraryId)
+      if (libraryId === null) return log.warn({ job: job.id }, 'ScanLibrary without a library')
+
+      const summary = await scanLibrary(db, libraryId, { deep: payload.scanDeep === true })
+      log.info({ libraryId, ...summary }, 'scanned a library')
+      const queued = await analyzeMissingBooks(context, libraryId)
+      if (queued > 0) log.info({ libraryId, queued }, 'queued books to analyse')
+      return
+    }
+
+    case 'AnalyzeLibrary': {
+      const libraryId = text((job.payload as LibraryPayload).libraryId)
+      if (libraryId === null) return log.warn({ job: job.id }, 'AnalyzeLibrary without a library')
+
+      const queued = await analyzeMissingBooks(context, libraryId)
+      log.info({ libraryId, queued }, 'queued a library to analyse')
+      return
+    }
+
+    case 'AnalyzeSeries': {
+      const seriesId = text((job.payload as SeriesPayload).seriesId)
+      if (seriesId === null) return log.warn({ job: job.id }, 'AnalyzeSeries without a series')
+
+      const books = await db
+        .selectFrom('books')
+        .select('id')
+        .where('series_id', '=', seriesId)
+        .where('deleted_date', 'is', null)
+        .orderBy('number')
+        .execute()
+
+      for (const book of books) {
+        await enqueueJob(db, {
+          type: 'AnalyzeBook',
+          uniqueKey: `ANALYZE_BOOK_${book.id}`,
+          priority: JOB_PRIORITY.HIGH,
+          groupId: seriesId,
+          payload: { bookId: book.id },
+        })
+      }
+      return
+    }
+
+    case 'AnalyzeBook': {
+      const bookId = text((job.payload as BookPayload).bookId)
+      if (bookId === null) return log.warn({ job: job.id }, 'AnalyzeBook without a book')
+      return analyzeOne(context, bookId)
+    }
+
+    case 'RefreshBookMetadata': {
+      const bookId = text((job.payload as BookPayload).bookId)
+      if (bookId === null) return log.warn({ job: job.id }, 'RefreshBookMetadata without a book')
+
+      const result = await refreshBookMetadata(db, bookId)
+      log.info({ bookId, status: result.status, changed: result.changed }, 'refreshed a book')
+
+      // What a book says about its series is part of the series' metadata, and the
+      // reference refreshes that from a task of its own - which the unique key
+      // collapses when several books of one series ask for it at once.
+      const book = await db.selectFrom('books').select('series_id').where('id', '=', bookId).executeTakeFirst()
+      if (book) {
+        await enqueueJob(db, {
+          type: 'RefreshSeriesMetadata',
+          uniqueKey: `REFRESH_SERIES_METADATA_${book.series_id}`,
+          priority: job.priority - 1,
+          payload: { seriesId: book.series_id },
+        })
+      }
+      return
+    }
+
+    case 'RefreshSeriesMetadata': {
+      const seriesId = text((job.payload as SeriesPayload).seriesId)
+      if (seriesId === null) return log.warn({ job: job.id }, 'RefreshSeriesMetadata without a series')
+
+      const result = await refreshSeriesMetadata(db, seriesId)
+      return log.info(
+        { seriesId, status: result.status, changed: result.changed, collections: result.collections },
+        'refreshed a series',
+      )
+    }
+
+    case 'RefreshLibraryMetadata': {
+      const libraryId = text((job.payload as LibraryPayload).libraryId)
+      if (libraryId === null) return log.warn({ job: job.id }, 'RefreshLibraryMetadata without a library')
+
+      const books = await db
+        .selectFrom('books')
+        .select('id')
+        .where('library_id', '=', libraryId)
+        .where('deleted_date', 'is', null)
+        .orderBy('series_id')
+        .orderBy('number')
+        .execute()
+
+      for (const book of books) {
+        await enqueueJob(db, {
+          type: 'RefreshBookMetadata',
+          uniqueKey: `REFRESH_BOOK_METADATA_${book.id}`,
+          payload: { bookId: book.id },
+        })
+      }
+      return
+    }
+
+    case 'EmptyTrash': {
+      const libraryId = text((job.payload as LibraryPayload).libraryId)
+      if (libraryId === null) return log.warn({ job: job.id }, 'EmptyTrash without a library')
+
+      const removed = await emptyTrash(context, libraryId)
+      return log.info({ libraryId, removed }, 'emptied the trash')
+    }
+
+    case 'DeleteBookFile': {
+      const bookId = text((job.payload as BookPayload).bookId)
+      if (bookId === null) return log.warn({ job: job.id }, 'DeleteBookFile without a book')
+      return deleteBookFile(context, bookId)
+    }
+
+    case 'DeleteSeriesFile': {
+      const seriesId = text((job.payload as SeriesPayload).seriesId)
+      if (seriesId === null) return log.warn({ job: job.id }, 'DeleteSeriesFile without a series')
+      return deleteSeriesFiles(context, seriesId)
+    }
+
+    case 'GenerateBookThumbnail':
+    case 'RegenerateBookThumbnails':
+    case 'GenerateSeriesThumbnail':
+    case 'GenerateCollectionThumbnail':
+    case 'GenerateReadListThumbnail': {
+      // The tables and the routes are there; the images arrive with M6d.
+      return log.info({ type: job.type }, 'thumbnail generation is not implemented yet')
+    }
+
+    default:
+      return log.warn({ type: job.type, job: job.id }, 'unknown job type')
+  }
+}

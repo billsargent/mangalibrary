@@ -3,6 +3,7 @@ import { loadConfig } from './config.js'
 import { createDatabase } from './db/index.js'
 import { migrate } from './db/migrate.js'
 import { migrations } from './db/migrations/index.js'
+import { startJobWorker } from './worker.js'
 
 async function main(): Promise<void> {
   const config = loadConfig()
@@ -13,10 +14,16 @@ async function main(): Promise<void> {
   const app = await buildServer({ config, database })
   if (applied.length > 0) app.log.info({ applied }, 'applied migrations')
 
+  // The queue is what makes a scan, an analysis and a metadata refresh happen at
+  // all: the API only records what was asked for.
+  const worker = await startJobWorker({ db: database.db, log: app.log })
+
   const shutdown = (signal: string) => {
     app.log.info(`received ${signal}, shutting down`)
-    app
-      .close()
+    worker
+      .stop()
+      .catch((err: unknown) => app.log.error({ err: String(err) }, 'could not stop the job worker'))
+      .then(() => app.close())
       .then(() => process.exit(0))
       .catch((err) => {
         app.log.error(err)

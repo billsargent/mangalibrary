@@ -179,6 +179,37 @@ and a locked list, is left as the user set it. Lists are replaced rather than
 merged, because the file is read as a whole, and are compared as sets so that
 re-ordering credits in a file does not rewrite the book.
 
+## Jobs
+
+Background work - a scan, an analysis, a metadata refresh, emptying the trash,
+deleting a file - is queued by the API as a row in `jobs` and run by the worker the
+server starts with itself. The reference keeps its tasks in a `tasks.sqlite` file and
+hands them to a Spring thread pool.
+
+What is the same: a job is claimed while it runs, so two workers never take the same
+one; jobs sharing a group never run at the same time, which is how a series' books
+are analysed in order; a job is keyed by a unique key, so asking twice for the same
+work replaces what was queued; the most important job goes first and, among equals,
+the one that waited longest; the pool size is the `TASK_POOL_SIZE` setting; and a
+library with `scanOnStartup` is scanned when the server comes up.
+
+Deliberate differences:
+
+- The queue is polled every half second rather than pushed to. A job that queues
+  more work - a scan queues the books it found - is picked up by the next tick, and
+  a queue that is briefly unreadable does not stop the worker.
+- A job that fails is logged with its error and dropped, as the reference drops it,
+  so a broken library does not wedge the queue. Nothing retries it: the schedule or
+  the next scan asks for the work again, and a request that was refused is visible
+  in the server log rather than in a table.
+- The scan schedule lives in memory, so a restart resets the clock for every
+  library, exactly as the reference's fixed-rate task does.
+- Reading `TASK_POOL_SIZE` happens per tick rather than on a settings change, so
+  changing it takes effect without a restart.
+- The thumbnail types (`GenerateBookThumbnail`, `RegenerateBookThumbnails`) are
+  accepted and declined with a note in the log until M6d builds them, rather than
+  being refused by the API.
+
 ## Scanning
 
 How a library directory is read - which directory becomes a series, how
