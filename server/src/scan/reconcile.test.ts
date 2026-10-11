@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest'
 import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
+import { analyzeBook } from '../media/analyze.js'
+import { writeZip } from '../testing/zip.js'
 import { scanLibrary } from './reconcile.js'
 
 async function setup(overrides: Record<string, unknown> = {}): Promise<{ database: Database; root: string }> {
@@ -36,6 +38,22 @@ function files(root: string, paths: string[]): void {
     mkdirSync(dirname(full), { recursive: true })
     writeFileSync(full, path)
   }
+}
+
+/** Write a book that carries a ComicInfo document. */
+function bookWithDocument(root: string, relative: string, fields: Record<string, string>): void {
+  const full = join(root, relative)
+  mkdirSync(dirname(full), { recursive: true })
+  const elements = Object.entries(fields)
+    .map(([name, value]) => `<${name}>${value}</${name}>`)
+    .join('')
+  writeFileSync(
+    full,
+    writeZip([
+      { name: 'page1.jpg', data: Buffer.from('a page') },
+      { name: 'ComicInfo.xml', data: Buffer.from(`<ComicInfo>${elements}</ComicInfo>`, 'utf8') },
+    ]),
+  )
 }
 
 async function seriesRows(database: Database) {
@@ -236,5 +254,43 @@ describe('scanning a library', () => {
       ['Another', 1],
       ['One Shot', 1],
     ])
+  })
+
+  it('reads a series\u2019 metadata out of the books it found', async () => {
+    const { database, root } = await setup()
+    bookWithDocument(root, 'Akira/Volume 1.cbz', {
+      Series: 'Akira',
+      Publisher: 'Kodansha',
+      Genre: 'Science Fiction',
+      Writer: 'Katsuhiro Otomo',
+      Tags: 'Cyberpunk',
+      Year: '1984',
+      Summary: 'Neo-Tokyo.',
+    })
+    bookWithDocument(root, 'Akira/Volume 2.cbz', { Series: 'Akira', Publisher: 'Kodansha', Year: '1985' })
+
+    await scanLibrary(database.db, 'L1')
+
+    const series = (await seriesRows(database))[0]!
+    const metadata = await database.db
+      .selectFrom('series_metadata')
+      .selectAll()
+      .where('series_id', '=', series.id)
+      .executeTakeFirstOrThrow()
+    expect(metadata.publisher).toBe('Kodansha')
+
+    // The books' own metadata arrives when they are analysed, and the series'
+    // view of them - what the clients read as booksMetadata - is recomputed then.
+    for (const book of await bookRows(database)) {
+      await analyzeBook(database.db, book.id, join(root, `Akira/${book.name}.cbz`), {})
+    }
+
+    const aggregation = await database.db.selectFrom('book_metadata_aggregation').selectAll().execute()
+    expect(aggregation).toHaveLength(1)
+    expect(aggregation[0]?.release_date).toBe('1984-01-01')
+    expect(aggregation[0]?.summary).toBe('Neo-Tokyo.')
+
+    const authors = await database.db.selectFrom('book_metadata_aggregation_author').select('name').execute()
+    expect(authors.map((row) => row.name)).toEqual(['Katsuhiro Otomo'])
   })
 })

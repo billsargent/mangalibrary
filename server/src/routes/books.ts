@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { requireAdmin, requireAuth } from '../auth/session.js'
 import type { DB } from '../db/schema.js'
 import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
+import { aggregateSeriesMetadata } from '../metadata/aggregation.js'
 import { buildBookDtos } from './content-data.js'
 import type { BookRow } from './content-dto.js'
 import { contentContext, type ContentContext } from './context.js'
@@ -299,6 +300,20 @@ async function upsertReadProgress(
     .where('user_id', '=', userId)
     .where('book_id', '=', bookId)
     .execute()
+}
+
+/**
+ * Recompute the aggregation of the series a book belongs to.
+ *
+ * A series' `booksMetadata` is made of its books' metadata, so anything that
+ * changes a book's metadata changes it. Returns the series id, or null when there
+ * is no such book.
+ */
+async function aggregateSeriesOfBook(db: Kysely<DB>, bookId: string): Promise<string | null> {
+  const book = await db.selectFrom('books').select('series_id').where('id', '=', bookId).executeTakeFirst()
+  if (!book) return null
+  await aggregateSeriesMetadata(db, book.series_id)
+  return book.series_id
 }
 
 export async function registerBookRoutes(app: FastifyInstance, opts: RouteOptions): Promise<void> {
@@ -685,6 +700,10 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
 
       const result = await applyBookMetadataPatch(db, req.params.bookId, (req.body ?? {}) as Record<string, unknown>)
       if (!result.ok) return reply.code(400).send({ validationErrors: result.errors })
+
+      // A series' booksMetadata is made of its books' metadata, so a hand edit
+      // changes it too - the reference schedules the same work after this route.
+      await aggregateSeriesOfBook(db, req.params.bookId)
       return reply.code(204).send()
     },
   )
@@ -693,6 +712,7 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
   app.patch('/api/v1/books/metadata', { preHandler: requireAdmin }, async (req, reply) => {
     const body = (req.body ?? {}) as Record<string, unknown>
     const errors: Record<string, string> = {}
+    const editedBooks: string[] = []
 
     for (const [bookId, update] of Object.entries(body)) {
       if (typeof update !== 'object' || update === null) {
@@ -712,9 +732,17 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
       if (!result.ok) {
         for (const [field, message] of Object.entries(result.errors)) errors[`${bookId}.${field}`] = message
       }
+      editedBooks.push(bookId)
     }
 
     if (Object.keys(errors).length > 0) return reply.code(400).send({ validationErrors: errors })
+
+    // One aggregation per series, however many of its books were edited.
+    const series = new Set<string>()
+    for (const bookId of editedBooks) {
+      const seriesId = await aggregateSeriesOfBook(db, bookId)
+      if (seriesId !== null) series.add(seriesId)
+    }
     return reply.code(200).send()
   })
 

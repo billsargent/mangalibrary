@@ -12,7 +12,8 @@
 
 import type { FileEntry } from '../media/types.js'
 import { validatedIsbn } from './isbn.js'
-import type { Author, BookMetadataPatch, WebLink } from './patches.js'
+import { normalisedLanguage } from './language.js'
+import type { Author, BookMetadataPatch, SeriesMetadataPatch, WebLink } from './patches.js'
 import { elementFloat, elementInt, elementText } from './xml.js'
 
 /** The file name, however the archive capitalises it. */
@@ -34,6 +35,43 @@ export const COMIC_INFO_ROLES: readonly { element: string; role: string }[] = [
   { element: 'Editor', role: 'editor' },
   { element: 'Translator', role: 'translator' },
 ]
+
+/**
+ * `AgeRating` as an age, for the values ComicRack defines.
+ *
+ * `Unknown` and `Rating Pending` are not ages, so they leave the field alone, as
+ * the reference's enum does by having no number for them.
+ */
+export const COMIC_INFO_AGE_RATINGS: ReadonlyMap<string, number> = new Map(
+  (
+    [
+      ['Adults Only 18+', 18],
+      ['Early Childhood', 3],
+      ['Everyone', 0],
+      ['Everyone 10+', 10],
+      ['G', 0],
+      ['Kids to Adults', 6],
+      ['M', 17],
+      ['MA 15+', 15],
+      ['Mature 17+', 17],
+      ['PG', 8],
+      ['R18+', 18],
+      ['Teen', 13],
+      ['X18+', 18],
+    ] as const
+  ).map(([value, age]) => [value.toLowerCase().replace(/\s+/g, ''), age]),
+)
+
+/**
+ * `Manga`, which is how a document states the reading direction.
+ *
+ * `Yes` deliberately says nothing: a manga can read either way, and the reference
+ * only takes a direction from `No` and `YesAndRightToLeft`.
+ */
+export const COMIC_INFO_MANGA_DIRECTIONS: ReadonlyMap<string, string> = new Map([
+  ['no', 'LEFT_TO_RIGHT'],
+  ['yesandrighttoleft', 'RIGHT_TO_LEFT'],
+])
 
 /**
  * The `ComicInfo.xml` inside a book, or null when there is none.
@@ -161,6 +199,53 @@ export function comicInfoBookPatch(xml: string): BookMetadataPatch {
 
   const isbn = validatedIsbn(elementText(xml, 'GTIN'))
   if (isbn !== null) patch.isbn = isbn
+
+  return patch
+}
+
+/**
+ * What a ComicInfo document says about the series its book belongs to.
+ *
+ * `Series` is the name of the series; a document may also carry a `Volume`, and a
+ * library can ask for it to be part of the title, which is how a collection of
+ * loose files becomes one series per volume.
+ */
+export function comicInfoSeriesPatch(xml: string, options: { appendVolume?: boolean } = {}): SeriesMetadataPatch {
+  const patch: SeriesMetadataPatch = {}
+
+  const series = elementText(xml, 'Series')
+  if (series !== null) {
+    const volume = options.appendVolume === true ? elementInt(xml, 'Volume') : null
+    // Volume 1 is the series itself; the reference only suffixes the others.
+    const title = volume !== null && volume !== 1 ? `${series} (${volume})` : series
+    patch.title = title
+    patch.titleSort = title
+  }
+
+  const publisher = elementText(xml, 'Publisher')
+  if (publisher !== null) patch.publisher = publisher
+
+  const language = normalisedLanguage(elementText(xml, 'LanguageISO'))
+  if (language !== null) patch.language = language
+
+  const ageRating = COMIC_INFO_AGE_RATINGS.get((elementText(xml, 'AgeRating') ?? '').toLowerCase().replace(/\s+/g, ''))
+  if (ageRating !== undefined) patch.ageRating = ageRating
+
+  const readingDirection = COMIC_INFO_MANGA_DIRECTIONS.get((elementText(xml, 'Manga') ?? '').toLowerCase())
+  if (readingDirection !== undefined) patch.readingDirection = readingDirection
+
+  const genre = elementText(xml, 'Genre')
+  if (genre !== null) {
+    const genres: string[] = []
+    for (const value of genre.split(',')) {
+      const trimmed = value.trim()
+      if (trimmed !== '' && !genres.includes(trimmed)) genres.push(trimmed)
+    }
+    if (genres.length > 0) patch.genres = genres
+  }
+
+  const count = elementInt(xml, 'Count')
+  if (count !== null) patch.totalBookCount = count
 
   return patch
 }

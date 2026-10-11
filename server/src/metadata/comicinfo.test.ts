@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { comicInfoBookPatch, comicInfoEntry, comicInfoReleaseDate, COMIC_INFO_ROLES } from './comicinfo.js'
+import {
+  comicInfoBookPatch,
+  comicInfoEntry,
+  comicInfoReleaseDate,
+  comicInfoSeriesPatch,
+  COMIC_INFO_ROLES,
+} from './comicinfo.js'
 import { validatedIsbn } from './isbn.js'
 
 const document = `<?xml version="1.0" encoding="utf-8"?>
@@ -198,5 +204,65 @@ describe('validating an ISBN', () => {
     expect(validatedIsbn('   ')).toBeNull()
     expect(validatedIsbn('urn:uuid:6e8bc430')).toBeNull()
     expect(validatedIsbn(null)).toBeNull()
+  })
+})
+
+describe('reading the series a ComicInfo describes', () => {
+  it('names the series from the Series element', () => {
+    const patch = comicInfoSeriesPatch('<ComicInfo><Series>Akira</Series></ComicInfo>')
+    expect(patch.title).toBe('Akira')
+    expect(patch.titleSort).toBe('Akira')
+  })
+
+  it('appends the volume when the library asks for it, but not for volume 1', () => {
+    const xml = '<ComicInfo><Series>Akira</Series><Volume>2</Volume></ComicInfo>'
+    expect(comicInfoSeriesPatch(xml, { appendVolume: true }).title).toBe('Akira (2)')
+    expect(comicInfoSeriesPatch(xml).title).toBe('Akira')
+
+    const first = '<ComicInfo><Series>Akira</Series><Volume>1</Volume></ComicInfo>'
+    expect(comicInfoSeriesPatch(first, { appendVolume: true }).title).toBe('Akira')
+  })
+
+  it('reads the publisher, the genres and the book count', () => {
+    const patch = comicInfoSeriesPatch(
+      '<ComicInfo><Series>Akira</Series><Publisher>Kodansha</Publisher><Genre>Science Fiction, Action, Action</Genre><Count>6</Count></ComicInfo>',
+    )
+    expect(patch.publisher).toBe('Kodansha')
+    expect(patch.genres).toEqual(['Science Fiction', 'Action'])
+    expect(patch.totalBookCount).toBe(6)
+  })
+
+  it('reads the language, normalised, and drops what is not one', () => {
+    expect(comicInfoSeriesPatch('<ComicInfo><LanguageISO>en-US</LanguageISO></ComicInfo>').language).toBe('en-US')
+    expect(comicInfoSeriesPatch('<ComicInfo><LanguageISO>pt_br</LanguageISO></ComicInfo>').language).toBe('pt-BR')
+    expect(comicInfoSeriesPatch('<ComicInfo><LanguageISO>Unknown</LanguageISO></ComicInfo>').language).toBeUndefined()
+  })
+
+  it('reads an age rating as an age, and no age from the values that are not one', () => {
+    expect(comicInfoSeriesPatch('<ComicInfo><AgeRating>Teen</AgeRating></ComicInfo>').ageRating).toBe(13)
+    expect(comicInfoSeriesPatch('<ComicInfo><AgeRating>Adults Only 18+</AgeRating></ComicInfo>').ageRating).toBe(18)
+    expect(
+      comicInfoSeriesPatch('<ComicInfo><AgeRating>Rating Pending</AgeRating></ComicInfo>').ageRating,
+    ).toBeUndefined()
+    expect(comicInfoSeriesPatch('<ComicInfo><AgeRating>Unknown</AgeRating></ComicInfo>').ageRating).toBeUndefined()
+  })
+
+  it('takes a reading direction from Manga, and only from the values that state one', () => {
+    expect(comicInfoSeriesPatch('<ComicInfo><Manga>No</Manga></ComicInfo>').readingDirection).toBe('LEFT_TO_RIGHT')
+    expect(comicInfoSeriesPatch('<ComicInfo><Manga>YesAndRightToLeft</Manga></ComicInfo>').readingDirection).toBe(
+      'RIGHT_TO_LEFT',
+    )
+    expect(comicInfoSeriesPatch('<ComicInfo><Manga>Yes</Manga></ComicInfo>').readingDirection).toBeUndefined()
+    expect(comicInfoSeriesPatch('<ComicInfo><Manga>Unknown</Manga></ComicInfo>').readingDirection).toBeUndefined()
+  })
+
+  it('leaves a summary and a status alone, because a book cannot decide them', () => {
+    const patch = comicInfoSeriesPatch('<ComicInfo><Series>Akira</Series><Summary>Neo-Tokyo</Summary></ComicInfo>')
+    expect(patch.summary).toBeUndefined()
+    expect(patch.status).toBeUndefined()
+  })
+
+  it('reads nothing out of a document about a book with no series', () => {
+    expect(comicInfoSeriesPatch('<ComicInfo><Title>One Shot</Title></ComicInfo>')).toEqual({})
   })
 })

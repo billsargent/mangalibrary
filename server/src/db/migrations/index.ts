@@ -11,6 +11,7 @@ import { migration0009Search } from './0009_search.js'
 import { migration0010UserRestrictions } from './0010_user_restrictions.js'
 import { migration0011MetadataLocks } from './0011_metadata_locks.js'
 import { migration0012ClientSettingsAllowUnauthorized } from './0012_client_settings_allow_unauthorized.js'
+import { migration0013AggregationSummaryNumber } from './0013_aggregation_summary_number.js'
 
 /**
  * Ordered migration registry, applied in id order by the runner.
@@ -32,4 +33,5 @@ export const migrations: Migration[] = [
   migration0010UserRestrictions,
   migration0011MetadataLocks,
   migration0012ClientSettingsAllowUnauthorized,
+  migration0013AggregationSummaryNumber,
 ]
