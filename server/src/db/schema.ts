@@ -515,6 +515,7 @@ export interface JobsTable {
 export interface ClientSettingsGlobalTable {
   key: string
   value: string
+  allow_unauthorized: Generated<number>
 }
 
 export interface ClientSettingsUserTable {

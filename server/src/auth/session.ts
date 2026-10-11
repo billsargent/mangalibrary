@@ -3,7 +3,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { Kysely } from 'kysely'
 import type { DB } from '../db/schema.js'
-import { getOrCreateSetting } from '../settings.js'
+import { getOrCreateSetting, getRememberMeDurationDays } from '../settings.js'
 import { hasRole, isAdmin } from './access.js'
 import { hashPassword, needsRehash, verifyPassword } from './passwords.js'
 import { SqliteSessionStore, type SessionStore } from './session-store.js'
@@ -17,7 +17,27 @@ export const API_KEY_HEADER = 'x-api-key'
 export const REMEMBER_ME_KEY_SETTING = 'REMEMBER_ME_KEY'
 
 export const DEFAULT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
-const REMEMBER_ME_TTL_MS = 365 * 24 * 60 * 60 * 1000
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * The remember-me signing key, read from the settings on first use.
+ *
+ * Cached because every request asks for it, but droppable: regenerating the key
+ * from the settings API must invalidate the cookies signed with the old one,
+ * not just the ones issued after the next restart.
+ */
+let rememberMeKeyCache: string | undefined
+
+async function rememberMeKey(db: Kysely<DB>): Promise<string> {
+  if (rememberMeKeyCache !== undefined) return rememberMeKeyCache
+  rememberMeKeyCache = await getOrCreateSetting(db, REMEMBER_ME_KEY_SETTING, () => randomBytes(32).toString('hex'))
+  return rememberMeKeyCache
+}
+
+/** Forget the cached remember-me key, so the next request reads it again. */
+export function invalidateRememberMeKey(): void {
+  rememberMeKeyCache = undefined
+}
 
 export type AuthMethod = 'session' | 'api-key' | 'basic' | 'remember-me'
 
@@ -123,9 +143,6 @@ async function recordActivity(
 export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions): Promise<void> {
   const ttl = opts.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS
   const store = opts.store ?? new SqliteSessionStore(opts.db)
-  const rememberMeKey = await getOrCreateSetting(opts.db, REMEMBER_ME_KEY_SETTING, () =>
-    randomBytes(32).toString('hex'),
-  )
 
   await app.register(cookie)
 
@@ -167,7 +184,7 @@ export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions
 
     const remember = req.cookies[REMEMBER_ME_COOKIE]
     if (remember) {
-      const userId = verifyRememberMe(rememberMeKey, remember)
+      const userId = verifyRememberMe(await rememberMeKey(opts.db), remember)
       if (userId) {
         const user = await findUserById(opts.db, userId)
         if (user) {
@@ -199,10 +216,11 @@ export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions
     reply.setCookie(SESSION_COOKIE, sessionId, cookieOptions(ttl))
 
     if (wantsRememberMe(body)) {
+      const ttlMs = (await getRememberMeDurationDays(opts.db)) * DAY_MS
       reply.setCookie(
         REMEMBER_ME_COOKIE,
-        signRememberMe(rememberMeKey, user.id, Date.now() + REMEMBER_ME_TTL_MS),
-        cookieOptions(REMEMBER_ME_TTL_MS),
+        signRememberMe(await rememberMeKey(opts.db), user.id, Date.now() + ttlMs),
+        cookieOptions(ttlMs),
       )
     }
 
