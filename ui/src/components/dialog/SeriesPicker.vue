@@ -156,7 +156,7 @@ const {
       fullTextSearch: searchStringDebounced.value,
       ...(!includeOneShots && {
         condition: {
-          oneShot: { operator: 'IsFalse' },
+          oneShot: { operator: 'isFalse' },
         },
       }),
     },

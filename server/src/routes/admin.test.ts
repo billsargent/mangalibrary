@@ -103,6 +103,9 @@ describe('server settings', () => {
     // the one in use.
     expect(body.serverPort).toEqual({ configurationSource: 25600, databaseSource: null, effectiveValue: 25600 })
     expect(body.serverContextPath).toEqual({ configurationSource: null, databaseSource: null, effectiveValue: null })
+    // The Kobo port is a plain integer in the contract, unlike the ports above: a client
+    // binds it to a number field, and an object there is a field full of NaN.
+    expect(body.koboPort).toBeNull()
 
     await app.close()
   })
@@ -125,7 +128,13 @@ describe('server settings', () => {
       method: 'PATCH',
       url: '/api/v1/settings',
       headers: admin,
-      payload: { deleteEmptyCollections: true, rememberMeDurationDays: 30, thumbnailSize: 'LARGE', taskPoolSize: 2 },
+      payload: {
+        deleteEmptyCollections: true,
+        rememberMeDurationDays: 30,
+        thumbnailSize: 'LARGE',
+        taskPoolSize: 2,
+        koboPort: 8081,
+      },
     })
     expect(res.statusCode).toBe(204)
 
@@ -138,6 +147,7 @@ describe('server settings', () => {
     expect(body.thumbnailSize).toBe('LARGE')
     expect(body.taskPoolSize).toBe(2)
     expect(body.deleteEmptyReadLists).toBe(false)
+    expect(body.koboPort).toBe(8081)
 
     await app.close()
   })

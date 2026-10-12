@@ -54,7 +54,7 @@ const { data: seriesBooks } = useQuery(() => ({
   ...bookListQuery({
     search: {
       condition: {
-        seriesId: { operator: 'Is', value: bookImport.series?.id || 'absent' },
+        seriesId: { operator: 'is', value: bookImport.series?.id || 'absent' },
       },
     },
     pageRequest: PageRequest.Unpaged(),

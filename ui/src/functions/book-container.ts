@@ -38,7 +38,7 @@ export function getBooksInParentOptions(
         ? [
             {
               seriesId: {
-                operator: 'Is',
+                operator: 'is',
                 value: parentId,
               },
             },
@@ -48,7 +48,7 @@ export function getBooksInParentOptions(
         ? [
             {
               readListId: {
-                operator: 'Is',
+                operator: 'is',
                 value: parentId,
               },
             },
@@ -58,7 +58,7 @@ export function getBooksInParentOptions(
         ? [
             {
               readStatus: {
-                operator: 'IsNot',
+                operator: 'isNot',
                 value: 'READ',
               },
             },

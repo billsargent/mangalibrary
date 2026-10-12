@@ -109,13 +109,17 @@ const { data: siblings, isPending: siblingsLoading } = useQuery(() => ({
     search: {
       condition: {
         collectionId: {
-          operator: 'Is',
+          operator: 'is',
           value: collection.value?.id,
         },
       },
     },
     pageRequest: PageRequest.Unpaged(sort.value),
   }),
+  // A condition needs a value: asking before the collection is known sends
+  // `collectionId: { operator: 'is' }`, which is not a condition the API accepts, and the
+  // answer is a 400 rather than the siblings this wants.
+  enabled: !!collection.value?.id,
 }))
 
 const previous = computed(() =>

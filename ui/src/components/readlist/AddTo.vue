@@ -151,7 +151,7 @@ const { data: seriesBooks } = useQuery(() => ({
   ...bookListQuery({
     search: {
       condition: {
-        anyOf: seriesIds.map((s) => ({ seriesId: { operator: 'Is', value: s } })),
+        anyOf: seriesIds.map((s) => ({ seriesId: { operator: 'is', value: s } })),
       },
     },
     pageRequest: PageRequest.Unpaged([
