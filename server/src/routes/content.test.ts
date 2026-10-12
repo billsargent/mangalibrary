@@ -1050,6 +1050,67 @@ describe('books', () => {
     await app.close()
   })
 
+  it('does not suggest a book of a series the reader is in the middle of', async () => {
+    const { app, database } = await setup()
+
+    // Opening the suggested book puts it under "keep reading", and the series
+    // has nothing left to suggest until it is finished.
+    const now = new Date().toISOString()
+    await database.db
+      .insertInto('read_progress')
+      .values({
+        user_id: 'U2',
+        book_id: 'B2',
+        page: 3,
+        completed: 0,
+        read_date: now,
+        created_date: now,
+        last_modified_date: now,
+      })
+      .execute()
+
+    const ondeck = await app.inject({ method: 'GET', url: '/api/v1/books/ondeck', headers: reader })
+    expect((ondeck.json() as { content: unknown[]; totalElements: number }).totalElements).toBe(0)
+    await app.close()
+  })
+
+  it('suggests by the number a book is sorted under, not the one its file was found with', async () => {
+    const { app, database } = await setup()
+
+    // A third book whose metadata puts it before the second.
+    const now = new Date().toISOString()
+    await database.db
+      .insertInto('books')
+      .values({
+        id: 'B9',
+        series_id: 'S1',
+        library_id: 'L1',
+        name: 'Volume 1.5',
+        url: 'v1-5.cbz',
+        file_last_modified: now,
+        file_size: 10,
+        number: 9,
+        created_date: now,
+        last_modified_date: now,
+      })
+      .execute()
+    await database.db
+      .insertInto('book_metadata')
+      .values({
+        book_id: 'B9',
+        title: 'Volume 1.5',
+        number: '1.5',
+        number_sort: 1.5,
+        created_date: now,
+        last_modified_date: now,
+      })
+      .execute()
+
+    const ondeck = await app.inject({ method: 'GET', url: '/api/v1/books/ondeck', headers: reader })
+    expect((ondeck.json() as { content: { id: string }[] }).content.map((b) => b.id)).toEqual(['B9'])
+    await app.close()
+  })
+
   it('walks to the next and previous book of a series', async () => {
     const { app } = await setup()
 
