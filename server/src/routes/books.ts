@@ -776,6 +776,14 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
         priority: JOB_PRIORITY.HIGH,
         payload: { bookId: req.params.bookId },
       })
+      // A cover beside the book is refreshed with the metadata, as the reference's
+      // endpoint does.
+      await enqueueJob(db, {
+        type: 'RefreshBookLocalArtwork',
+        uniqueKey: `REFRESH_BOOK_LOCAL_ARTWORK_${req.params.bookId}`,
+        priority: JOB_PRIORITY.HIGH,
+        payload: { bookId: req.params.bookId },
+      })
       return reply.code(202).send()
     },
   )

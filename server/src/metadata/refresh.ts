@@ -17,10 +17,12 @@ import type { Kysely } from 'kysely'
 import { bookFilePath, findBookRecord } from '../content/files.js'
 import type { DB } from '../db/schema.js'
 import { addBookToReadList } from '../organisation/membership.js'
+import { isbnBarcodePatch } from './barcode.js'
 import { comicInfoBookPatch } from './comicinfo.js'
-import { readBookDocuments } from './document.js'
+import { readBookDocuments, type BookDocuments } from './document.js'
 import { epubMetadata } from './epub.js'
 import {
+  BOOK_METADATA_CAPABILITIES,
   applyBookPatches,
   isEmptyUpdate,
   type Author,
@@ -174,11 +176,15 @@ export async function refreshBookMetadata(
 
   const library = await db
     .selectFrom('libraries')
-    .select(['import_comic_info_book', 'import_epub_book', 'import_comic_info_read_list'])
+    .select(['import_comic_info_book', 'import_epub_book', 'import_comic_info_read_list', 'import_barcode_isbn'])
     .where('id', '=', record.libraryId)
     .executeTakeFirst()
   if (!library) throw new Error(`library ${record.libraryId} does not exist`)
-  if (library.import_comic_info_book !== 1 && library.import_epub_book !== 1) {
+
+  const imported = new Set<BookMetadataCapability>(options.capabilities ?? BOOK_METADATA_CAPABILITIES)
+  const importsDocuments = library.import_comic_info_book === 1 || library.import_epub_book === 1
+  const importsBarcode = library.import_barcode_isbn === 1 && imported.has('ISBN')
+  if (!importsDocuments && !importsBarcode) {
     return {
       status: 'skipped',
       changed: [],
@@ -190,24 +196,47 @@ export async function refreshBookMetadata(
   const path = options.path ?? (await bookFilePath(record))
   if (path === null) return { status: 'skipped', changed: [], readLists: [], reason: 'the file is not there' }
 
-  const read = await readBookDocuments(path)
-  if (read.status !== 'ok') return { status: read.status, changed: [], readLists: [], reason: read.reason }
+  const patches: BookMetadataPatch[] = []
+
+  // The barcode is read first, so that an ISBN a document states wins over one
+  // read off a printed page: a document is the more specific statement of the two.
+  // The reference's provider order is whatever Spring hands it, which is not
+  // something to copy.
+  if (importsBarcode) {
+    const barcode = await isbnBarcodePatch(path)
+    if (barcode !== null) patches.push(barcode)
+  }
+
+  let documents: BookDocuments | null = null
+  let documentsReason: string | null = null
+  if (importsDocuments) {
+    const read = await readBookDocuments(path)
+    if (read.status === 'failed') return { status: 'failed', changed: [], readLists: [], reason: read.reason }
+    if (read.status === 'ok') documents = read.documents
+    else documentsReason = read.reason
+  }
 
   // The documents are applied in the reference's provider order, so that where two
   // of them disagree the later one wins.
-  const patches: BookMetadataPatch[] = []
-  if (library.import_comic_info_book === 1 && read.documents.comicInfo !== null) {
-    patches.push(comicInfoBookPatch(read.documents.comicInfo))
+  if (documents !== null) {
+    if (library.import_comic_info_book === 1 && documents.comicInfo !== null) {
+      patches.push(comicInfoBookPatch(documents.comicInfo))
+    }
+    if (library.import_epub_book === 1 && documents.packageDocument !== null) {
+      patches.push(epubMetadata(documents.packageDocument).book)
+    }
   }
-  if (library.import_epub_book === 1 && read.documents.packageDocument !== null) {
-    patches.push(epubMetadata(read.documents.packageDocument).book)
-  }
+
   if (patches.length === 0) {
     return {
       status: 'skipped',
       changed: [],
       readLists: [],
-      reason: 'the library does not import the documents this book carries',
+      reason:
+        documentsReason ??
+        (importsDocuments
+          ? 'the library does not import the documents this book carries'
+          : 'no barcode was found to read'),
     }
   }
 

@@ -18,6 +18,7 @@ import { bookFilePath, findBookRecord } from './content/files.js'
 import type { DB } from './db/schema.js'
 import { JOB_PRIORITY, enqueueJob, type JobRecord } from './jobs.js'
 import { analyzeBook } from './media/analyze.js'
+import { refreshBookLocalArtwork, refreshSeriesLocalArtwork } from './metadata/localArtwork.js'
 import { refreshBookMetadata } from './metadata/refresh.js'
 import { refreshSeriesMetadata } from './metadata/series.js'
 import { scanLibrary } from './scan/reconcile.js'
@@ -120,6 +121,12 @@ async function analyzeOne(context: JobContext, bookId: string): Promise<boolean>
     context.log.warn({ bookId, status: analysis.status, comment: analysis.comment }, 'analysis did not succeed')
     return false
   }
+
+  // A cover beside the book is looked for now that the file has been read, and the
+  // file is where the scan put it - so a book that was just discovered gets its
+  // artwork. The reference does this from its import and sidecar paths.
+  const artwork = await refreshBookLocalArtwork(context.db, bookId)
+  if (artwork > 0) context.log.info({ bookId, artwork }, 'found artwork beside a book')
   return true
 }
 
@@ -174,6 +181,23 @@ async function deleteBookFile(context: JobContext, bookId: string): Promise<void
   if (path !== null) {
     await unlink(path).catch((error: unknown) => {
       context.log.warn({ bookId, err: String(error) }, 'could not remove a book file')
+    })
+  }
+
+  // The artwork found beside the book goes with it, as it does in the reference: it
+  // belongs to that book and nothing else names it.
+  const covers = await context.db
+    .selectFrom('thumbnails')
+    .select('url')
+    .where('owner_type', '=', 'BOOK')
+    .where('owner_id', '=', bookId)
+    .where('type', '=', 'SIDECAR')
+    .where('url', 'is not', null)
+    .execute()
+  for (const cover of covers) {
+    if (cover.url === null) continue
+    await unlink(cover.url).catch((error: unknown) => {
+      context.log.warn({ bookId, err: String(error) }, 'could not remove a book\u2019s artwork file')
     })
   }
 
@@ -317,6 +341,28 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
           uniqueKey: `REFRESH_BOOK_METADATA_${book.id}`,
           payload: { bookId: book.id },
         })
+        await enqueueJob(db, {
+          type: 'RefreshBookLocalArtwork',
+          uniqueKey: `REFRESH_BOOK_LOCAL_ARTWORK_${book.id}`,
+          payload: { bookId: book.id },
+        })
+      }
+
+      // A series' own cover sits in the series' folder, so the series are asked for
+      // theirs too - which is what a library-wide refresh means in the reference.
+      const series = await db
+        .selectFrom('series')
+        .select('id')
+        .where('library_id', '=', libraryId)
+        .where('deleted_date', 'is', null)
+        .execute()
+
+      for (const entry of series) {
+        await enqueueJob(db, {
+          type: 'RefreshSeriesLocalArtwork',
+          uniqueKey: `REFRESH_SERIES_LOCAL_ARTWORK_${entry.id}`,
+          payload: { seriesId: entry.id },
+        })
       }
       return
     }
@@ -339,6 +385,22 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       const seriesId = text((job.payload as SeriesPayload).seriesId)
       if (seriesId === null) return log.warn({ job: job.id }, 'DeleteSeriesFile without a series')
       return deleteSeriesFiles(context, seriesId)
+    }
+
+    case 'RefreshBookLocalArtwork': {
+      const bookId = text((job.payload as BookPayload).bookId)
+      if (bookId === null) return log.warn({ job: job.id }, 'RefreshBookLocalArtwork without a book')
+
+      const stored = await refreshBookLocalArtwork(db, bookId)
+      return log.info({ bookId, stored }, 'looked for artwork beside a book')
+    }
+
+    case 'RefreshSeriesLocalArtwork': {
+      const seriesId = text((job.payload as SeriesPayload).seriesId)
+      if (seriesId === null) return log.warn({ job: job.id }, 'RefreshSeriesLocalArtwork without a series')
+
+      const stored = await refreshSeriesLocalArtwork(db, seriesId)
+      return log.info({ seriesId, stored }, 'looked for a cover in a series folder')
     }
 
     case 'GenerateBookThumbnail': {

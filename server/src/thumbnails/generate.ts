@@ -8,6 +8,7 @@
  * collection or read list showing four of its members side by side.
  */
 
+import { readFile, stat } from 'node:fs/promises'
 import type { Kysely } from 'kysely'
 
 import { bookFilePath, findBookRecord } from '../content/files.js'
@@ -32,7 +33,10 @@ export interface ThumbnailRecord {
   width: number
   height: number
   fileSize: number
-  bytes: Buffer
+  /** The image, for a poster this server made or a user uploaded. */
+  bytes: Buffer | null
+  /** The file it is, for artwork found beside a book or a series. */
+  url: string | null
   ownerId: string
 }
 
@@ -45,7 +49,8 @@ interface ThumbnailRow {
   width: number
   height: number
   file_size: number
-  thumbnail: Buffer
+  thumbnail: Buffer | null
+  url: string | null
 }
 
 /** A `thumbnails` row, as the routes select them. */
@@ -62,23 +67,46 @@ export function thumbnailRecord(row: ThumbnailRow): ThumbnailRecord {
     height: row.height,
     fileSize: row.file_size,
     bytes: row.thumbnail,
+    url: row.url,
     ownerId: row.owner_id,
   }
 }
 
 /**
+ * The image of a thumbnail, wherever it lives.
+ *
+ * A poster this server made is bytes in the row; artwork found beside a book is a
+ * file on disk, which is read when it is asked for. Null means the bytes cannot be
+ * had - the file has been removed, or cannot be read.
+ */
+export async function thumbnailBytes(record: ThumbnailRecord): Promise<Buffer | null> {
+  if (record.bytes !== null && record.bytes.length > 0) return record.bytes
+  if (record.url === null) return null
+  return await readFile(record.url).catch(() => null)
+}
+
+/** Whether a row's image can still be had, without reading all of it. */
+async function rowIsReadable(row: ThumbnailRow): Promise<boolean> {
+  if (row.thumbnail !== null && row.thumbnail.length > 0) return true
+  if (row.url === null) return false
+  const file = await stat(row.url).catch(() => null)
+  return file !== null && file.isFile()
+}
+
+/**
  * The thumbnail to show for an owner: the selected one, else the newest.
  *
- * The reference does the same in `getSelectedThumbnail`, and the fallback is what
- * keeps an owner from looking empty while a newly uploaded poster waits to be
- * selected.
+ * A row whose file has gone is passed over rather than being answered with a
+ * missing image, which is what lets a series with a removed cover fall back to one
+ * of its books. The reference does the same in `getSelectedThumbnail`, by deleting
+ * such rows as it finds them.
  */
 export async function chosenThumbnail(
   db: Kysely<DB>,
   ownerType: ThumbnailOwnerType,
   ownerId: string,
 ): Promise<ThumbnailRecord | null> {
-  const row = await db
+  const rows = await db
     .selectFrom('thumbnails')
     .selectAll()
     .where('owner_type', '=', ownerType)
@@ -86,9 +114,12 @@ export async function chosenThumbnail(
     .orderBy('selected', 'desc')
     .orderBy('created_date', 'desc')
     .orderBy('id', 'desc')
-    .limit(1)
-    .executeTakeFirst()
-  return row === undefined ? null : thumbnailRecord(row as ThumbnailRow)
+    .execute()
+
+  for (const row of rows as unknown as ThumbnailRow[]) {
+    if (await rowIsReadable(row)) return thumbnailRecord(row)
+  }
+  return null
 }
 
 /** The bytes of a book's poster, from its first page or its cover. */
@@ -300,7 +331,8 @@ export async function collectionMosaicThumbnail(
   const covers: Buffer[] = []
   for (const seriesId of fourOf(members.map((member) => member.series_id))) {
     const thumbnail = await seriesCoverThumbnail(db, seriesId, userId)
-    if (thumbnail !== null) covers.push(thumbnail.bytes)
+    const bytes = thumbnail === null ? null : await thumbnailBytes(thumbnail)
+    if (bytes !== null) covers.push(bytes)
   }
   return mosaic(covers, await thumbnailMaxEdge(db))
 }
@@ -319,7 +351,8 @@ export async function readListMosaicThumbnail(db: Kysely<DB>, readListId: string
   const covers: Buffer[] = []
   for (const bookId of fourOf(members.map((member) => member.book_id))) {
     const thumbnail = await chosenThumbnail(db, 'BOOK', bookId)
-    if (thumbnail !== null) covers.push(thumbnail.bytes)
+    const bytes = thumbnail === null ? null : await thumbnailBytes(thumbnail)
+    if (bytes !== null) covers.push(bytes)
   }
   return mosaic(covers, await thumbnailMaxEdge(db))
 }

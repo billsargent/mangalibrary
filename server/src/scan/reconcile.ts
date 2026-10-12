@@ -3,6 +3,7 @@ import type { Kysely } from 'kysely'
 
 import type { DB } from '../db/schema.js'
 import { naturalCompare } from '../media/kinds.js'
+import { refreshSeriesLocalArtwork } from '../metadata/localArtwork.js'
 import { refreshSeriesMetadata } from '../metadata/series.js'
 import { nextTsid } from '../tsid.js'
 import { LibraryScanError, walkLibrary, type ScannedBook, type ScanSettings } from './library.js'
@@ -353,8 +354,12 @@ export async function scanLibrary(
   // it is about come from its books' metadata documents. So a series the scan
   // touched is read again here, which is where the reference triggers it too. A
   // series that did not change is not read, so a scan over an unchanged library
-  // still touches no book file at all.
-  for (const seriesId of touched) await refreshSeriesMetadata(db, seriesId)
+  // still touches no book file at all. The cover that may sit in its folder is
+  // picked up the same way, which is cheap when there is none.
+  for (const seriesId of touched) {
+    await refreshSeriesMetadata(db, seriesId)
+    await refreshSeriesLocalArtwork(db, seriesId)
+  }
 
   if (library.empty_trash_after_scan === 1) {
     await db.deleteFrom('books').where('library_id', '=', libraryId).where('deleted_date', 'is not', null).execute()

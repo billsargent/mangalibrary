@@ -127,6 +127,14 @@ curated is theirs. The library settings (`importComicInfoReadList`,
 When a book carries both documents, both are applied, the package document last,
 which is the order the reference's providers run in.
 
+An ISBN is also read from a barcode: an EAN-13 printed on a page - the back cover,
+or inside the front - is decoded with the same library the reference uses, and the
+last three pages and the first three are looked at, the back ones first, as the
+reference looks at them. A reflowable EPUB is skipped, because none of its pages is
+an image. Only EAN-13 is looked for, and what is decoded still has to be a valid
+ISBN. The library setting `importBarcodeIsbn` turns the reading off per library, and
+a locked `isbn` field is never written.
+
 A series has no file of its own, so its metadata is folded out of its books: the
 value most of them agree on, the highest age rating, the union of the genres, and
 the volume appended to the title when the library asks for it (`Series (2)`; volume
@@ -172,6 +180,46 @@ Deliberate differences from the reference:
 - A changed sidecar is noticed because the folder holding it changed, which the walk
   already compares; the reference also keeps a table of sidecar files it has seen,
   which is what its own change detection reads.
+- The ISBN barcode is read before the documents are, so an ISBN a document states
+  wins over one read off a printed page: a document is the more specific statement of
+  the two. Where two providers disagree, the reference's answer is whatever order
+  Spring hands its beans in, which is not something worth copying.
+
+## Local artwork
+
+A cover that was never put in the archive is picked up from beside the book. For a
+book, files in its folder whose name is the book's own, with an optional `-1`, `-2`
+suffix - `Volume 1.jpg`, `Volume 1-1.jpg` - and an extension the reference accepts
+(`png`, `jpeg`, `jpg`, `tbn`, `webp`, `gif`); for a series, the files in its folder
+named `cover`, `default`, `folder`, `poster` or `series` with one of those
+extensions. The first file is the one that is chosen, unless the owner already has
+artwork of its own that the user picked - an upload, or another sidecar selected by
+hand - which a local cover never displaces. A generated poster does not count as a
+choice, so a cover beside a book takes its place.
+
+The file itself is not copied into the database: the thumbnail row holds the file's
+path and is read when the image is asked for, which is how the reference stores it
+too, and why replacing a 10 MB cover costs nothing. The library setting
+`importLocalArtwork` turns the whole thing off, and a oneshot series is never given
+a cover from its folder - its "folder" is the library root, where a stray
+`cover.jpg` belongs to no series in particular. Deleting a book's file deletes the
+artwork that was found beside it, as the reference does.
+
+Deliberate differences:
+
+- The files are sorted by name, ignoring case, and the first is the chosen one; the
+  reference takes whatever order the directory listing gives it, which is not
+  defined. A cover that has changed under the same name is noticed because its row is
+  written again.
+- A file's type is taken from its content rather than its name, so a `.tbn` or a
+  `.jpg` that is really a PNG is served as what it is. The reference detects the
+  type from the file's content as well, but through Tika.
+- A cover is looked for when a book is analysed, and when a book, a series or a
+  library is asked to refresh its metadata; a series' folder is also looked in
+  whenever a scan touches that series. The reference notices every change to a cover
+  file through its sidecar table's modified times, so a cover rewritten in place
+  under the same name is picked up here only when the book is analysed or refreshed
+  again, and not by a scan alone.
 
 The per-field locks (`titleLock`, `authorsLock`, and the rest) are honoured
 exactly as the reference honours them, for a book and for a series: a locked field,

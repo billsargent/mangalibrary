@@ -418,9 +418,15 @@ function mapThumbnails(legacy: LegacyDatabase, timestamp: string): Record<string
   ]
 
   for (const [table, ownerType, ownerColumn] of sources) {
+    // Komga keeps a thumbnail as bytes or as the URL of a file it found beside the
+    // book, and the column for the second one arrived later than the table.
+    const hasUrl = legacy.hasColumns(table, 'URL')
+
     for (const row of legacy.rows(table)) {
-      const blob = row.THUMBNAIL
-      if (!blob) continue
+      const blob = row.THUMBNAIL ?? null
+      const url = hasUrl ? (row.URL ?? null) : null
+      if (blob === null && url === null) continue
+
       out.push({
         id: text(row.ID),
         owner_type: ownerType,
@@ -431,8 +437,9 @@ function mapThumbnails(legacy: LegacyDatabase, timestamp: string): Record<string
         media_type: text(row.MEDIA_TYPE, 'image/jpeg'),
         width: number(row.WIDTH, 0),
         height: number(row.HEIGHT, 0),
-        file_size: number(row.FILE_SIZE, (blob as Buffer).length ?? 0),
+        file_size: number(row.FILE_SIZE, blob === null ? 0 : ((blob as Buffer).length ?? 0)),
         thumbnail: blob,
+        url,
         created_date: isoDate(row.CREATED_DATE, timestamp),
         last_modified_date: isoDate(row.LAST_MODIFIED_DATE, timestamp),
       })

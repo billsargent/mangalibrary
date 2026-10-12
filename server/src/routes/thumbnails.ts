@@ -9,6 +9,7 @@ import {
   collectionMosaicThumbnail,
   readListMosaicThumbnail,
   seriesCoverThumbnail,
+  thumbnailBytes,
   thumbnailRecord,
   type ThumbnailRecord,
   type ThumbnailRow,
@@ -154,17 +155,17 @@ async function ownerVisible(db: Kysely<DB>, context: ContentContext, spec: Owner
  * Send image bytes with the headers a browser needs to cache them.
  *
  * The row's id is part of the tag: replacing a poster writes a new row, so every
- * cache holding the old image is invalidated by the changed tag.
+ * cache holding the old image is invalidated by the changed tag. Artwork found
+ * beside a book is read from its file here.
  */
-function sendImage(req: FastifyRequest, reply: FastifyReply, record: ThumbnailRecord): FastifyReply {
+async function sendImage(req: FastifyRequest, reply: FastifyReply, record: ThumbnailRecord): Promise<FastifyReply> {
+  const bytes = await thumbnailBytes(record)
+  if (bytes === null) return reply.code(404).send({ message: 'Thumbnail not found' })
+
   const etag = `"${record.id}-"`
   if (req.headers['if-none-match'] === etag) return reply.code(304).send()
 
-  return reply
-    .header('etag', etag)
-    .header('cache-control', 'public, max-age=86400')
-    .type(record.mediaType)
-    .send(record.bytes)
+  return reply.header('etag', etag).header('cache-control', 'public, max-age=86400').type(record.mediaType).send(bytes)
 }
 
 /**

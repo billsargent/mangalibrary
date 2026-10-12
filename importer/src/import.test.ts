@@ -75,9 +75,19 @@ describe('komga-import', () => {
       const pages = await database.db.selectFrom('media_page').selectAll().execute()
       expect(pages[0]?.width).toBe(800)
 
-      const thumbnails = await database.db.selectFrom('thumbnails').selectAll().orderBy('owner_type').execute()
-      expect(thumbnails.map((row) => row.owner_type)).toEqual(['BOOK', 'SERIES'])
-      expect(thumbnails[0]?.thumbnail.length).toBe(4)
+      const thumbnails = await database.db
+        .selectFrom('thumbnails')
+        .selectAll()
+        .orderBy('owner_type')
+        .orderBy('id')
+        .execute()
+      expect(thumbnails.map((row) => row.owner_type)).toEqual(['BOOK', 'BOOK', 'SERIES'])
+      expect(thumbnails[0]?.thumbnail?.length).toBe(4)
+      expect(thumbnails[0]?.url).toBeNull()
+      // A cover kept as a file beside the book moves across as its URL, with no bytes.
+      expect(thumbnails[1]?.type).toBe('SIDECAR')
+      expect(thumbnails[1]?.thumbnail).toBeNull()
+      expect(thumbnails[1]?.url).toBe('file:/library/Akira/Volume 1.png')
 
       const progress = await database.db.selectFrom('read_progress').selectAll().execute()
       expect(progress[0]?.page).toBe(42)

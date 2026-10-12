@@ -1,4 +1,5 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -11,6 +12,7 @@ import { loadConfig } from '../config.js'
 import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
+import { refreshBookLocalArtwork } from '../metadata/localArtwork.js'
 
 const ADMIN_KEY = 'admin-key'
 const READER_KEY = 'reader-key'
@@ -565,6 +567,47 @@ describe('artwork', () => {
     }[]
     expect(list.find((entry) => entry.id === 'T1')!.selected).toBe(true)
     expect(list.find((entry) => entry.id === dto.id)!.selected).toBe(false)
+    await app.close()
+  })
+
+  it('shows artwork found beside a book, and forgets it when the file goes', async () => {
+    const { app, database, root } = await setup()
+
+    // The generated poster goes, so the artwork is what is left to show.
+    await database.db.deleteFrom('thumbnails').where('id', '=', 'T1').execute()
+    const cover = join(root, 'v1.png')
+    writeFileSync(cover, await png(40, 60))
+    expect(await refreshBookLocalArtwork(database.db, 'B1')).toBe(1)
+
+    const rows = await database.db.selectFrom('thumbnails').selectAll().where('owner_type', '=', 'BOOK').execute()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.type).toBe('SIDECAR')
+    // The file is not copied into the database.
+    expect(rows[0]!.thumbnail).toBeNull()
+
+    const res = await app.inject({ method: 'GET', url: '/api/v1/books/B1/thumbnail', headers: admin })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toBe('image/png')
+    expect(res.rawPayload.equals(await readFile(cover))).toBe(true)
+    // And it is listed and fetchable like any other thumbnail.
+    const list = (await app.inject({ method: 'GET', url: '/api/v1/books/B1/thumbnails', headers: admin })).json() as {
+      id: string
+      type: string
+    }[]
+    expect(list.map((entry) => entry.type)).toEqual(['SIDECAR'])
+    const one = await app.inject({
+      method: 'GET',
+      url: `/api/v1/books/B1/thumbnails/${list[0]!.id}`,
+      headers: admin,
+    })
+    expect(one.statusCode).toBe(200)
+    expect(one.headers['content-type']).toBe('image/png')
+
+    // A cover that has been deleted answers 404 rather than an empty image.
+    rmSync(cover)
+    expect((await app.inject({ method: 'GET', url: '/api/v1/books/B1/thumbnail', headers: admin })).statusCode).toBe(
+      404,
+    )
     await app.close()
   })
 

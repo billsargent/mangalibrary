@@ -389,7 +389,10 @@ export interface ThumbnailsTable {
   width: number
   height: number
   file_size: number
-  thumbnail: Buffer
+  /** The image, for a poster this server made or a user uploaded. */
+  thumbnail: Buffer | null
+  /** The file it is, for artwork found beside a book or a series. */
+  url: string | null
   created_date: string
   last_modified_date: string
 }

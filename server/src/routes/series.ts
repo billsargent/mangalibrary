@@ -670,6 +670,38 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
         priority: JOB_PRIORITY.HIGH,
         payload: { seriesId: req.params.seriesId },
       })
+
+      // The reference's endpoint also refreshes the books of the series, with the
+      // artwork beside each of them and in the series' own folder.
+      const books = await db
+        .selectFrom('books')
+        .select('id')
+        .where('series_id', '=', req.params.seriesId)
+        .where('deleted_date', 'is', null)
+        .orderBy('number')
+        .execute()
+
+      for (const book of books) {
+        await enqueueJob(db, {
+          type: 'RefreshBookMetadata',
+          uniqueKey: `REFRESH_BOOK_METADATA_${book.id}`,
+          priority: JOB_PRIORITY.HIGH,
+          payload: { bookId: book.id },
+        })
+        await enqueueJob(db, {
+          type: 'RefreshBookLocalArtwork',
+          uniqueKey: `REFRESH_BOOK_LOCAL_ARTWORK_${book.id}`,
+          priority: JOB_PRIORITY.HIGH,
+          payload: { bookId: book.id },
+        })
+      }
+
+      await enqueueJob(db, {
+        type: 'RefreshSeriesLocalArtwork',
+        uniqueKey: `REFRESH_SERIES_LOCAL_ARTWORK_${req.params.seriesId}`,
+        priority: JOB_PRIORITY.HIGH,
+        payload: { seriesId: req.params.seriesId },
+      })
       return reply.code(202).send()
     },
   )
