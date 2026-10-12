@@ -18,8 +18,8 @@
               {{
                 $formatMessage({
                   description: 'Updates view: banner shown at the top',
-                  defaultMessage: 'The latest version of Komga is already installed',
-                  id: 'WNY0pu',
+                  defaultMessage: 'The latest version is already installed',
+                  id: 'Pncpp3',
                 })
               }}
             </v-alert>

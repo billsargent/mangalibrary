@@ -10,16 +10,7 @@
           cols="7"
           sm="10"
         >
-          <v-img
-            src="@/assets/logo.svg"
-            :alt="
-              $formatMessage({
-                description: 'Login page: Komga logo alt text',
-                defaultMessage: 'Komga logo',
-                id: 'uXY7Eg',
-              })
-            "
-          />
+          <AppName large />
         </v-col>
       </v-row>
 
@@ -89,24 +80,6 @@
             type="submit"
             block
           />
-        </v-col>
-      </v-row>
-
-      <v-row class="justify-center">
-        <v-col cols="auto">
-          <a
-            href="https://komga.org/docs/faq#i-forgot-my-password"
-            target="_blank"
-            class="link-underline text-body-medium"
-          >
-            {{
-              $formatMessage({
-                description: 'Login screen: Forgot your password link',
-                defaultMessage: 'Forgot your password?',
-                id: 'r6JNfI',
-              })
-            }}
-          </a>
         </v-col>
       </v-row>
 

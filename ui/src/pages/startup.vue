@@ -2,11 +2,7 @@
   <v-container max-width="550px">
     <v-row class="justify-center">
       <v-col>
-        <v-img
-          src="@/assets/logo.svg"
-          width="500"
-          height="500"
-        />
+        <AppName large />
       </v-col>
     </v-row>
     <v-row>

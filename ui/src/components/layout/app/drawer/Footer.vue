@@ -8,7 +8,7 @@
         color="grey"
         size="small"
         class="text-body-small"
-        href="https://komga.org"
+        href="https://github.com/billsargent/mangalibrary#readme"
         target="_blank"
         :text="
           $formatMessage({

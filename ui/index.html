@@ -14,13 +14,10 @@
             name="viewport"
             content="width=device-width, initial-scale=1.0"
         />
-        <title>Komga</title>
-        <script th:inline="javascript">
-            /*<![CDATA[*/
-            window.resourceBaseUrl = /*[(${"'" + baseUrl + "'"})]*/ '/'
-            /*]]>*/
-        </script>
+        <title>Manga Library</title>
         <script>
+            // The server serves the application at the root of its origin.
+            window.resourceBaseUrl = '/'
             window.buildUrl = (filename) => {
                 return `${window.resourceBaseUrl}${filename}`
             }

@@ -1,12 +1,13 @@
 <template>
   <v-btn
+    v-if="isLoading || commitId"
     :loading="isLoading"
     prepend-icon="i-mdi:source-commit"
     variant="text"
     color="grey"
     size="small"
     class="text-body-small"
-    :href="'https://github.com/gotson/komga/commits/' + commitId"
+    :href="'https://github.com/billsargent/mangalibrary/commits/' + commitId"
     target="_blank"
   >
     {{ commitId || $formatMessage(commonMessages.error) }}

@@ -37,12 +37,12 @@
     </template>
 
     <v-app-bar-title v-if="display.smAndUp.value">
-      <RouterLink to="/">
-        <v-avatar start>
-          <v-img src="@/assets/logo.svg" />
-        </v-avatar>
+      <RouterLink
+        to="/"
+        class="text-decoration-none text-high-emphasis"
+      >
+        <AppName />
       </RouterLink>
-      Komga
     </v-app-bar-title>
 
     <template #append>

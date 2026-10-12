@@ -1,12 +1,12 @@
 <template>
   <template v-if="display.xs.value">
     <div class="d-flex align-center text-body-medium pa-2">
-      <RouterLink to="/">
-        <v-avatar start>
-          <v-img src="@/assets/logo.svg" />
-        </v-avatar>
+      <RouterLink
+        to="/"
+        class="text-decoration-none text-high-emphasis"
+      >
+        <AppName />
       </RouterLink>
-      Komga
     </div>
     <v-divider />
   </template>

@@ -4,8 +4,8 @@
       :title="
         $formatMessage({
           description: 'No libraries view: title',
-          defaultMessage: 'Welcome to Komga',
-          id: 'Rm52xk',
+          defaultMessage: 'Welcome to Manga Library',
+          id: 'MUl132',
         })
       "
       :text="
@@ -22,14 +22,6 @@
             })
       "
     >
-      <template #media>
-        <v-img
-          src="@/assets/logo.svg"
-          height="250px"
-          class="mb-4"
-        />
-      </template>
-
       <template
         v-if="isAdmin"
         #actions

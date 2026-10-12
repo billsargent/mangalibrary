@@ -11,8 +11,8 @@
     :text="
       $formatMessage({
         description: 'Server unreachable error view: error message subtitle',
-        defaultMessage: 'Check that your Komga server is running',
-        id: 'PTr5Wc',
+        defaultMessage: 'Check that the server is running',
+        id: '+gC3Ba',
       })
     "
     :action-text="
