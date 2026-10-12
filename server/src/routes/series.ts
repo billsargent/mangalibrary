@@ -8,7 +8,8 @@ import { archiveEntries } from '../content/files.js'
 import { findBooks, type BookQueryFilters } from './books.js'
 import { buildBookDtos, buildSeriesDtos, loadSeriesCounts } from './content-data.js'
 import type { SeriesCounts, SeriesRow } from './content-dto.js'
-import { contentContext, type ContentContext } from './context.js'
+import { contentDisposition } from './content-disposition.js'
+import { contentContext, scopedLibraryIds, type ContentContext } from './context.js'
 import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { applySeriesMetadataPatch } from './metadata.js'
@@ -87,17 +88,7 @@ export interface SeriesFilters {
   deleted: boolean | null
   complete: boolean | null
   oneshot: boolean | null
-  unpaged: boolean | null
 }
-
-/** One book in the series still counts as "paged". */
-const HAS_PAGED_BOOK = sql<boolean>`exists (
-  select 1 from books paged_book
-  join media paged_media on paged_media.book_id = paged_book.id
-  where paged_book.series_id = series.id
-    and paged_book.deleted_date is null
-    and paged_media.page_count > 0
-)`
 
 const LIVE_BOOK_COUNT = sql<number>`(
   select count(*) from books counted_book
@@ -257,9 +248,6 @@ function seriesQuery(db: Kysely<DB>, filters: SeriesFilters) {
     )
   }
 
-  if (filters.unpaged === true) query = query.where(sql<boolean>`not ${HAS_PAGED_BOOK}`)
-  else if (filters.unpaged === false) query = query.where(HAS_PAGED_BOOK)
-
   return query
 }
 
@@ -389,13 +377,12 @@ export function filtersFrom(
   query: Record<string, unknown>,
   body: Record<string, unknown> = {},
 ): SeriesFilters {
-  const libraries = toArray(query.library_id)
   const search = typeof query.search === 'string' && query.search !== '' ? query.search : undefined
   const fullText =
     typeof body.fullTextSearch === 'string' && body.fullTextSearch !== '' ? body.fullTextSearch : undefined
 
   return {
-    libraryIds: libraries.length > 0 ? libraries : context.libraryIds,
+    libraryIds: scopedLibraryIds(context, query.library_id),
     search: search ?? fullText,
     searchRegex: regexSearch(query.search_regex),
     collectionIds: toArray(query.collection_id),
@@ -412,7 +399,6 @@ export function filtersFrom(
     deleted: booleanParam(query.deleted),
     complete: booleanParam(query.complete),
     oneshot: booleanParam(query.oneshot),
-    unpaged: booleanParam(query.unpaged),
   }
 }
 
@@ -522,9 +508,8 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
       const { page, size } = paging(query)
       const unpaged = booleanParam(query.unpaged) === true
 
-      const libraries = toArray(query.library_id)
       const filters: SeriesFilters = {
-        libraryIds: libraries.length > 0 ? libraries : context.libraryIds,
+        libraryIds: scopedLibraryIds(context, query.library_id),
         collectionIds: [],
         statuses: [],
         readStatuses: [],
@@ -539,7 +524,6 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
         deleted: booleanParam(query.deleted),
         complete: null,
         oneshot: booleanParam(query.oneshot),
-        unpaged: booleanParam(query.unpaged),
       }
 
       const { rows, total } = await findSeries(db, context, filters, [sort], page, size, unpaged)
@@ -573,8 +557,8 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
 
   app.get('/api/v1/series/release-dates', { preHandler: requireAuth }, async (req) => {
     const context = await contentContext(db, req)
-    const libraries = toArray((req.query as Record<string, unknown>).library_id)
-    return (await releaseDates(libraries.length > 0 ? libraries : context.libraryIds)).map(String)
+    const scoped = scopedLibraryIds(context, (req.query as Record<string, unknown>).library_id)
+    return (await releaseDates(scoped)).map(String)
   })
 
   app.get('/api/v2/series/release-years', { preHandler: requireAuth }, async (req) => {
@@ -869,12 +853,9 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
         books.map((book) => book.id),
         (fileName) => fileName,
       )
-      const fileName = `${metadata?.title ?? found.row.name}.zip`.replace(/"/g, "'")
+      const fileName = `${metadata?.title ?? found.row.name}.zip`
       return reply
-        .header(
-          'content-disposition',
-          `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-        )
+        .header('content-disposition', contentDisposition('attachment', fileName))
         .type('application/zip')
         .send(zipStream(entries))
     },

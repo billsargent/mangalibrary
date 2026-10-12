@@ -12,6 +12,7 @@ import { mediaTypeFor, profileFor } from '../media/kinds.js'
 import { bookFilePath, findBookRecord, type BookFileRecord } from '../content/files.js'
 import { resizedImage } from '../thumbnails/image.js'
 import { cacheHeaders, isNotModified } from './cache-headers.js'
+import { contentDisposition } from './content-disposition.js'
 import { humanSize } from './content-dto.js'
 import { contentContext, seriesAllowed, type ContentContext } from './context.js'
 import type { RouteOptions } from './libraries.js'
@@ -236,10 +237,10 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
       }
     }
 
-    const fileName = `${book.name}-${pageNumber}${PAGE_IMAGE_EXTENSIONS[type] ?? ''}`.replace(/"/g, "'")
+    const fileName = `${book.name}-${pageNumber}${PAGE_IMAGE_EXTENSIONS[type] ?? ''}`
     return reply
       .headers(cacheHeaders(lastModified))
-      .header('content-disposition', `inline; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`)
+      .header('content-disposition', contentDisposition('inline', fileName))
       .type(type || 'application/octet-stream')
       .send(bytes)
   })
@@ -325,13 +326,10 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
 
     try {
       const bytes = await contents.readResource(resourceName)
-      const fileName = (resourceName.split('/').pop() ?? resourceName).replace(/"/g, "'")
+      const fileName = resourceName.split('/').pop() ?? resourceName
       return reply
         .headers(headers)
-        .header(
-          'content-disposition',
-          `inline; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-        )
+        .header('content-disposition', contentDisposition('inline', fileName))
         .type(mediaTypeFor(resourceName))
         .send(bytes)
     } catch {
@@ -361,13 +359,10 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
     if (!path) return reply.code(404).send({ message: 'Book file not found' })
     const info = await stat(path)
 
-    const fileName = basename(path).replace(/"/g, "'")
+    const fileName = basename(path)
     return reply
       .header('content-length', info.size)
-      .header(
-        'content-disposition',
-        `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-      )
+      .header('content-disposition', contentDisposition('attachment', fileName))
       .header('last-modified', info.mtime.toUTCString())
       .type(FILE_MEDIA_TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream')
       .send(createReadStream(path))

@@ -9,7 +9,8 @@ import { archiveEntries } from '../content/files.js'
 import { buildBookDtos } from './content-data.js'
 import type { BookRow } from './content-dto.js'
 import { loadReadStatus, matchesReadStatus, sendBook } from './books.js'
-import { accessibleSeriesIds, contentContext, type ContentContext } from './context.js'
+import { contentDisposition } from './content-disposition.js'
+import { accessibleSeriesIds, contentContext, scopedLibraryIds, type ContentContext } from './context.js'
 import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { toReadListDto, type ReadListDto, type ReadListRow } from './organisation-dto.js'
@@ -238,8 +239,8 @@ export async function registerReadListRoutes(app: FastifyInstance, opts: RouteOp
     const query = (req.query ?? {}) as Record<string, unknown>
     const { page, size } = paging(query)
     const unpaged = booleanParam(query.unpaged) === true
-    const libraries = toArray(query.library_id)
-    const scoped = libraries.length > 0 ? libraries : context.libraryIds
+    const scoped = scopedLibraryIds(context, query.library_id)
+    if (scoped.length === 0 && toArray(query.library_id).length > 0) return springPage([], page, size, 0)
 
     let builder = db.selectFrom('readlists').select(READ_LIST_COLUMNS)
     if (typeof query.search === 'string' && query.search !== '') {
@@ -493,12 +494,9 @@ export async function registerReadListRoutes(app: FastifyInstance, opts: RouteOp
         ordered.map((book) => book.id),
         (fileName, index) => `${index + 1} - ${fileName}`,
       )
-      const fileName = `${found.dto.name}.zip`.replace(/"/g, "'")
+      const fileName = `${found.dto.name}.zip`
       return reply
-        .header(
-          'content-disposition',
-          `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-        )
+        .header('content-disposition', contentDisposition('attachment', fileName))
         .type('application/zip')
         .send(zipStream(entries))
     },
@@ -541,9 +539,6 @@ async function structuralFilter(
 
   const mediaStatuses = toArray(query.media_status)
   if (mediaStatuses.length > 0) builder = builder.where('media.status', 'in', mediaStatuses)
-  if (booleanParam(query.unpaged) === true) {
-    builder = builder.where((eb) => eb.or([eb('media.page_count', '=', 0), eb('media.page_count', 'is', null)]))
-  }
 
   const tags = toArray(query.tag)
   if (tags.length > 0) {

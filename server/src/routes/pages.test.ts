@@ -11,6 +11,7 @@ import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
 import { minimalPdf } from '../spikes/minimalPdf.js'
+import { extendedFileName } from '../testing/headers.js'
 import { writeZip } from '../testing/zip.js'
 
 const READER_KEY = 'reader-key'
@@ -361,6 +362,21 @@ describe('book page thumbnails', () => {
     expect(
       (await app.inject({ method: 'GET', url: '/api/v1/books/B1/pages/99/thumbnail', headers: reader })).statusCode,
     ).toBe(400)
+
+    await app.close()
+  })
+})
+
+describe('a book whose name a header cannot carry as it is', () => {
+  it('still serves its pages, and gives the name in the form a header can', async () => {
+    const { app, database } = await setup()
+    const name = '進撃の巨人 第1巻 “特装版”'
+    await database.db.updateTable('books').set({ name }).where('id', '=', 'B1').execute()
+
+    const res = await app.inject({ method: 'GET', url: '/api/v1/books/B1/pages/1', headers: reader })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toBe('image/jpeg')
+    expect(extendedFileName(res.headers['content-disposition'])).toBe(`${name}-1.jpeg`)
 
     await app.close()
   })

@@ -12,6 +12,7 @@ import { loadConfig } from '../config.js'
 import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
+import { extendedFileName } from '../testing/headers.js'
 import { refreshBookLocalArtwork } from '../metadata/localArtwork.js'
 
 const ADMIN_KEY = 'admin-key'
@@ -768,6 +769,27 @@ describe('pages and files', () => {
     const jobs = await database.db.selectFrom('jobs').select(['type', 'payload']).orderBy('type').execute()
     expect(jobs.map((job) => job.type)).toEqual(['DeleteBookFile', 'DeleteSeriesFile', 'RegenerateBookThumbnails'])
     expect(JSON.parse(jobs[2]!.payload as string)).toEqual({ forBiggerResultOnly: true })
+    await app.close()
+  })
+})
+
+describe('a book file whose name a header cannot carry as it is', () => {
+  it('still downloads, under its own name', async () => {
+    const { app, database, root } = await setup()
+    const name = '進撃の巨人 v01 – Hajime’s.cbz'
+    writeFileSync(join(root, name), 'a book with a Japanese name')
+    await database.db
+      .updateTable('books')
+      .set({ url: pathToFileURL(join(root, name)).href })
+      .where('id', '=', 'B1')
+      .execute()
+
+    const res = await app.inject({ method: 'GET', url: '/api/v1/books/B1/file', headers: reader })
+    expect(res.statusCode).toBe(200)
+    expect(res.payload).toBe('a book with a Japanese name')
+    expect(extendedFileName(res.headers['content-disposition'])).toBe(name)
+    expect(res.headers['content-disposition']).toContain('attachment; filename="_____ v01 _ Hajime_s.cbz"')
+
     await app.close()
   })
 })

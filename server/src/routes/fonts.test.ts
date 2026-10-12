@@ -96,7 +96,9 @@ describe('font files', () => {
     const res = await app.inject({ method: 'GET', url: '/api/v1/fonts/resource/Inter/Inter-Regular.woff2' })
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toBe('font/woff2')
-    expect(res.headers['content-disposition']).toBe('attachment; filename="Inter-Regular.woff2"')
+    expect(res.headers['content-disposition']).toBe(
+      `attachment; filename="Inter-Regular.woff2"; filename*=UTF-8''Inter-Regular.woff2`,
+    )
     expect(res.body).toBe('regular bytes')
 
     await app.close()
@@ -136,7 +138,7 @@ describe('font css', () => {
     const res = await app.inject({ method: 'GET', url: '/api/v1/fonts/resource/Inter/css' })
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toBe('text/css')
-    expect(res.headers['content-disposition']).toBe('attachment; filename="Inter.css"')
+    expect(res.headers['content-disposition']).toBe(`attachment; filename="Inter.css"; filename*=UTF-8''Inter.css`)
 
     const css = res.body
     // Three faces: the plain one, the bold one and the italic one.
