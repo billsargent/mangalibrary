@@ -194,7 +194,7 @@ function coverOf(pkg: EpubPackage): string | null {
  * images, which is what makes it Divina compatible; anything else exposes the
  * spine documents as its pages.
  */
-export async function openEpub(buffer: Buffer): Promise<{
+export async function openEpub(source: string | Buffer): Promise<{
   container: Container
   pages: { fileName: string; mediaType: string; size: number | null }[]
   files: { fileName: string; mediaType: string; size: number }[]
@@ -203,7 +203,26 @@ export async function openEpub(buffer: Buffer): Promise<{
   packageDocument: string
   cover: string | null
 }> {
-  const container = await openZip(buffer)
+  const container = await openZip(source)
+  try {
+    return await describeEpub(container)
+  } catch (error) {
+    // The caller never receives an archive that could not be described, so it is
+    // closed here or by nobody.
+    container.close()
+    throw error
+  }
+}
+
+async function describeEpub(container: Container): Promise<{
+  container: Container
+  pages: { fileName: string; mediaType: string; size: number | null }[]
+  files: { fileName: string; mediaType: string; size: number }[]
+  toc: TocEntry[]
+  divinaCompatible: boolean
+  packageDocument: string
+  cover: string | null
+}> {
   const pkg = await readPackage(container)
   if (!pkg || pkg.spine.length === 0) {
     throw new Error('the EPUB has no package document or no spine')
