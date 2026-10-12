@@ -108,9 +108,30 @@ function resolveSessionId(req: FastifyRequest): string | undefined {
   return fromHeader || req.cookies[SESSION_COOKIE]
 }
 
-function wantsRememberMe(body: Record<string, unknown>): boolean {
-  const value = body['remember-me']
-  return value === true || value === 'true'
+/**
+ * Whether a request is a browser signing in.
+ *
+ * A browser sends its credentials once - the forked UI sends them as HTTP Basic on
+ * `GET /api/v2/users/me` - and expects a session back for everything that follows.
+ * It says so with the header the reference's UI has always sent, which is also what
+ * stops Spring from answering a sign-in with a redirect.
+ */
+function wantsSession(req: FastifyRequest): boolean {
+  const header = req.headers['x-requested-with']
+  const value = Array.isArray(header) ? header[0] : header
+  return typeof value === 'string' && value.toLowerCase() === 'xmlhttprequest'
+}
+
+/**
+ * Whether the caller asked to be remembered.
+ *
+ * The reference reads this as a request parameter, so both a query and a body are
+ * looked at: the UI sends it in the query of its sign-in request.
+ */
+function wantsRememberMe(req: FastifyRequest): boolean {
+  const query = (req.query ?? {}) as Record<string, unknown>
+  const body = (req.body ?? {}) as Record<string, unknown>
+  return [query['remember-me'], body['remember-me']].some((value) => value === true || value === 'true')
 }
 
 /**
@@ -152,10 +173,82 @@ export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions
   const store = opts.store ?? new SqliteSessionStore(opts.db)
 
   await app.register(cookie)
+  /**
+   * Give a caller that signed in with Basic credentials a session to keep.
+   *
+   * Only a request that says it is a browser gets one - the forked UI sends
+   * `X-Requested-With` - so a script or a device sending its credentials on every
+   * request does not leave a session behind for each one. The sign-in is recorded as an
+   * authentication activity, which is what the reference does for a Basic sign-in too.
+   *
+   * The cookie the browser already holds decides nothing by itself: what matters is
+   * whether it still resolves to a session, and whose. A cookie from a session that has
+   * expired, been purged, or belongs to another account is replaced, because otherwise a
+   * sign-in that succeeded would leave the browser holding a cookie the server does not
+   * know - authenticated for that one request, and a stranger to every request after it.
+   * That is the difference between a browser that signs in and one that bounces back to
+   * the login page for ever.
+   */
+  const startSession = async (req: FastifyRequest, reply: FastifyReply, user: AuthUser): Promise<void> => {
+    if (!wantsSession(req)) return
 
-  app.addHook('onRequest', async (req) => {
+    const presented = req.cookies[SESSION_COOKIE]
+    if (presented !== undefined) {
+      const owner = await store.get(presented)
+      if (owner === user.id) {
+        // The browser is already signed in as this account: keep what it has.
+        req.log.debug({ email: user.email, session: presented.slice(0, 8) }, 'sign-in: session already held')
+        return
+      }
+
+      // A session nobody can use any more, or one that belongs to somebody else.
+      await store.destroy(presented)
+      req.log.info(
+        { email: user.email, session: presented.slice(0, 8), replaced: owner !== undefined },
+        'sign-in: replaced a session the browser could not use',
+      )
+    }
+
+    const sessionId = await store.create(user.id, ttl)
+    req.sessionId = sessionId
+    reply.setCookie(SESSION_COOKIE, sessionId, cookieOptions(ttl))
+    await recordActivity(opts.db, user.id, user.email, req, true, null)
+    req.log.info(
+      { email: user.email, session: sessionId.slice(0, 8), rememberMe: wantsRememberMe(req) },
+      'sign-in: session created',
+    )
+
+    if (wantsRememberMe(req)) {
+      const ttlMs = (await getRememberMeDurationDays(opts.db)) * DAY_MS
+      reply.setCookie(
+        REMEMBER_ME_COOKIE,
+        signRememberMe(await rememberMeKey(opts.db), user.id, Date.now() + ttlMs),
+        cookieOptions(ttlMs),
+      )
+    }
+  }
+
+  app.addHook('onRequest', async (req, reply) => {
     const apiKey = req.headers[API_KEY_HEADER]
     const apiKeyValue = Array.isArray(apiKey) ? apiKey[0] : apiKey
+    const presentedSession = resolveSessionId(req)
+    const presentedBasic = basicCredentials(req.headers.authorization)
+    // What a hard-to-explain sign-in needs first: which credentials actually arrived on
+    // this request. Never the password, never a whole session id - enough to tell a
+    // mechanism that was not tried from one that was tried and refused.
+    req.log.debug(
+      {
+        method: req.method,
+        url: req.url,
+        apiKey: apiKeyValue !== undefined,
+        basic: presentedBasic !== undefined,
+        session: presentedSession !== undefined ? presentedSession.slice(0, 8) : undefined,
+        rememberMe: req.cookies[REMEMBER_ME_COOKIE] !== undefined,
+        browser: wantsSession(req),
+      },
+      'authentication: credentials presented',
+    )
+
     if (apiKeyValue) {
       const owner = await findUserByApiKey(opts.db, apiKeyValue)
       if (owner) {
@@ -165,17 +258,18 @@ export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions
       }
     }
 
-    const basic = basicCredentials(req.headers.authorization)
-    if (basic) {
-      const user = await authenticateCredentials(opts.db, basic.username, basic.password)
+    if (presentedBasic) {
+      const user = await authenticateCredentials(opts.db, presentedBasic.username, presentedBasic.password)
       if (user) {
         req.user = user
         req.authMethod = 'basic'
+        await startSession(req, reply, user)
         return
       }
+      req.log.info({ email: presentedBasic.username }, 'authentication: Basic credentials refused')
     }
 
-    const sessionId = resolveSessionId(req)
+    const sessionId = presentedSession
     if (sessionId) {
       const userId = await store.get(sessionId)
       if (userId) {
@@ -187,6 +281,12 @@ export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions
           return
         }
       }
+      // A signed-in browser holding a cookie the server cannot resolve: without this
+      // line the only evidence of it is a 401 on an otherwise anonymous-looking request.
+      req.log.info(
+        { session: sessionId.slice(0, 8), resolved: userId !== undefined },
+        'authentication: session cookie did not sign the caller in',
+      )
     }
 
     const remember = req.cookies[REMEMBER_ME_COOKIE]
@@ -222,7 +322,7 @@ export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions
     if (AUTH_TOKEN_HEADER in req.headers) reply.header('X-Auth-Token', sessionId)
     reply.setCookie(SESSION_COOKIE, sessionId, cookieOptions(ttl))
 
-    if (wantsRememberMe(body)) {
+    if (wantsRememberMe(req)) {
       const ttlMs = (await getRememberMeDurationDays(opts.db)) * DAY_MS
       reply.setCookie(
         REMEMBER_ME_COOKIE,

@@ -169,6 +169,24 @@ export interface UserDto {
   ageRestriction?: { age: number; restriction: string }
 }
 
+/**
+ * The role every user is reported with.
+ *
+ * `USER` is not a stored role and is not in the reference's role enum: the reference adds
+ * it to every user's DTO, because it is the role that stands for "may use the server at
+ * all" and every account has it. A client that reads it - the reference's own UI gates its
+ * library pages on it - has nothing to read if the role is missing, so a user with every
+ * real role would be told they may not browse, and sent looking for a page they are allowed
+ * on: for ever.
+ */
+export const REPORTED_ROLE_USER = 'USER'
+
+export function userRoles(roles: readonly string[]): string[] {
+  const result = [...roles]
+  if (!result.includes(REPORTED_ROLE_USER)) result.push(REPORTED_ROLE_USER)
+  return result
+}
+
 export function toUserDto(
   user: AuthUser,
   librarySharing: { sharedAllLibraries: boolean; sharedLibrariesIds: string[] },
@@ -176,7 +194,7 @@ export function toUserDto(
   const dto: UserDto = {
     id: user.id,
     email: user.email,
-    roles: [...user.roles],
+    roles: userRoles(user.roles),
     sharedAllLibraries: librarySharing.sharedAllLibraries,
     sharedLibrariesIds: [...librarySharing.sharedLibrariesIds],
     labelsAllow: [...user.restrictions.labelsAllow],

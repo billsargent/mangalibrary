@@ -351,6 +351,10 @@
     "defaultMessage": "Age range",
     "description": "Filter by age rating: range label"
   },
+  "64/Mdx": {
+    "defaultMessage": "You do not have permission to view this page.",
+    "description": "Navigation guard: the signed-in user does not have the role a page requires"
+  },
   "6F1ebQ": {
     "defaultMessage": "HTTP Server",
     "description": "Server settings: section header for HTTP server"
@@ -2910,6 +2914,10 @@
   "sGsWvI": {
     "defaultMessage": "Change password",
     "description": "User details screen: change password button"
+  },
+  "sJZ+0o": {
+    "defaultMessage": "Signed in, but the session was not kept. Please try again.",
+    "description": "Login screen: the server accepted the credentials but the browser holds no session for what follows"
   },
   "sNSGMQ": {
     "defaultMessage": "Drag and drop images here",

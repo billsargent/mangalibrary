@@ -318,7 +318,9 @@ describe('users', () => {
     const dto = res.json() as Record<string, unknown>
     expect(dto.id).toBe('U2')
     expect(dto.email).toBe('reader@example.com')
-    expect(dto.roles).toEqual(['PAGE_STREAMING'])
+    // Every user is reported with USER: it is the role that stands for "may use the
+    // server at all", and the reference adds it to every user's DTO.
+    expect(dto.roles).toEqual(['PAGE_STREAMING', 'USER'])
     expect(dto.sharedAllLibraries).toBe(false)
     expect(dto.sharedLibrariesIds).toEqual(['L1'])
     expect(dto.ageRestriction).toEqual({ age: 12, restriction: 'ALLOW_ONLY' })
@@ -362,7 +364,7 @@ describe('users', () => {
     expect(patched.statusCode).toBe(204)
 
     const after = await app.inject({ method: 'GET', url: `/api/v2/users/${dto.id}`, headers: admin })
-    expect(after.json().roles).toEqual(['ADMIN'])
+    expect(after.json().roles).toEqual(['ADMIN', 'USER'])
     expect(after.json().ageRestriction).toBeUndefined()
 
     expect((await app.inject({ method: 'DELETE', url: `/api/v2/users/${dto.id}`, headers: admin })).statusCode).toBe(
@@ -431,13 +433,13 @@ describe('users', () => {
 
     // The account is untouched, and still an administrator.
     const me = await app.inject({ method: 'GET', url: '/api/v2/users/me', headers: admin })
-    expect((me.json() as { roles: string[] }).roles).toEqual(['ADMIN'])
+    expect((me.json() as { roles: string[] }).roles).toEqual(['ADMIN', 'USER'])
 
     await app.close()
   })
 
   it('requires a role array when creating a user', async () => {
-    const { app } = await setup()
+    const { app, database } = await setup()
 
     const asString = await app.inject({
       method: 'POST',
@@ -471,7 +473,7 @@ describe('users', () => {
     expect(unknown.json()).toEqual({ message: 'unknown role: NOT_A_ROLE' })
 
     // An empty list is allowed, as the reference allows it: the account can sign in
-    // and read its own profile, and nothing else.
+    // and read its own profile, and nothing else. It is still reported as a USER.
     const none = await app.inject({
       method: 'POST',
       url: '/api/v2/users',
@@ -479,7 +481,7 @@ describe('users', () => {
       payload: { email: 'c@example.com', password: 'secret', roles: [] },
     })
     expect(none.statusCode).toBe(200)
-    expect((none.json() as { roles: string[] }).roles).toEqual([])
+    expect((none.json() as { roles: string[] }).roles).toEqual(['USER'])
 
     // Roles are de-duplicated, so a repeated name is one role.
     const repeated = await app.inject({
@@ -488,7 +490,26 @@ describe('users', () => {
       headers: admin,
       payload: { email: 'd@example.com', password: 'secret', roles: ['FILE_DOWNLOAD', 'FILE_DOWNLOAD'] },
     })
-    expect((repeated.json() as { roles: string[] }).roles).toEqual(['FILE_DOWNLOAD'])
+    expect((repeated.json() as { roles: string[] }).roles).toEqual(['FILE_DOWNLOAD', 'USER'])
+
+    // USER is accepted and dropped rather than refused: a client that reads a user and
+    // writes it back sends the role the server told it about, and a 400 for echoing
+    // back what was read is a client that cannot edit anybody.
+    const echoed = await app.inject({
+      method: 'POST',
+      url: '/api/v2/users',
+      headers: admin,
+      payload: { email: 'e@example.com', password: 'secret', roles: ['USER', 'PAGE_STREAMING'] },
+    })
+    expect(echoed.statusCode).toBe(200)
+    expect((echoed.json() as { roles: string[] }).roles).toEqual(['PAGE_STREAMING', 'USER'])
+    const stored = await database.db
+      .selectFrom('users')
+      .select('roles')
+      .where('id', '=', (echoed.json() as { id: string }).id)
+      .executeTakeFirstOrThrow()
+    // It is not a storable role: reporting it does not put it in the database.
+    expect(JSON.parse(stored.roles)).toEqual(['PAGE_STREAMING'])
 
     // The same rule applies to an update, whichever way the value is wrong.
     const id = (none.json() as { id: string }).id
