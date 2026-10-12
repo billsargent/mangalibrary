@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { requireAdmin } from '../auth/session.js'
 import { inspectBook } from '../media/analyze.js'
 import { openBook } from '../media/index.js'
-import { SCAN_ERRORS, ScanError, insideRoot, scanFolder } from '../media/scan.js'
+import { SCAN_ERRORS, ScanError, insideRoot, insideRootOnDisk, scanFolder } from '../media/scan.js'
 import { TransientBookStore, type TransientBook } from '../media/transient.js'
 import { nextTsid } from '../tsid.js'
 import { cacheHeaders, isNotModified } from './cache-headers.js'
@@ -78,8 +78,11 @@ export async function registerTransientBookRoutes(app: FastifyInstance, opts: Ro
 
     // A folder inside a library is that library's to scan, not a transient one.
     const libraries = await db.selectFrom('libraries').select('root').execute()
-    if (libraries.some((library) => insideRoot(library.root, path))) {
-      return reply.code(400).send({ message: SCAN_ERRORS.insideLibrary })
+    for (const library of libraries) {
+      // As typed, and as the disk spells it: the same folder can be named both ways.
+      if (insideRoot(library.root, path) || (await insideRootOnDisk(library.root, path))) {
+        return reply.code(400).send({ message: SCAN_ERRORS.insideLibrary })
+      }
     }
 
     let scanned

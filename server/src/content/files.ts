@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises'
+import { realpath, stat } from 'node:fs/promises'
 import { basename, isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Kysely } from 'kysely'
@@ -73,12 +73,22 @@ function storedPathCandidates(root: string, url: string): string[] {
  * Every candidate is confined to the library root, so a row can never point the
  * server at an arbitrary file - including one that arrives from an imported
  * database.
+ *
+ * Both sides are resolved before they are compared. The scanner stores a book
+ * under the root as the disk spells it, while the root is kept as it was typed,
+ * and the two differ whenever the root was typed in another letter case, through
+ * a mapped drive or through a link. Resolving the candidate also refuses a link
+ * inside the library that leads out of it, as the scanner does.
  */
 export async function confinedPath(root: string, url: string, kind: 'file' | 'directory'): Promise<string | null> {
+  const resolvedRoot = await realpath(root).catch(() => null)
+  if (resolvedRoot === null) return null
+
   for (const candidate of storedPathCandidates(root, url)) {
-    if (!insideRoot(root, candidate)) continue
-    const info = await stat(candidate).catch(() => undefined)
-    if (kind === 'file' ? info?.isFile() : info?.isDirectory()) return candidate
+    const resolved = await realpath(candidate).catch(() => null)
+    if (resolved === null || !insideRoot(resolvedRoot, resolved)) continue
+    const info = await stat(resolved).catch(() => undefined)
+    if (kind === 'file' ? info?.isFile() : info?.isDirectory()) return resolved
   }
   return null
 }
