@@ -93,11 +93,18 @@ export async function registerSseRoutes(app: FastifyInstance, opts: RouteOptions
   app.get('/sse/v1/events', { preHandler: requireAuth }, (req, reply) => {
     const user = requireUser(req)
 
+    // The response is written by hand from here on, which bypasses the reply
+    // hooks the CORS plugin uses to add its headers, so the ones it already put
+    // on the reply for this origin are carried over to the raw response. Without
+    // them a browser refuses to open the stream and reports a CORS failure.
+    const cors = Object.entries(reply.getHeaders()).filter(([name]) => name.startsWith('access-control-'))
+
     reply.raw.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache, no-transform',
       connection: 'keep-alive',
       'x-accel-buffering': 'no',
+      ...Object.fromEntries(cors),
     })
     // The response is written by hand from here on.
     reply.hijack()

@@ -4,9 +4,18 @@
 
 ## Frontend development
 
-You can run a live development server with `npm run dev`. The dev server will override the URL to connect to `localhost:8080`, so you can also run `gradle bootRun` to have a backend running, serving the API requests. The frontend will be loaded from `localhost:3000`.
+You can run a live development server with `npm run dev`. The dev server connects to `localhost:8080` (`.env.development`: `VITE_KOMGA_API_URL`), and serves the frontend from `localhost:3000`.
 
-Make sure you start the backend with the `dev` profile, else the frontend requests will be denied because of CORS.
+To have a backend serving those requests, start the server in this repository on that port, and allow this origin to call it:
+
+```bash
+cd server
+SERVER_PORT=8080 KOMGA_CORS_ALLOWED_ORIGINS=http://localhost:3000 npm run dev
+```
+
+Both settings matter. The server listens on `25600` by default, so without `SERVER_PORT` the UI talks to nothing, and a browser refuses a cross-origin call from `localhost:3000` unless the server names that origin - which is off by default, because nothing in a deployment needs it. See [the configuration documentation](../docs/CONFIGURATION.md).
+
+Sign in with an account on that server. A browser that holds a session cookie for a database that has since been recreated is not a problem: signing in replaces a cookie the server can no longer resolve.
 
 ## OpenAPI
 

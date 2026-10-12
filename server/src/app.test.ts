@@ -9,10 +9,11 @@ import { createDatabase } from './db/index.js'
 import { migrate } from './db/migrate.js'
 import { migrations } from './db/migrations/index.js'
 
-async function buildTestServer() {
+async function buildTestServer(env: NodeJS.ProcessEnv = {}) {
   const config = loadConfig({
     KOMGA_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'ml-app-')),
     LOG_LEVEL: 'silent',
+    ...env,
   } as NodeJS.ProcessEnv)
   const database = createDatabase(':memory:')
   await migrate(database.db, migrations)
@@ -33,6 +34,45 @@ describe('app', () => {
     const { app } = await buildTestServer()
     const res = await app.inject({ method: 'GET', url: '/nope' })
     expect(res.statusCode).toBe(404)
+    await app.close()
+  })
+
+  it('answers a preflight for an allowed origin, before authentication', async () => {
+    const { app } = await buildTestServer({ KOMGA_CORS_ALLOWED_ORIGINS: 'http://localhost:3000' })
+
+    const preflight = await app.inject({
+      method: 'OPTIONS',
+      url: '/api/v2/users/me',
+      headers: {
+        origin: 'http://localhost:3000',
+        'access-control-request-method': 'GET',
+        // A preflight never carries the session cookie it is asking about.
+        'access-control-request-headers': 'x-auth-token',
+      },
+    })
+    expect(preflight.statusCode).toBe(204)
+    expect(preflight.headers['access-control-allow-origin']).toBe('http://localhost:3000')
+    expect(preflight.headers['access-control-allow-credentials']).toBe('true')
+    expect(preflight.headers['access-control-expose-headers']).toContain('Content-Disposition')
+    expect(preflight.headers['access-control-expose-headers']).toContain('x-auth-token')
+    await app.close()
+  })
+
+  it('does not allow an origin that was not configured', async () => {
+    const { app } = await buildTestServer({ KOMGA_CORS_ALLOWED_ORIGINS: 'http://localhost:3000' })
+    const res = await app.inject({
+      method: 'GET',
+      url: '/health',
+      headers: { origin: 'http://evil.example' },
+    })
+    expect(res.headers['access-control-allow-origin']).toBeUndefined()
+    await app.close()
+  })
+
+  it('sends no CORS header at all when no origin is allowed', async () => {
+    const { app } = await buildTestServer()
+    const res = await app.inject({ method: 'GET', url: '/health', headers: { origin: 'http://localhost:3000' } })
+    expect(res.headers['access-control-allow-origin']).toBeUndefined()
     await app.close()
   })
 
