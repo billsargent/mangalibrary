@@ -9,6 +9,7 @@ import {
 import { allLibraryIds } from '../auth/users.js'
 import type { AuthUser } from '../auth/types.js'
 import type { DB } from '../db/schema.js'
+import { toArray } from './query.js'
 
 /** The authenticated user, or a throw if the route forgot its pre-handler. */
 export function requireUser(req: FastifyRequest): AuthUser {
@@ -73,6 +74,22 @@ export async function contentContext(db: Kysely<DB>, req: FastifyRequest): Promi
 export function seriesAllowed(context: ContentContext, seriesId: string, libraryId: string): boolean {
   if (!canAccessLibrary(context.user, libraryId)) return false
   return context.restrictedSeriesIds === null || context.restrictedSeriesIds.includes(seriesId)
+}
+
+/**
+ * The libraries a listing covers: the ones the request names, narrowed to the ones
+ * the caller may see.
+ *
+ * `library_id` is a filter, and a filter can only take away. Naming a library that
+ * is not shared with the caller therefore leaves nothing, which is also what the
+ * caller is told about a library that does not exist - the two must not be
+ * distinguishable by asking.
+ */
+export function scopedLibraryIds(context: ContentContext, requested: unknown): string[] {
+  const asked = toArray(requested)
+  if (asked.length === 0) return context.libraryIds
+  const allowed = new Set(context.libraryIds)
+  return asked.filter((id) => allowed.has(id))
 }
 
 /**

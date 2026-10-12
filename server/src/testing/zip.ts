@@ -22,6 +22,9 @@ function crc32(buffer: Buffer): number {
   return (crc ^ -1) >>> 0
 }
 
+/** General purpose flag, bit 11: the entry's name is UTF-8 rather than code page 437. */
+const UTF8_NAMES = 0x0800
+
 /** Build a zip with stored (uncompressed) entries. */
 export function writeZip(files: { name: string; data: Buffer }[]): Buffer {
   const locals: Buffer[] = []
@@ -35,7 +38,7 @@ export function writeZip(files: { name: string; data: Buffer }[]): Buffer {
     const local = Buffer.alloc(30)
     local.writeUInt32LE(0x04034b50, 0)
     local.writeUInt16LE(20, 4)
-    local.writeUInt16LE(0, 6)
+    local.writeUInt16LE(UTF8_NAMES, 6)
     local.writeUInt16LE(0, 8)
     local.writeUInt32LE(crc, 14)
     local.writeUInt32LE(file.data.length, 18)
@@ -47,6 +50,7 @@ export function writeZip(files: { name: string; data: Buffer }[]): Buffer {
     header.writeUInt32LE(0x02014b50, 0)
     header.writeUInt16LE(20, 4)
     header.writeUInt16LE(20, 6)
+    header.writeUInt16LE(UTF8_NAMES, 8)
     header.writeUInt32LE(crc, 16)
     header.writeUInt32LE(file.data.length, 20)
     header.writeUInt32LE(file.data.length, 24)

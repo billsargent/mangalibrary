@@ -10,6 +10,7 @@ import { loadConfig } from '../config.js'
 import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
+import { extendedFileName } from '../testing/headers.js'
 
 const ADMIN_KEY = 'admin-key'
 const READER_KEY = 'reader-key'
@@ -268,6 +269,29 @@ describe('book file download', () => {
     const named = await app.inject({ method: 'GET', url: '/api/v1/books/B1/file/a.cbz', headers: reader })
     expect(named.statusCode).toBe(200)
     expect(named.payload).toBe('AAA')
+
+    await app.close()
+  })
+})
+
+describe('a series or a read list whose name a header cannot carry as it is', () => {
+  it('still downloads, under its own name', async () => {
+    const { app, database } = await setup()
+    await database.db
+      .updateTable('series_metadata')
+      .set({ title: '進撃の巨人' })
+      .where('series_id', '=', 'S1')
+      .execute()
+    await database.db.updateTable('readlists').set({ name: 'お気に入り "2024"' }).where('id', '=', 'RL1').execute()
+
+    const series = await app.inject({ method: 'GET', url: '/api/v1/series/S1/file', headers: reader })
+    expect(series.statusCode).toBe(200)
+    expect(extendedFileName(series.headers['content-disposition'])).toBe('進撃の巨人.zip')
+    expect((await readZip(series.rawPayload)).map((entry) => entry.name)).toEqual(['a.cbz', 'b.cbz'])
+
+    const readList = await app.inject({ method: 'GET', url: '/api/v1/readlists/RL1/file', headers: reader })
+    expect(readList.statusCode).toBe(200)
+    expect(extendedFileName(readList.headers['content-disposition'])).toBe('お気に入り "2024".zip')
 
     await app.close()
   })

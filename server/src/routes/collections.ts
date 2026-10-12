@@ -4,7 +4,7 @@ import { requireAdmin, requireAuth } from '../auth/session.js'
 import { announceCollection, collectionRef } from '../content-events.js'
 import type { DB } from '../db/schema.js'
 import { nextTsid } from '../tsid.js'
-import { accessibleSeriesIds, contentContext, type ContentContext } from './context.js'
+import { accessibleSeriesIds, contentContext, scopedLibraryIds, type ContentContext } from './context.js'
 import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { toCollectionDto, type CollectionDto, type CollectionRow } from './organisation-dto.js'
@@ -108,8 +108,8 @@ export async function registerCollectionRoutes(app: FastifyInstance, opts: Route
     const query = (req.query ?? {}) as Record<string, unknown>
     const { page, size } = paging(query)
     const unpaged = booleanParam(query.unpaged) === true
-    const libraries = toArray(query.library_id)
-    const scoped = libraries.length > 0 ? libraries : context.libraryIds
+    const scoped = scopedLibraryIds(context, query.library_id)
+    if (scoped.length === 0 && toArray(query.library_id).length > 0) return springPage([], page, size, 0)
 
     let builder = db.selectFrom('collections').select(COLLECTION_COLUMNS)
     if (typeof query.search === 'string' && query.search !== '') {

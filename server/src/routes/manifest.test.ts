@@ -11,6 +11,7 @@ import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
 import { minimalPdf } from '../spikes/minimalPdf.js'
+import { extendedFileName } from '../testing/headers.js'
 import { writeZip } from '../testing/zip.js'
 
 const READER_KEY = 'reader-key'
@@ -57,6 +58,7 @@ async function epub(): Promise<Buffer> {
     { name: 'OEBPS/nav.xhtml', data: Buffer.from(nav) },
     { name: 'OEBPS/chapter1.xhtml', data: Buffer.from('<html><body>first chapter</body></html>') },
     { name: 'OEBPS/chapter2.xhtml', data: Buffer.from('<html><body>second chapter</body></html>') },
+    { name: 'OEBPS/第一章.xhtml', data: Buffer.from('<html><body>afterword</body></html>') },
     { name: 'OEBPS/style.css', data: Buffer.from('body { color: black }') },
     { name: 'OEBPS/1.jpg', data: await jpeg(8, 8) },
     { name: 'OEBPS/book.ttf', data: Buffer.from('fontdata') },
@@ -637,6 +639,24 @@ describe('book positions', () => {
     // A book that is not an EPUB has no positions at all.
     const divina = await app.inject({ method: 'GET', url: '/api/v1/books/B1/positions', headers: reader })
     expect(divina.json()).toEqual({ positions: [], total: 0 })
+
+    await app.close()
+  })
+})
+
+describe('an EPUB resource whose name a header cannot carry as it is', () => {
+  it('is still served, under its own name', async () => {
+    const { app, database } = await setup()
+    await database.db.insertInto('media_file').values({ book_id: 'B3', file_name: 'OEBPS/第一章.xhtml' }).execute()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/books/B3/resource/OEBPS/${encodeURIComponent('第一章.xhtml')}`,
+      headers: reader,
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toContain('afterword')
+    expect(extendedFileName(res.headers['content-disposition'])).toBe('第一章.xhtml')
 
     await app.close()
   })

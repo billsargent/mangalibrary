@@ -1004,7 +1004,7 @@ describe('books', () => {
     await app.close()
   })
 
-  it('filters by read status, tag and paging state', async () => {
+  it('filters by read status and tag, and returns everything when unpaged', async () => {
     const { app } = await setup()
 
     const read = await app.inject({ method: 'GET', url: '/api/v1/books?read_status=READ', headers: reader })
@@ -1017,7 +1017,8 @@ describe('books', () => {
     expect((tagged.json() as { totalElements: number }).totalElements).toBe(1)
 
     const unpaged = await app.inject({ method: 'GET', url: '/api/v1/books?unpaged=true', headers: reader })
-    expect((unpaged.json() as { content: { id: string }[] }).content.map((b) => b.id)).toEqual(['B2'])
+    // Unpaged is about paging: both of the reader's books come back, pages or none.
+    expect((unpaged.json() as { content: { id: string }[] }).content.map((b) => b.id).sort()).toEqual(['B1', 'B2'])
 
     const released = await app.inject({
       method: 'GET',

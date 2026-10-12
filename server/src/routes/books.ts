@@ -7,7 +7,7 @@ import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
 import { aggregateSeriesMetadata } from '../metadata/aggregation.js'
 import { buildBookDtos } from './content-data.js'
 import type { BookRow } from './content-dto.js'
-import { contentContext, type ContentContext } from './context.js'
+import { contentContext, scopedLibraryIds, type ContentContext } from './context.js'
 import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { applyBookMetadataPatch } from './metadata.js'
@@ -50,7 +50,6 @@ export interface BookQueryFilters {
   readStatuses?: string[]
   tags?: string[]
   releasedAfter?: string
-  unpaged?: boolean | null
   deleted?: boolean | null
 }
 
@@ -98,12 +97,6 @@ function bookQuery(db: Kysely<DB>, filters: BookQueryFilters) {
 
   if (filters.releasedAfter !== undefined && filters.releasedAfter !== '') {
     query = query.where('book_metadata.release_date', '>=', filters.releasedAfter)
-  }
-
-  if (filters.unpaged === true) {
-    query = query.where((eb) => eb.or([eb('media.page_count', '=', 0), eb('media.page_count', 'is', null)]))
-  } else if (filters.unpaged === false) {
-    query = query.where('media.page_count', '>', 0)
   }
 
   return query
@@ -341,12 +334,11 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
     )
 
     const filters: BookQueryFilters = {
-      libraryIds: toArray(query.library_id).length > 0 ? toArray(query.library_id) : context.libraryIds,
+      libraryIds: scopedLibraryIds(context, query.library_id),
       mediaStatuses: toArray(query.media_status),
       readStatuses: toArray(query.read_status),
       tags: toArray(query.tag),
       search: term,
-      unpaged: booleanParam(query.unpaged),
       deleted: booleanParam(query.deleted),
     }
     if (typeof query.released_after === 'string') filters.releasedAfter = query.released_after
@@ -384,7 +376,7 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
     const context = await contentContext(db, req)
     const query = (req.query ?? {}) as Record<string, unknown>
     const { page, size } = paging(query)
-    const libraryIds = toArray(query.library_id).length > 0 ? toArray(query.library_id) : context.libraryIds
+    const libraryIds = scopedLibraryIds(context, query.library_id)
     if (libraryIds.length === 0) return springPage([], page, size, 0)
 
     const userId = context.user.id

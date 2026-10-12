@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import { extname, join, resolve, sep } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { requireAuth } from '../auth/session.js'
+import { contentDisposition } from './content-disposition.js'
 import type { RouteOptions } from './libraries.js'
 
 /** The extensions a font family may be made of. */
@@ -145,7 +146,7 @@ export async function registerFontRoutes(app: FastifyInstance, opts: RouteOption
       const extension = extname(path).slice(1).toLowerCase()
       return reply
         .header('content-type', `font/${extension}`)
-        .header('content-disposition', `attachment; filename="${req.params.fontFile}"`)
+        .header('content-disposition', contentDisposition('attachment', req.params.fontFile))
         .send(bytes)
     },
   )
@@ -157,7 +158,7 @@ export async function registerFontRoutes(app: FastifyInstance, opts: RouteOption
 
     return reply
       .header('content-type', 'text/css')
-      .header('content-disposition', `attachment; filename="${family.name}.css"`)
+      .header('content-disposition', contentDisposition('attachment', `${family.name}.css`))
       .send(familyCss(family))
   })
 }
