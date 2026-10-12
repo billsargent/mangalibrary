@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { bookTitleCompact, clampPage, cycle, toReaderPages } from './reader'
+import { bookTitleCompact, clampPage, cycle, readingDirectionFor, toReaderPages } from './reader'
 import type { PageDto } from '@/generated/openapi'
 
 const page = (number: number, mediaType: string): PageDto => ({
@@ -67,5 +67,47 @@ describe('cycle', () => {
 
   test('starts from the first for a value that is not in the list', () => {
     expect(cycle([0, 5, 10], 7)).toBe(0)
+  })
+})
+
+describe('readingDirectionFor', () => {
+  test('is the preference when the series names no direction', () => {
+    expect(readingDirectionFor({ preference: 'WEBTOON' })).toEqual({
+      direction: 'WEBTOON',
+      decidedBySeries: false,
+    })
+    expect(readingDirectionFor({ fromSeries: null, preference: 'VERTICAL' }).direction).toBe(
+      'VERTICAL',
+    )
+    expect(readingDirectionFor({ fromSeries: '', preference: 'VERTICAL' }).direction).toBe(
+      'VERTICAL',
+    )
+  })
+
+  test('is what the series names, and says so when that is not the preference', () => {
+    expect(readingDirectionFor({ fromSeries: 'RIGHT_TO_LEFT', preference: 'WEBTOON' })).toEqual({
+      direction: 'RIGHT_TO_LEFT',
+      decidedBySeries: true,
+    })
+    expect(
+      readingDirectionFor({ fromSeries: 'RIGHT_TO_LEFT', preference: 'RIGHT_TO_LEFT' }),
+    ).toEqual({ direction: 'RIGHT_TO_LEFT', decidedBySeries: false })
+  })
+
+  test('is what the reader picked for the series, over what the series names', () => {
+    expect(
+      readingDirectionFor({
+        chosenForSeries: 'WEBTOON',
+        fromSeries: 'LEFT_TO_RIGHT',
+        preference: 'RIGHT_TO_LEFT',
+      }),
+    ).toEqual({ direction: 'WEBTOON', decidedBySeries: false })
+  })
+
+  test('ignores a direction this reader does not know', () => {
+    expect(readingDirectionFor({ fromSeries: 'DIAGONAL', preference: 'LEFT_TO_RIGHT' })).toEqual({
+      direction: 'LEFT_TO_RIGHT',
+      decidedBySeries: false,
+    })
   })
 })

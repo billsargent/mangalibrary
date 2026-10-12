@@ -273,7 +273,13 @@ import { seriesDetailQuery, useAddSeriesPoster } from '@/colada/series'
 import { useCurrentUser } from '@/colada/users'
 import EmptyStateNetworkError from '@/components/EmptyStateNetworkError.vue'
 import type { ShortcutGroup } from '@/components/reader/ShortcutsHelp.vue'
-import { bookTitleCompact, clampPage, cycle, toReaderPages } from '@/functions/reader'
+import {
+  bookTitleCompact,
+  clampPage,
+  cycle,
+  readingDirectionFor,
+  toReaderPages,
+} from '@/functions/reader'
 import {
   type BookDto,
   komgaGetBookSiblingNext,
@@ -283,11 +289,7 @@ import {
   komgaMarkBookReadProgress,
 } from '@/generated/openapi'
 import { useReaderStore } from '@/stores/reader'
-import {
-  type ReadingDirection,
-  readingDirectionMessages,
-  ReadingDirectionValues,
-} from '@/types/ReadingDirection'
+import { type ReadingDirection, readingDirectionMessages } from '@/types/ReadingDirection'
 import {
   continuousScaleTypeMessages,
   ContinuousScaleTypeValues,
@@ -598,7 +600,8 @@ function goTo(number: number) {
  *
  * It is the reader's preference, unless the series says how it is meant to be read:
  * that applies to this book without replacing the preference. A direction the
- * reader then picks is theirs, and is kept.
+ * reader then picks is theirs, and is kept - for this series too, so that what the
+ * series says does not undo it at the next book.
  */
 const direction = ref<ReadingDirection>(store.readingDirection)
 const isContinuous = computed(() => direction.value === 'WEBTOON')
@@ -608,17 +611,30 @@ const chosenDirection = computed({
   set: (value) => {
     direction.value = value
     store.readingDirection = value
+
+    const seriesId = series.value?.id
+    if (seriesId === undefined) return
+    const { direction: withoutChoice } = readingDirectionFor({
+      fromSeries: series.value?.metadata.readingDirection,
+      preference: value,
+    })
+    // Only a choice the series would otherwise undo needs remembering.
+    if (withoutChoice === value) delete store.seriesDirections[seriesId]
+    else store.seriesDirections[seriesId] = value
   },
 })
 
 function applySeriesDirection() {
-  const fromSeries = series.value?.metadata.readingDirection as ReadingDirection | undefined
-  const known = fromSeries !== undefined && ReadingDirectionValues.includes(fromSeries)
-  direction.value = known ? fromSeries : store.readingDirection
+  const resolved = readingDirectionFor({
+    chosenForSeries: series.value ? store.seriesDirections[series.value.id] : undefined,
+    fromSeries: series.value?.metadata.readingDirection,
+    preference: store.readingDirection,
+  })
+  direction.value = resolved.direction
 
   const name = intl.formatMessage(readingDirectionMessages[direction.value])
   notify(
-    known && fromSeries !== store.readingDirection
+    resolved.decidedBySeries
       ? intl.formatMessage(valueMessages.directionFromSeries, { direction: name })
       : name,
     3000,
