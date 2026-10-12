@@ -113,7 +113,14 @@ function wantsRememberMe(body: Record<string, unknown>): boolean {
   return value === true || value === 'true'
 }
 
-async function recordActivity(
+/**
+ * Record an authentication event.
+ *
+ * Exported because registration is a credential event too: a new account is made
+ * with a password, and both the attempt and its outcome belong in the same log as a
+ * sign-in.
+ */
+export async function recordActivity(
   db: Kysely<DB>,
   userId: string | null,
   email: string | null,

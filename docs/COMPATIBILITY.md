@@ -313,6 +313,42 @@ Deliberate differences:
   possible, so a book can be browsed before its poster exists. The reference
   arranges it the same way.
 
+## Extensions beyond Komga
+
+Features that Komga does not have. Nothing here changes an existing path, shape or
+status code, and nothing here is on by default, so a client written against Komga
+never sees any of it.
+
+### Self-service signup
+
+`GET /api/v1/registration` answers `{ "enabled": ..., "defaultRoles": [...] }` without
+credentials, so a client knows whether to offer a sign-up screen. `POST
+/api/v1/registration` takes `{ email, password }` and creates an account, answering
+`204`; `PUT /api/v1/registration` (admin) sets `{ enabled }` and `{ defaultRoles }`.
+
+- **Closed by default.** The stored settings are `REGISTRATION` (`CLOSED`, the
+  default, or `OPEN`) and `REGISTRATION_DEFAULT_ROLES` (a comma-separated list,
+  defaulting to `PAGE_STREAMING,FILE_DOWNLOAD`). They are deliberately _not_ part of
+  the `SettingsDto` the Komga contract defines, so a client reading that sees exactly
+  what it always saw.
+- **Refused while the server is unclaimed**, which is the same rule the claim route
+  uses: an instance with no users has its first account claimed, not registered.
+- **`ADMIN` is never handed out**: a role list naming it is refused, and a list
+  written into the database by hand has it dropped.
+- **Registering does not sign you in.** No session is created, and the account has to
+  sign in like any other.
+- **No library is shared** with a new account - the same starting point an
+  admin-created user has - so an admin decides what a registered account may see.
+- **Rate limited** by address (10 attempts per 15 minutes) and by email address (5),
+  answering `429`. The counts are per process and in memory; the reference has no rate
+  limiting at all, and this does not add any to its paths.
+- **Recorded** in the authentication activity log, with the email and whether it
+  succeeded, like a sign-in.
+- A duplicate address answers `400`, which does tell the caller that the address is
+  registered. That is the trade the issue accepts: without it a person cannot tell
+  what went wrong. **No email is verified** - the project sends no mail yet - so an
+  address is an identifier here exactly as it is for an admin-created account.
+
 ## Scanning
 
 How a library directory is read - which directory becomes a series, how

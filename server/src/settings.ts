@@ -45,6 +45,9 @@ export const SETTING_KEYS = {
   koboProxy: 'KOBO_PROXY',
   koboPort: 'KOBO_PORT',
   kepubifyPath: 'KEPUBIFY_PATH',
+  /** An extension: whether anyone may register, and what a new account starts with. */
+  registration: 'REGISTRATION',
+  registrationDefaultRoles: 'REGISTRATION_DEFAULT_ROLES',
 } as const
 
 /** Default lifetime of a remember-me cookie, in days. */
