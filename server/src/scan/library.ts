@@ -1,6 +1,7 @@
 import { readdir, realpath, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 
+import { updatedTime } from '../content/files.js'
 import { naturalCompare } from '../media/kinds.js'
 import { insideRoot } from '../media/scan.js'
 
@@ -67,11 +68,6 @@ function acceptedExtensions(settings: ScanSettings): string[] {
   if (settings.scanPdf) extensions.push('pdf')
   if (settings.scanEpub) extensions.push('epub')
   return extensions
-}
-
-/** Komga takes the later of the creation and modified times. */
-function updatedTime(info: { birthtime: Date; mtime: Date }): Date {
-  return info.birthtime > info.mtime ? info.birthtime : info.mtime
 }
 
 /** Whether a directory is excluded, by a case-insensitive substring of its path. */

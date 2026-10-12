@@ -34,6 +34,17 @@ export interface SeriesFolderRecord {
 }
 
 /**
+ * The time a book file is considered modified at.
+ *
+ * Komga takes the later of the file's creation and modification times, and so does
+ * this: a file copied into a library takes its creation time with it, and a scan
+ * that looked only at the modification time would think nothing had happened.
+ */
+export function updatedTime(info: { birthtime: Date; mtime: Date }): Date {
+  return info.birthtime > info.mtime ? info.birthtime : info.mtime
+}
+
+/**
  * Paths a stored location could mean, most specific first.
  *
  * Komga stores absolute `file:` URLs - the importer copies them across

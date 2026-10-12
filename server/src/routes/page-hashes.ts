@@ -17,6 +17,7 @@ import { sql, type RawBuilder } from 'kysely'
 import { requireAdmin } from '../auth/session.js'
 import { bookFilePath, findBookRecord } from '../content/files.js'
 import { openBook } from '../media/index.js'
+import { queuePageRemoval, type PageToRemove } from '../media/removePages.js'
 import { resizedImage } from '../thumbnails/image.js'
 import type { RouteOptions } from './libraries.js'
 import { springPage } from './dto.js'
@@ -300,6 +301,68 @@ export async function registerPageHashRoutes(app: FastifyInstance, opts: RouteOp
       const image = await resizedImage(page.bytes, page.mediaType, resize)
       if (image === null) return reply.code(404).send({ message: 'Thumbnail not found' })
       return reply.header('cache-control', 'private, max-age=60').type(image.mediaType).send(image.bytes)
+    },
+  )
+
+  /** Every page carrying a hash, as a page to remove, grouped by the book it is in. */
+  async function matchesOf(hash: string): Promise<Map<string, PageToRemove[]>> {
+    const rows = await db
+      .selectFrom('media_page')
+      .select(['book_id', 'number', 'file_name', 'media_type', 'file_hash', 'file_size'])
+      .where('file_hash', '=', hash)
+      .orderBy('book_id')
+      .orderBy('number')
+      .execute()
+
+    const byBook = new Map<string, PageToRemove[]>()
+    for (const row of rows) {
+      const pages = byBook.get(row.book_id) ?? []
+      pages.push({
+        fileName: row.file_name,
+        mediaType: row.media_type,
+        fileHash: row.file_hash,
+        fileSize: row.file_size,
+        pageNumber: row.number,
+      })
+      byBook.set(row.book_id, pages)
+    }
+
+    return byBook
+  }
+
+  app.post<{ Params: HashParameter }>(
+    '/api/v1/page-hashes/:pageHash/delete-all',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      // Every page carrying the hash goes, in every book that has one. Each book is a
+      // job of its own, because a book is rewritten once and never twice at a time.
+      for (const [bookId, pages] of await matchesOf(req.params.pageHash)) {
+        await queuePageRemoval(db, bookId, pages)
+      }
+      return reply.code(202).send()
+    },
+  )
+
+  app.post<{ Params: HashParameter }>(
+    '/api/v1/page-hashes/:pageHash/delete-match',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const body = (req.body ?? {}) as { bookId?: unknown; pageNumber?: unknown; fileName?: unknown }
+      const bookId = typeof body.bookId === 'string' ? body.bookId : ''
+      const fileName = typeof body.fileName === 'string' ? body.fileName : ''
+      const pageNumber = typeof body.pageNumber === 'number' ? body.pageNumber : Number.NaN
+      if (bookId === '' || fileName === '' || !Number.isInteger(pageNumber)) {
+        return reply.code(400).send({ message: 'bookId, pageNumber and fileName are required' })
+      }
+
+      // A match that names a page the hash does not carry is not one to remove, and
+      // is refused here rather than queued and skipped later.
+      const matched = (await matchesOf(req.params.pageHash)).get(bookId) ?? []
+      const page = matched.find((candidate) => candidate.pageNumber === pageNumber && candidate.fileName === fileName)
+      if (page === undefined) return reply.code(400).send({ message: 'that page does not carry this hash' })
+
+      await queuePageRemoval(db, bookId, [page])
+      return reply.code(202).send()
     },
   )
 

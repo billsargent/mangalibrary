@@ -398,10 +398,30 @@ Three deliberate differences:
 - Sorting an unknown hash or a match by `url`, `bookId` or `pageNumber` is dropped
   rather than honoured, because a group of pages has no single one of those.
 
-**Not implemented yet**: `POST /api/v1/page-hashes/{hash}/delete-all` and
-`.../delete-match` are absent rather than wrong - both rewrite a comic archive to take
-a page out of it, and they are the next step of this work. So is a scan's automatic
-removal of the pages of a hash marked `DELETE_AUTO`.
+**Removing pages**: `POST /api/v1/page-hashes/{hash}/delete-all` answers `202` and
+queues one job per book that carries the hash; `.../delete-match` does the same for
+one page named in the body. A scan also removes the pages of a hash marked
+`DELETE_AUTO` by itself, which is how "always remove this one" takes effect. The
+book's file is rewritten beside the original, checked, and only then put in its
+place, so anything that goes wrong leaves the library the book it had:
+
+- A file that changed since it was scanned is left alone: it is not the book the job
+  was queued for, and a scan will analyse it and hash its pages again.
+- Only an analysed comic archive can be rewritten, and only when the pages to remove
+  are exactly the pages it has - a mismatch stops the job.
+- The pages that stay keep the hashes they had, and the removal is counted against
+  the hash in `delete_count`, which is what tells an operator whether removing the
+  rest is worth it. It is also recorded in the history, as `DUPLICATE_PAGE_DELETED`.
+
+Two deliberate differences:
+
+- `delete-match` answers `400` for a page that does not carry the hash. The reference
+  accepts the request and quietly does nothing when its own check finds the pages do
+  not add up.
+- A removal that fails is retried the next time it is asked for. The reference
+  remembers a book that failed in the running process and skips it until a restart.
+  Every retry is safe, because the checks above are what decide whether anything
+  happens.
 
 ## Hashing
 

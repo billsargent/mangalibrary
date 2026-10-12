@@ -19,8 +19,10 @@ import { Readable } from 'node:stream'
 export interface ZipEntry {
   /** Name of the entry inside the archive. */
   name: string
-  /** The file whose bytes become the entry. */
-  path: string
+  /** The file whose bytes become the entry, when it is on disk. */
+  path?: string
+  /** The bytes themselves, when the entry comes from inside another archive. */
+  bytes?: Buffer
 }
 
 const LOCAL_HEADER = 0x04034b50
@@ -184,11 +186,18 @@ async function* write(entries: ZipEntry[]): AsyncGenerator<Buffer> {
 
     const crc = new Crc32()
     let size = 0
-    for await (const chunk of createReadStream(entry.path)) {
-      const buffer = chunk as Buffer
+    if (entry.path === undefined) {
+      const buffer = entry.bytes ?? Buffer.alloc(0)
       crc.update(buffer)
-      size += buffer.length
+      size = buffer.length
       yield buffer
+    } else {
+      for await (const chunk of createReadStream(entry.path)) {
+        const buffer = chunk as Buffer
+        crc.update(buffer)
+        size += buffer.length
+        yield buffer
+      }
     }
     offset += size
 
