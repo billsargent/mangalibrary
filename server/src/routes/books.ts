@@ -1,4 +1,12 @@
 import { sql, type Kysely } from 'kysely'
+import { profileFor } from '../media/kinds.js'
+import {
+  ProgressionError,
+  epubProgress,
+  pagedProgress,
+  type LocatorProgress,
+  type StoredPosition,
+} from './progression.js'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { requireAdmin, requireAuth } from '../auth/session.js'
 import { announceBook, announceSeries, bookRef, seriesRef } from '../content-events.js'
@@ -626,8 +634,43 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
 
       const body = (req.body ?? {}) as { device?: unknown; locator?: unknown }
       const device = (body.device ?? {}) as { id?: unknown; name?: unknown }
+
+      // Where the reader is says how far through the book they are, once the book
+      // has been analysed and there is something to measure against. Until then
+      // the locator is kept as it came.
+      let derived: LocatorProgress | null = null
+      const media = await db
+        .selectFrom('media')
+        .select(['status', 'media_type', 'page_count'])
+        .where('book_id', '=', req.params.bookId)
+        .executeTakeFirst()
+      if (media?.status === 'READY' && media.page_count > 0 && isRecord(body.locator)) {
+        try {
+          if (profileFor(media.media_type) === 'EPUB') {
+            const stored = await db
+              .selectFrom('epub_positions')
+              .select('positions')
+              .where('book_id', '=', req.params.bookId)
+              .executeTakeFirst()
+            const positions = (stored ? parseJsonArray(stored.positions) : []) as StoredPosition[]
+            derived = epubProgress(body.locator, positions, media.page_count)
+          } else {
+            derived = pagedProgress(body.locator, media.page_count)
+          }
+        } catch (error) {
+          if (error instanceof ProgressionError) return reply.code(400).send({ message: error.message })
+          throw error
+        }
+      }
+
       await upsertReadProgress(db, context.user.id, req.params.bookId, {
-        locator: body.locator === undefined ? null : JSON.stringify(body.locator),
+        ...(derived === null ? {} : { page: derived.page, completed: derived.completed }),
+        locator:
+          derived !== null
+            ? JSON.stringify(derived.locator)
+            : body.locator === undefined
+              ? null
+              : JSON.stringify(body.locator),
         deviceId: typeof device.id === 'string' ? device.id : null,
         deviceName: typeof device.name === 'string' ? device.name : null,
         readDate: new Date().toISOString(),
@@ -850,6 +893,10 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
 /** Spring reports a page size equal to the element count when it is unpaged. */
 function effectiveSize(total: number, size: number, unpaged: boolean): number {
   return unpaged ? total : size
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function parseJsonArray(value: string): unknown[] {
