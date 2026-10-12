@@ -9,7 +9,6 @@ import Vue from '@vitejs/plugin-vue'
 import VueRouter from 'vue-router/vite'
 import { VueRouterAutoImports } from 'vue-router/unplugin'
 import Vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
-import dir2json from 'vite-plugin-dir2json'
 import UnoCSS from 'unocss/vite'
 import { unheadVueComposablesImports } from '@unhead/vue'
 
@@ -80,9 +79,6 @@ export default defineConfig(({ mode }) => ({
           },
         ],
       },
-    }),
-    dir2json({
-      dts: true,
     }),
     UnoCSS(),
     DevTools(),
