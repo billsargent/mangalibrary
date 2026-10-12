@@ -1,4 +1,4 @@
-import localeMessages from '@/i18n?dir2json&ext=.json&lazy'
+import { localeFiles } from './locale-files'
 import { match } from '@formatjs/intl-localematcher'
 
 export const fallbackLocale = 'en'
@@ -13,9 +13,7 @@ const USER_LOCALE_KEY = 'komga.userLocale'
 export async function loadLocale(locale: string): Promise<Record<string, string>> {
   const localeToLoad = locale in availableLocales ? locale : fallbackLocale
 
-  const lazyImports = localeMessages as unknown as Record<string, () => Promise<{ default: Record<string, string> }>>
-
-  const loadFn = lazyImports[localeToLoad]
+  const loadFn = localeFiles[localeToLoad]
   if(!loadFn) return {}
 
   const module = await loadFn()
@@ -32,7 +30,7 @@ export type LocaleInfo = {
 
 function loadAvailableLocales(): Record<string, LocaleInfo> {
   const localesInfo: Record<string, LocaleInfo> = {}
-  Object.keys(localeMessages).forEach(
+  Object.keys(localeFiles).forEach(
     (code) => {
       // name of the locale in that locale
       const intl = new Intl.DisplayNames([code], {type: 'language'})

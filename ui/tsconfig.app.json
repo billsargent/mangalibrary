@@ -4,7 +4,6 @@
     "env.d.ts",
     "src/**/*",
     "src/**/*.vue",
-    "./dir2json.d.ts",
     "./.storybook/**/*",
     "vitest.shims.d.ts",
     "vitest.setup.ts",
