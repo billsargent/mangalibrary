@@ -1,6 +1,7 @@
 import { sql, type Kysely } from 'kysely'
 import type { FastifyInstance } from 'fastify'
 import { requireAdmin, requireAuth } from '../auth/session.js'
+import { announceCollection, collectionRef } from '../content-events.js'
 import type { DB } from '../db/schema.js'
 import { nextTsid } from '../tsid.js'
 import { accessibleSeriesIds, contentContext, type ContentContext } from './context.js'
@@ -175,6 +176,7 @@ export async function registerCollectionRoutes(app: FastifyInstance, opts: Route
       .select(COLLECTION_COLUMNS)
       .where('id', '=', id)
       .executeTakeFirstOrThrow()
+    announceCollection(opts.events, 'CollectionAdded', { collectionId: id, seriesIds })
     return toCollectionDto(row as unknown as CollectionRow, seriesIds)
   })
 
@@ -220,6 +222,9 @@ export async function registerCollectionRoutes(app: FastifyInstance, opts: Route
       .where('id', '=', req.params.id)
       .execute()
     if (members !== null) await replaceMembership(db, req.params.id, members)
+
+    const changed = await collectionRef(db, req.params.id)
+    if (changed) announceCollection(opts.events, 'CollectionChanged', changed)
     return reply.code(204).send()
   })
 
@@ -234,7 +239,10 @@ export async function registerCollectionRoutes(app: FastifyInstance, opts: Route
         .executeTakeFirst()
       if (!existing) return reply.code(404).send({ message: 'Collection not found' })
 
+      // What it held is part of the event, so it is read before the row goes.
+      const removed = await collectionRef(db, req.params.id)
       await db.deleteFrom('collections').where('id', '=', req.params.id).execute()
+      if (removed) announceCollection(opts.events, 'CollectionDeleted', removed)
       return reply.code(204).send()
     },
   )

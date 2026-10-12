@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { Kysely } from 'kysely'
 import { canAccessLibrary } from '../auth/access.js'
 import { requireAdmin, requireAuth } from '../auth/session.js'
+import { announceLibrary } from '../content-events.js'
 import type { DB } from '../db/schema.js'
 import type { EventBus } from '../events.js'
 import type { FetchJson } from '../http.js'
@@ -117,6 +118,7 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
       .selectAll()
       .where('id', '=', values.id as string)
       .executeTakeFirstOrThrow()
+    announceLibrary(opts.events, 'LibraryAdded', values.id as string)
     return toLibraryDto(row as unknown as LibraryRow)
   })
 
@@ -152,6 +154,7 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
         .where('id', '=', req.params.libraryId)
         .execute()
       await replaceExclusions(db, req.params.libraryId, body.scanDirectoryExclusions)
+      announceLibrary(opts.events, 'LibraryChanged', req.params.libraryId)
       return reply.code(204).send()
     },
   )
@@ -167,6 +170,7 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
         .executeTakeFirst()
       if (!existing) return reply.code(404).send({ message: 'Library not found' })
       await db.deleteFrom('libraries').where('id', '=', req.params.libraryId).execute()
+      announceLibrary(opts.events, 'LibraryDeleted', req.params.libraryId)
       return reply.code(204).send()
     },
   )

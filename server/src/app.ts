@@ -33,9 +33,15 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.get('/health', async () => ({ status: 'ok', version: APP_VERSION }))
 
   await registerAuth(app, { db: deps.database.db, sessionTtlMs: deps.config.sessionTtlMs })
+
+  // One bus for the whole server: the routes and the worker both announce changes
+  // on it, and the SSE connections are what listen.
+  const events = new EventBus()
+  app.decorate('events', events)
+
   await registerRoutes(app, {
     db: deps.database.db,
-    events: new EventBus(),
+    events,
     fetchJson: deps.fetchJson ?? defaultFetchJson,
     announcementsUrl: deps.config.announcementsUrl,
     releasesUrl: deps.config.releasesUrl,

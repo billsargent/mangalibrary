@@ -2,6 +2,8 @@ import { pathToFileURL } from 'node:url'
 import type { Kysely } from 'kysely'
 
 import type { DB } from '../db/schema.js'
+import { announceBook, announceSeries, bookRef } from '../content-events.js'
+import type { EventBus } from '../events.js'
 import { naturalCompare } from '../media/kinds.js'
 import { refreshSeriesLocalArtwork } from '../metadata/localArtwork.js'
 import { refreshSeriesMetadata } from '../metadata/series.js'
@@ -79,16 +81,18 @@ async function scanSettings(
   }
 }
 
-/** Add books to a series, with the metadata row each one needs. */
+/** Add books to a series, with the metadata row each one needs. Returns their ids. */
 async function addBooks(
   db: Kysely<DB>,
   seriesId: string,
   libraryId: string,
   books: readonly ScannedBook[],
   now: string,
-): Promise<number> {
+): Promise<string[]> {
+  const created: string[] = []
   for (const book of books) {
     const id = nextTsid()
+    created.push(id)
     await db
       .insertInto('books')
       .values({
@@ -108,7 +112,7 @@ async function addBooks(
       .values({ book_id: id, title: book.name, created_date: now, last_modified_date: now })
       .execute()
   }
-  return books.length
+  return created
 }
 
 /**
@@ -185,11 +189,15 @@ async function softDeleteBooks(db: Kysely<DB>, bookIds: readonly string[], now: 
 export async function scanLibrary(
   db: Kysely<DB>,
   libraryId: string,
-  options: { deep?: boolean } = {},
+  options: { deep?: boolean; events?: EventBus } = {},
 ): Promise<ScanSummary> {
   const now = new Date().toISOString()
   const library = await db.selectFrom('libraries').selectAll().where('id', '=', libraryId).executeTakeFirst()
   if (!library) throw new Error(`library ${libraryId} does not exist`)
+
+  // A scan without a bus changes the database silently, which is what a test wants
+  // and what a caller that is not the server gets.
+  const events = options.events
 
   const settings = await scanSettings(db, library)
 
@@ -251,6 +259,14 @@ export async function scanLibrary(
     await db.updateTable('series').set({ deleted_date: now, last_modified_date: now }).where('id', 'in', ids).execute()
     summary.seriesDeleted += ids.length
     summary.booksDeleted += books.length
+
+    if (events) {
+      for (const row of vanished) announceSeries(events, 'SeriesDeleted', { seriesId: row.id, libraryId })
+      for (const book of books) {
+        const ref = await bookRef(db, book.id)
+        if (ref) announceBook(events, 'BookDeleted', ref)
+      }
+    }
   }
 
   for (const scanned of found) {
@@ -283,7 +299,12 @@ export async function scanLibrary(
         })
         .execute()
       summary.seriesCreated += 1
-      summary.booksCreated += await addBooks(db, seriesId, libraryId, scanned.books, now)
+      const added = await addBooks(db, seriesId, libraryId, scanned.books, now)
+      summary.booksCreated += added.length
+      if (events) {
+        announceSeries(events, 'SeriesAdded', { seriesId, libraryId })
+        for (const bookId of added) announceBook(events, 'BookAdded', { bookId, seriesId, libraryId })
+      }
       touched.add(seriesId)
       continue
     }
@@ -343,12 +364,19 @@ export async function scanLibrary(
           .where('book_id', '=', existingBook.id)
           .execute()
         summary.booksUpdated += 1
+        if (events) announceBook(events, 'BookChanged', { bookId: existingBook.id, seriesId: current.id, libraryId })
       }
 
       const missingBooks = scanned.books.filter((book) => !bookByUrl.has(pathToFileURL(book.path).href))
       if (missingBooks.length > 0) {
-        summary.booksCreated += await addBooks(db, current.id, libraryId, missingBooks, now)
+        const added = await addBooks(db, current.id, libraryId, missingBooks, now)
+        summary.booksCreated += added.length
+        if (events) {
+          for (const bookId of added) announceBook(events, 'BookAdded', { bookId, seriesId: current.id, libraryId })
+        }
       }
+
+      if (events) announceSeries(events, 'SeriesChanged', { seriesId: current.id, libraryId })
     }
 
     touched.add(current.id)

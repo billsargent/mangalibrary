@@ -1,6 +1,7 @@
 import { sql, type Kysely } from 'kysely'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { requireAdmin, requireAuth } from '../auth/session.js'
+import { announceBook, announceSeries, bookRef, seriesRef } from '../content-events.js'
 import type { DB } from '../db/schema.js'
 import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
 import { aggregateSeriesMetadata } from '../metadata/aggregation.js'
@@ -703,7 +704,13 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
 
       // A series' booksMetadata is made of its books' metadata, so a hand edit
       // changes it too - the reference schedules the same work after this route.
-      await aggregateSeriesOfBook(db, req.params.bookId)
+      const seriesId = await aggregateSeriesOfBook(db, req.params.bookId)
+      const changed = await bookRef(db, req.params.bookId)
+      if (changed) announceBook(opts.events, 'BookChanged', changed)
+      if (seriesId !== null) {
+        const series = await seriesRef(db, seriesId)
+        if (series) announceSeries(opts.events, 'SeriesChanged', series)
+      }
       return reply.code(204).send()
     },
   )
@@ -742,6 +749,14 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
     for (const bookId of editedBooks) {
       const seriesId = await aggregateSeriesOfBook(db, bookId)
       if (seriesId !== null) series.add(seriesId)
+
+      const changed = await bookRef(db, bookId)
+      if (changed) announceBook(opts.events, 'BookChanged', changed)
+    }
+
+    for (const seriesId of series) {
+      const ref = await seriesRef(db, seriesId)
+      if (ref) announceSeries(opts.events, 'SeriesChanged', ref)
     }
     return reply.code(200).send()
   })

@@ -14,6 +14,7 @@
 import type { Kysely } from 'kysely'
 
 import type { DB } from './db/schema.js'
+import { EventBus } from './events.js'
 import { handleJob, type JobContext, type JobLogger } from './handlers.js'
 import { JOB_PRIORITY, deleteJob, disownJobs, enqueueJob, takeNextJob, type JobRecord } from './jobs.js'
 import { SETTING_KEYS, getIntSetting } from './settings.js'
@@ -43,6 +44,8 @@ export interface JobWorker {
 export interface WorkerOptions {
   db: Kysely<DB>
   log: JobLogger
+  /** Where content changes are announced. A worker without one announces nothing. */
+  events?: EventBus
   /** Turn the scan schedule off, which the tests do. */
   schedule?: boolean
 }
@@ -56,7 +59,7 @@ export interface WorkerOptions {
  */
 export async function startJobWorker(options: WorkerOptions): Promise<JobWorker> {
   const { db, log } = options
-  const context: JobContext = { db, log }
+  const context: JobContext = { db, log, events: options.events ?? new EventBus() }
   const owner = `worker-${process.pid}`
 
   const disowned = await disownJobs(db)

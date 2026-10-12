@@ -1,6 +1,7 @@
 import { sql, type Kysely } from 'kysely'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { requireAdmin, requireAuth, requireRole } from '../auth/session.js'
+import { announceSeries, seriesRef } from '../content-events.js'
 import type { DB } from '../db/schema.js'
 import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
 import { archiveEntries } from '../content/files.js'
@@ -649,6 +650,9 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
         (req.body ?? {}) as Record<string, unknown>,
       )
       if (!result.ok) return reply.code(400).send({ validationErrors: result.errors })
+
+      const changed = await seriesRef(db, req.params.seriesId)
+      if (changed) announceSeries(opts.events, 'SeriesChanged', changed)
       return reply.code(204).send()
     },
   )
