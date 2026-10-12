@@ -1,15 +1,26 @@
-import { ApiBaseUrl } from '@/api/base'
+import type { RouteLocationRaw } from 'vue-router'
 
-export function bookReaderUrl(
-  bookId: string | undefined,
+/**
+ * Where a book is read: the reader for books made of images, or the one for books
+ * made of text.
+ *
+ * `incognito` reads without recording progress. A book opened from a read list
+ * carries the list along, so that "next book" means the next one in that list.
+ */
+export function bookReaderRoute(
+  bookId: string,
   epub: boolean,
   incognito: boolean = false,
   readListId?: string,
-): string | undefined {
-  if (bookId) {
-    let url = `${ApiBaseUrl.noSlash}/book/${bookId}/read${epub ? '-epub' : ''}?incognito=${incognito}`
-    if (readListId) url += `&context=READLIST&contextId=${readListId}`
-    return url
+): RouteLocationRaw {
+  const query: Record<string, string> = { incognito: String(incognito) }
+  if (readListId) {
+    query.context = 'READLIST'
+    query.contextId = readListId
   }
-  return undefined
+  return {
+    name: epub ? '/book.[id].read-epub' : '/book.[id].read',
+    params: { id: bookId },
+    query,
+  }
 }

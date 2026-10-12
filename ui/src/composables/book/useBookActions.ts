@@ -18,7 +18,7 @@ import { bookFileUrl } from '@/api/files'
 import { type Action, actionDetails, ActionName } from '@/types/action/action'
 import { useBook } from '@/composables/book/useBook'
 import { useBookReadProgress } from '@/composables/book/useBookReadProgress'
-import { bookReaderUrl } from '@/api/links'
+import { bookReaderRoute } from '@/api/links'
 import type { BookDto } from '@/generated/openapi'
 import { useAddToReadListDialog } from '@/composables/book/useAddToReadListDialog'
 import { useAddToCollectionDialog } from '@/composables/series/useAddToCollectionDialog'
@@ -29,6 +29,7 @@ export function useBookActions(
 ) {
   const { isAdmin, hasRole } = useCurrentUser()
   const intl = useIntl()
+  const router = useRouter()
   const { confirm: dialogConfirm } = storeToRefs(useDialogsStore())
   const messagesStore = useMessagesStore()
   const display = useDisplay()
@@ -168,7 +169,7 @@ export function useBookActions(
       action: ActionName.OpenReader,
       disabled: !canRead.value,
       onClick: () => {
-        window.open(bookReaderUrl(toValue(book).id, isEpubReader.value), '_blank')
+        void router.push(bookReaderRoute(toValue(book).id, isEpubReader.value))
         callback(ActionName.OpenReader)
       },
     },
@@ -178,7 +179,7 @@ export function useBookActions(
       action: ActionName.OpenReaderIncognito,
       disabled: !canRead.value,
       onClick: () => {
-        window.open(bookReaderUrl(toValue(book).id, isEpubReader.value, true), '_blank')
+        void router.push(bookReaderRoute(toValue(book).id, isEpubReader.value, true))
         callback(ActionName.OpenReaderIncognito)
       },
     },

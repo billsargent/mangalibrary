@@ -80,6 +80,20 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
+    '/book.[id].read': RouteRecordInfo<
+      '/book.[id].read',
+      '/book/:id/read',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
+      | never
+    >,
+    '/book.[id].read-epub': RouteRecordInfo<
+      '/book.[id].read-epub',
+      '/book/:id/read-epub',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
+      | never
+    >,
     '/claim': RouteRecordInfo<
       '/claim',
       '/claim',
@@ -359,6 +373,22 @@ declare module 'vue-router/auto-routes' {
     'src/pages/book/[id].vue': {
       routes:
         | '/book/[id]'
+      views:
+        | never
+      pathParamNames:
+        | 'id'
+    }
+    'src/pages/book.[id].read.vue': {
+      routes:
+        | '/book.[id].read'
+      views:
+        | never
+      pathParamNames:
+        | 'id'
+    }
+    'src/pages/book.[id].read-epub.vue': {
+      routes:
+        | '/book.[id].read-epub'
       views:
         | never
       pathParamNames:
