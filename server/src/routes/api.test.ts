@@ -459,24 +459,83 @@ describe('users', () => {
     const users = await app.inject({ method: 'GET', url: '/api/v2/users', headers: admin })
     expect((users.json() as { email: string }[]).map((user) => user.email)).not.toContain('a@example.com')
 
-    // An unknown role name is dropped rather than refused, which is what the
-    // reference does with one.
+    // An unknown role name is refused, naming the value: an account that quietly lost
+    // the permission it asked for is worse than a refusal.
     const unknown = await app.inject({
       method: 'POST',
       url: '/api/v2/users',
       headers: admin,
       payload: { email: 'b@example.com', password: 'secret', roles: ['FILE_DOWNLOAD', 'NOT_A_ROLE'] },
     })
-    expect(unknown.statusCode).toBe(200)
-    expect((unknown.json() as { roles: string[] }).roles).toEqual(['FILE_DOWNLOAD'])
+    expect(unknown.statusCode).toBe(400)
+    expect(unknown.json()).toEqual({ message: 'unknown role: NOT_A_ROLE' })
 
-    // The same rule applies to an update.
-    const id = (unknown.json() as { id: string }).id
+    // An empty list is allowed, as the reference allows it: the account can sign in
+    // and read its own profile, and nothing else.
+    const none = await app.inject({
+      method: 'POST',
+      url: '/api/v2/users',
+      headers: admin,
+      payload: { email: 'c@example.com', password: 'secret', roles: [] },
+    })
+    expect(none.statusCode).toBe(200)
+    expect((none.json() as { roles: string[] }).roles).toEqual([])
+
+    // Roles are de-duplicated, so a repeated name is one role.
+    const repeated = await app.inject({
+      method: 'POST',
+      url: '/api/v2/users',
+      headers: admin,
+      payload: { email: 'd@example.com', password: 'secret', roles: ['FILE_DOWNLOAD', 'FILE_DOWNLOAD'] },
+    })
+    expect((repeated.json() as { roles: string[] }).roles).toEqual(['FILE_DOWNLOAD'])
+
+    // The same rule applies to an update, whichever way the value is wrong.
+    const id = (none.json() as { id: string }).id
     expect(
       (await app.inject({ method: 'PATCH', url: `/api/v2/users/${id}`, headers: admin, payload: { roles: 'ADMIN' } }))
         .statusCode,
     ).toBe(400)
+    expect(
+      (
+        await app.inject({
+          method: 'PATCH',
+          url: `/api/v2/users/${id}`,
+          headers: admin,
+          payload: { roles: ['PAGE_STREAMING', 'NOT_A_ROLE'] },
+        })
+      ).json(),
+    ).toEqual({ message: 'unknown role: NOT_A_ROLE' })
 
+    await app.close()
+  })
+
+  it('lets one of two administrators be demoted', async () => {
+    const { app, database } = await setup()
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v2/users',
+      headers: admin,
+      payload: { email: 'second@example.com', password: 'secret', roles: ['ADMIN'] },
+    })
+    const second = (created.json() as { id: string }).id
+
+    // There are two administrators now, so one of them may stop being one.
+    const demoted = await app.inject({
+      method: 'PATCH',
+      url: `/api/v2/users/${second}`,
+      headers: admin,
+      payload: { roles: ['PAGE_STREAMING'] },
+    })
+    expect(demoted.statusCode).toBe(204)
+
+    const stored = await database.db
+      .selectFrom('users')
+      .select('roles')
+      .where('id', '=', second)
+      .executeTakeFirstOrThrow()
+    expect(JSON.parse(stored.roles)).toEqual(['PAGE_STREAMING'])
     await app.close()
   })
 

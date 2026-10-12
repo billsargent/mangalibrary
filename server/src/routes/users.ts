@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { Kysely } from 'kysely'
 import { hashPassword } from '../auth/passwords.js'
+import { isLastAdministrator } from '../auth/access.js'
 import { requireAdmin, requireAuth, requireRole } from '../auth/session.js'
 import { USER_ROLES, isUserRole, type AuthUser, type UserRole } from '../auth/types.js'
 import { findUserById } from '../auth/users.js'
@@ -24,17 +25,26 @@ function currentUser(req: FastifyRequest): AuthUser {
 /**
  * Read a role list from a request body.
  *
- * An unknown role name is dropped rather than refused, which is what the reference
- * does: a client that sends a role this server does not know still gets an account
- * with the roles that exist. What is refused is a value that is not an array at all,
- * because sending a bare string is a plausible mistake, and answering it by silently
- * stripping every role is worse than saying no.
- *
- * `null` means "not an array", which the callers report as a validation error.
+ * Every value has to be one of the roles this server knows: a client that sends a
+ * typo is told which value was wrong, rather than being given an account with fewer
+ * permissions than it asked for. A value that is not an array at all is refused for
+ * the same reason - answering a bare string by stripping every role is the worst
+ * possible reading of it. An empty array is allowed, as the reference allows it: an
+ * account with no roles can sign in and read its own profile, and nothing else.
  */
-function rolesFrom(value: unknown): UserRole[] | null {
-  if (!Array.isArray(value)) return null
-  return value.map(String).filter(isUserRole)
+function rolesFrom(value: unknown): { roles: UserRole[] } | { error: string } {
+  if (!Array.isArray(value)) {
+    return { error: 'roles must be an array of role names' }
+  }
+
+  const roles: UserRole[] = []
+  for (const entry of value) {
+    if (typeof entry !== 'string' || !isUserRole(entry)) {
+      return { error: `unknown role: ${String(entry)}` }
+    }
+    if (!roles.includes(entry)) roles.push(entry)
+  }
+  return { roles }
 }
 
 /**
@@ -180,10 +190,11 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
 
     // The role list is required, as it is in the contract: an account with no roles
     // can sign in and do nothing but read its own profile.
-    const roles = rolesFrom(body.roles)
-    if (roles === null) {
-      return reply.code(400).send({ message: 'roles is required and must be an array of role names' })
+    const parsed = rolesFrom(body.roles)
+    if ('error' in parsed) {
+      return reply.code(400).send({ message: parsed.error })
     }
+    const roles = parsed.roles
 
     const existing = await db.selectFrom('users').select('id').where('email', '=', email).executeTakeFirst()
     if (existing) return reply.code(400).send({ message: 'email already in use' })
@@ -236,12 +247,20 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
     const before = await permissionSnapshot(db, req.params.id)
     const body = (req.body ?? {}) as Record<string, unknown>
     if ('roles' in body) {
-      const roles = rolesFrom(body.roles)
-      if (roles === null) return reply.code(400).send({ message: 'roles must be an array of role names' })
+      const parsed = rolesFrom(body.roles)
+      if ('error' in parsed) return reply.code(400).send({ message: parsed.error })
+
+      // Taking the administration away from the only account that has it would leave
+      // an instance nobody can administer, and no way back in through the API. An
+      // administrator cannot change their own account here, so this cannot happen by
+      // the route as it stands; it is the guard that keeps it true if that changes.
+      if (!parsed.roles.includes('ADMIN') && (await isLastAdministrator(db, req.params.id))) {
+        return reply.code(403).send({ message: 'The last administrator cannot stop being one' })
+      }
 
       await db
         .updateTable('users')
-        .set({ roles: JSON.stringify(roles), last_modified_date: new Date().toISOString() })
+        .set({ roles: JSON.stringify(parsed.roles), last_modified_date: new Date().toISOString() })
         .where('id', '=', req.params.id)
         .execute()
     }
@@ -267,6 +286,13 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
 
     const existing = await db.selectFrom('users').select('id').where('id', '=', req.params.id).executeTakeFirst()
     if (!existing) return reply.code(404).send({ message: 'User not found' })
+
+    // Deleting the only administrator would leave nobody able to administer the
+    // instance, which is the same trap as demoting them.
+    if (await isLastAdministrator(db, req.params.id)) {
+      return reply.code(403).send({ message: 'The last administrator cannot be deleted' })
+    }
+
     await db.deleteFrom('users').where('id', '=', req.params.id).execute()
     opts.events.publish({ name: 'SessionExpired', data: { userId: req.params.id }, userId: req.params.id })
     return reply.code(204).send()

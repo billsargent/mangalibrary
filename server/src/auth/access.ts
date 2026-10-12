@@ -1,3 +1,6 @@
+import type { Kysely } from 'kysely'
+
+import type { DB } from '../db/schema.js'
 import { isUserRole, type AuthUser, type UserRole } from './types.js'
 
 export function hasRole(user: AuthUser, role: UserRole): boolean {
@@ -6,6 +9,29 @@ export function hasRole(user: AuthUser, role: UserRole): boolean {
 
 export function isAdmin(user: AuthUser): boolean {
   return hasRole(user, 'ADMIN')
+}
+
+/** The roles a stored JSON array holds, ignoring anything unreadable. */
+function rolesOf(stored: string): UserRole[] {
+  try {
+    const parsed: unknown = JSON.parse(stored)
+    return Array.isArray(parsed) ? parsed.filter(isUserRole) : []
+  } catch {
+    // A column that cannot be parsed grants nothing, rather than failing a request.
+    return []
+  }
+}
+
+/**
+ * Whether an account is the only one that can administer the server.
+ *
+ * The roles are stored as a JSON array in a text column, so they are read here
+ * rather than counted in SQL: an instance has as many rows as it has people.
+ */
+export async function isLastAdministrator(db: Kysely<DB>, userId: string): Promise<boolean> {
+  const rows = await db.selectFrom('users').select(['id', 'roles']).execute()
+  const administrators = rows.filter((row) => rolesOf(row.roles).includes('ADMIN'))
+  return administrators.length === 1 && administrators[0]?.id === userId
 }
 
 export function canAccessLibrary(user: AuthUser, libraryId: string): boolean {

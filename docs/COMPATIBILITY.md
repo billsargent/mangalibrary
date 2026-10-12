@@ -373,6 +373,34 @@ Deliberate differences:
   reference announces it: a book's thumbnail event is what makes a list redraw, and a
   book's own event is what makes its page reload.
 
+## Roles
+
+An account's roles decide what it may do. The set is the reference's:
+`ADMIN`, `FILE_DOWNLOAD`, `PAGE_STREAMING`, `KOBO_SYNC`, `KOREADER_SYNC`, and `ADMIN`
+satisfies every check.
+
+| Role             | What it gates                                                                                                                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ADMIN`          | Every administrative endpoint: users, libraries, settings, the task queue, the history, editing series and book metadata, uploading or deleting artwork, claiming an unclaimed server |
+| `PAGE_STREAMING` | A book's page list, a page image, a page's thumbnail                                                                                                                                  |
+| `FILE_DOWNLOAD`  | Downloading a book's own file, and the series and read list archives built from them                                                                                                  |
+| `KOBO_SYNC`      | Nothing yet: the Kobo sync API is not implemented, and the role is accepted on an account so a client that asks for it is not refused                                                 |
+| `KOREADER_SYNC`  | Nothing yet, for the same reason                                                                                                                                                      |
+
+Everything else - browsing series, books, collections and read lists, reading a
+poster, searching, one's own read progress and profile - needs only to be signed in.
+
+A role list is validated strictly: an unknown name, a value that is not a name, or a
+value that is not an array at all is a `400` naming the offending value. An empty
+list is accepted, as the reference accepts it: such an account can sign in and read
+its own profile and nothing else. A repeated name is one role.
+
+One addition of ours: the only account that can administer the server cannot be
+demoted or deleted, answering `403`. The reference has no such guard. It cannot be
+reached through the API as it stands, because these routes already refuse to let an
+administrator change their own account - which is the only way to be the last one -
+so it is the rule that keeps that true if the first one ever moves.
+
 ## Scanning
 
 How a library directory is read - which directory becomes a series, how
