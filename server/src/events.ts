@@ -45,6 +45,13 @@ export interface SseEvent {
   userId?: string
 }
 
+declare module 'fastify' {
+  interface FastifyInstance {
+    /** The bus the routes, the worker and the event streams share. */
+    events: EventBus
+  }
+}
+
 export type SseListener = (event: SseEvent) => void
 
 /**

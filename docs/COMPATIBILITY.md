@@ -349,6 +349,30 @@ credentials, so a client knows whether to offer a sign-up screen. `POST
   what went wrong. **No email is verified** - the project sends no mail yet - so an
   address is an identifier here exactly as it is for an admin-created account.
 
+## Events
+
+`/sse/v1/events` carries the changes a browser is watching for. The names and the
+shapes are the ones the Komga UI listens for, and the payloads are the reference's
+own: a book's event carries its series and its library, a collection's carries the
+series it holds, a read list's the books. A library, series, book, collection or read
+list add, change and delete is announced by whatever changed it - a route responding
+to a user, or the worker finishing a scan, an analysis or a metadata refresh - and
+`ReadProgress*`, `Thumbnail*`, `TaskQueueStatus` and `SessionExpired` are announced as
+they always were.
+
+Every connection gets every event, as the reference sends them: filtering by what
+viewer may see something would mean reading each viewer's restrictions for each one.
+A client ignores what it cannot see.
+
+Deliberate differences:
+
+- Emptying a library's trash announces nothing. What was removed was announced as
+  deleted when a scan soft-deleted it, and the row going for good is not a change a
+  client can see.
+- A cover or a poster is announced separately from the content it belongs to, as the
+  reference announces it: a book's thumbnail event is what makes a list redraw, and a
+  book's own event is what makes its page reload.
+
 ## Scanning
 
 How a library directory is read - which directory becomes a series, how

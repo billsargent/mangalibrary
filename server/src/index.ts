@@ -16,7 +16,7 @@ async function main(): Promise<void> {
 
   // The queue is what makes a scan, an analysis and a metadata refresh happen at
   // all: the API only records what was asked for.
-  const worker = await startJobWorker({ db: database.db, log: app.log })
+  const worker = await startJobWorker({ db: database.db, log: app.log, events: app.events })
 
   const shutdown = (signal: string) => {
     app.log.info(`received ${signal}, shutting down`)

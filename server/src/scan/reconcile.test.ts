@@ -6,6 +6,7 @@ import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
 import { analyzeBook } from '../media/analyze.js'
+import { EventBus } from '../events.js'
 import { SETTING_KEYS, setSetting } from '../settings.js'
 import { writeZip } from '../testing/zip.js'
 import { scanLibrary } from './reconcile.js'
@@ -355,5 +356,69 @@ describe('scanning a library', () => {
 
     const authors = await database.db.selectFrom('book_metadata_aggregation_author').select('name').execute()
     expect(authors.map((row) => row.name)).toEqual(['Katsuhiro Otomo'])
+  })
+})
+
+describe('announcing what a scan did', () => {
+  /** A bus to collect what the scan published. */
+  function collector(): { events: EventBus; seen: { name: string; data: unknown }[] } {
+    const events = new EventBus()
+    const seen: { name: string; data: unknown }[] = []
+    events.subscribe((event) => seen.push({ name: event.name, data: event.data }))
+    return { events, seen }
+  }
+
+  it('names what it found, with what it belongs to', async () => {
+    const { database, root } = await setup()
+    const { events, seen } = collector()
+    files(root, ['Akira/Volume 1.cbz'])
+
+    await scanLibrary(database.db, 'L1', { events })
+
+    const series = (await seriesRows(database))[0]!
+    const book = (await bookRows(database))[0]!
+    expect(seen).toEqual([
+      { name: 'SeriesAdded', data: { seriesId: series.id, libraryId: 'L1' } },
+      { name: 'BookAdded', data: { bookId: book.id, seriesId: series.id, libraryId: 'L1' } },
+    ])
+  })
+
+  it('names a book that changed, and the series it changed in', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz'])
+    await scanLibrary(database.db, 'L1')
+
+    const series = (await seriesRows(database))[0]!
+    const book = (await bookRows(database))[0]!
+    const { events, seen } = collector()
+
+    // A new page changes the file, which is what a deep scan looks for; an ordinary
+    // scan watches the folders, and a file rewritten in place leaves those alone.
+    files(root, ['Akira/Volume 1.cbz'])
+    utimesSync(join(root, 'Akira/Volume 1.cbz'), new Date(), new Date('2031-01-01T00:00:00Z'))
+    await scanLibrary(database.db, 'L1', { deep: true, events })
+
+    expect(seen).toEqual([
+      { name: 'BookChanged', data: { bookId: book.id, seriesId: series.id, libraryId: 'L1' } },
+      { name: 'SeriesChanged', data: { seriesId: series.id, libraryId: 'L1' } },
+    ])
+  })
+
+  it('names what a scan soft-deletes', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz'])
+    await scanLibrary(database.db, 'L1')
+
+    const series = (await seriesRows(database))[0]!
+    const book = (await bookRows(database))[0]!
+    const { events, seen } = collector()
+
+    rmSync(join(root, 'Akira'), { recursive: true })
+    await scanLibrary(database.db, 'L1', { events })
+
+    expect(seen).toEqual([
+      { name: 'SeriesDeleted', data: { seriesId: series.id, libraryId: 'L1' } },
+      { name: 'BookDeleted', data: { bookId: book.id, seriesId: series.id, libraryId: 'L1' } },
+    ])
   })
 })

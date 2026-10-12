@@ -15,7 +15,9 @@ import { unlink } from 'node:fs/promises'
 import type { Kysely } from 'kysely'
 
 import { bookFilePath, findBookRecord } from './content/files.js'
+import { announceBook, announceSeries, bookRef, seriesRef } from './content-events.js'
 import type { DB } from './db/schema.js'
+import type { EventBus } from './events.js'
 import { JOB_PRIORITY, enqueueJob, type JobRecord } from './jobs.js'
 import { analyzeBook } from './media/analyze.js'
 import { refreshBookLocalArtwork, refreshSeriesLocalArtwork } from './metadata/localArtwork.js'
@@ -41,6 +43,8 @@ export interface JobLogger {
 export interface JobContext {
   db: Kysely<DB>
   log: JobLogger
+  /** Where content changes are announced, so a browser hears about background work. */
+  events: EventBus
 }
 
 /** The payloads the routes queue, as they were written. */
@@ -128,6 +132,11 @@ async function analyzeOne(context: JobContext, bookId: string): Promise<boolean>
   // artwork. The reference does this from its import and sidecar paths.
   const artwork = await refreshBookLocalArtwork(context.db, bookId)
   if (artwork > 0) context.log.info({ bookId, artwork }, 'found artwork beside a book')
+
+  // What the book now is - its page count, its cover - is what a client showing it
+  // needs to reload.
+  const ref = await bookRef(context.db, bookId)
+  if (ref) announceBook(context.events, 'BookChanged', ref)
   return true
 }
 
@@ -247,7 +256,7 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       const libraryId = text(payload.libraryId)
       if (libraryId === null) return log.warn({ job: job.id }, 'ScanLibrary without a library')
 
-      const summary = await scanLibrary(db, libraryId, { deep: payload.scanDeep === true })
+      const summary = await scanLibrary(db, libraryId, { deep: payload.scanDeep === true, events: context.events })
       log.info({ libraryId, ...summary }, 'scanned a library')
       const queued = await analyzeMissingBooks(context, libraryId)
       if (queued > 0) log.info({ libraryId, queued }, 'queued books to analyse')
@@ -305,6 +314,13 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       const result = await refreshBookMetadata(db, bookId)
       log.info({ bookId, status: result.status, changed: result.changed }, 'refreshed a book')
 
+      // Reading a book's document changes the book, and a client showing it has to
+      // hear about it.
+      if (result.changed.length > 0) {
+        const ref = await bookRef(db, bookId)
+        if (ref) announceBook(context.events, 'BookChanged', ref)
+      }
+
       // What a book says about its series is part of the series' metadata, and the
       // reference refreshes that from a task of its own - which the unique key
       // collapses when several books of one series ask for it at once.
@@ -325,10 +341,15 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       if (seriesId === null) return log.warn({ job: job.id }, 'RefreshSeriesMetadata without a series')
 
       const result = await refreshSeriesMetadata(db, seriesId)
-      return log.info(
+      log.info(
         { seriesId, status: result.status, changed: result.changed, collections: result.collections },
         'refreshed a series',
       )
+      if (result.changed || result.aggregationChanged) {
+        const ref = await seriesRef(db, seriesId)
+        if (ref) announceSeries(context.events, 'SeriesChanged', ref)
+      }
+      return
     }
 
     case 'RefreshLibraryMetadata': {

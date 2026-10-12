@@ -1,6 +1,7 @@
 import { sql, type Kysely } from 'kysely'
 import type { FastifyInstance } from 'fastify'
 import { requireAdmin, requireAuth, requireRole } from '../auth/session.js'
+import { announceReadList, readListRef } from '../content-events.js'
 import type { DB } from '../db/schema.js'
 import { nextTsid } from '../tsid.js'
 import { zipStream } from '../zip.js'
@@ -306,6 +307,7 @@ export async function registerReadListRoutes(app: FastifyInstance, opts: RouteOp
       .select(READ_LIST_COLUMNS)
       .where('id', '=', id)
       .executeTakeFirstOrThrow()
+    announceReadList(opts.events, 'ReadListAdded', { readListId: id, bookIds })
     return toReadListDto(row as unknown as ReadListRow, bookIds)
   })
 
@@ -384,6 +386,9 @@ export async function registerReadListRoutes(app: FastifyInstance, opts: RouteOp
       .where('id', '=', req.params.id)
       .execute()
     if (members !== null) await replaceMembership(db, req.params.id, members)
+
+    const changed = await readListRef(db, req.params.id)
+    if (changed) announceReadList(opts.events, 'ReadListChanged', changed)
     return reply.code(204).send()
   })
 
@@ -391,7 +396,10 @@ export async function registerReadListRoutes(app: FastifyInstance, opts: RouteOp
     const existing = await db.selectFrom('readlists').select('id').where('id', '=', req.params.id).executeTakeFirst()
     if (!existing) return reply.code(404).send({ message: 'Read list not found' })
 
+    // What it held is part of the event, so it is read before the row goes.
+    const removed = await readListRef(db, req.params.id)
     await db.deleteFrom('readlists').where('id', '=', req.params.id).execute()
+    if (removed) announceReadList(opts.events, 'ReadListDeleted', removed)
     return reply.code(204).send()
   })
 
