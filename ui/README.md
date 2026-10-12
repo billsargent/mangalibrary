@@ -4,7 +4,9 @@
 
 ## Frontend development
 
-You can run a live development server with `npm run dev`. The dev server connects to `localhost:8080` (`.env.development`: `VITE_KOMGA_API_URL`), and serves the frontend from `localhost:3000`.
+The server serves the built UI itself: `npm run build:ui` at the repository root, then `npm start`, and the application is at `http://localhost:25600`. That is the way to use it.
+
+To work on the UI, you can run a live development server with `npm run dev`. The dev server connects to `localhost:8080` (`.env.development`: `VITE_KOMGA_API_URL`), and serves the frontend from `localhost:3000`.
 
 To have a backend serving those requests, start the server in this repository on that port, and allow this origin to call it:
 

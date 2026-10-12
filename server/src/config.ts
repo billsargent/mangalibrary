@@ -40,6 +40,14 @@ export interface Config {
    * which is how an operator adds a font: drop a directory in.
    */
   fontsDir: string
+  /**
+   * Directory holding the built web UI, when one is named.
+   *
+   * Left unset here on purpose: the entrypoint falls back to the bundle built
+   * beside the server, and anything else that builds a server - a test above all -
+   * gets one with no UI unless it asks for it.
+   */
+  uiDir: string | null
 }
 
 export const DEFAULT_PORT = 25600
@@ -57,6 +65,7 @@ interface FileConfig {
   releasesUrl?: string
   corsAllowedOrigins?: string[]
   fontsDir?: string
+  uiDir?: string
 }
 
 function readFileConfig(path: string): FileConfig {
@@ -79,6 +88,11 @@ function toUrl(value: string | undefined): string | null {
   if (value === undefined) return null
   const trimmed = value.trim()
   return trimmed === '' ? null : trimmed
+}
+
+function toDirectory(value: string | undefined): string | null {
+  const trimmed = value?.trim() ?? ''
+  return trimmed === '' ? null : resolve(trimmed)
 }
 
 /** A comma-separated list, with blanks dropped: `a, b`, `a`, and `` all work. */
@@ -120,5 +134,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     releasesUrl: toUrl(env.KOMGA_RELEASES_URL ?? fileConfig.releasesUrl),
     corsAllowedOrigins: toList(env.KOMGA_CORS_ALLOWED_ORIGINS ?? fileConfig.corsAllowedOrigins),
     fontsDir: resolve(env.KOMGA_FONTS_DIR ?? fileConfig.fontsDir ?? join(configDir, 'fonts')),
+    uiDir: toDirectory(env.KOMGA_UI_DIR ?? fileConfig.uiDir),
   }
 }

@@ -9,6 +9,8 @@
   },
   "scripts": {
     "install:all": "npm install && npm --prefix server install && npm --prefix importer install",
+    "build:ui": "npm --prefix ui run build:with-i18n",
+    "start": "npm --prefix server run dev",
     "type-check": "npm --prefix server run type-check && npm --prefix importer run type-check",
     "test": "npm --prefix server test && npm --prefix importer test",
     "lint": "npm --prefix server run lint && npm --prefix importer run lint",

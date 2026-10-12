@@ -7,6 +7,7 @@ import type { Database } from './db/index.js'
 import { EventBus } from './events.js'
 import { fetchJson as defaultFetchJson, type FetchJson } from './http.js'
 import { registerRoutes } from './routes/index.js'
+import { registerUi } from './routes/ui.js'
 import { MAX_UPLOAD_BYTES } from './uploads.js'
 import { APP_VERSION } from './version.js'
 
@@ -64,6 +65,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     port: deps.config.port,
     configuredPort: deps.config.configuredPort,
   })
+
+  // Last, so that every API route is already there to take precedence over it.
+  await registerUi(app, deps.config.uiDir)
 
   // Closing the server releases the database handle.
   app.addHook('onClose', async () => {
