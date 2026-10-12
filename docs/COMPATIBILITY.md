@@ -206,9 +206,49 @@ Deliberate differences:
   library, exactly as the reference's fixed-rate task does.
 - Reading `TASK_POOL_SIZE` happens per tick rather than on a settings change, so
   changing it takes effect without a restart.
-- The thumbnail types (`GenerateBookThumbnail`, `RegenerateBookThumbnails`) are
-  accepted and declined with a note in the log until M6d builds them, rather than
-  being refused by the API.
+
+## Thumbnails
+
+A book's poster is made from its first page - its cover, for an EPUB - as part of
+analysing it, and stored in `thumbnails` as a single `GENERATED` row. It is the
+selected row unless the book already had a poster of its own chosen, whether
+uploaded or found beside the file, which a generated one never displaces. A new
+generated poster replaces the old one rather than joining it.
+
+The size is the `THUMBNAIL_SIZE` setting: `DEFAULT` 300, `MEDIUM` 600, `LARGE` 900
+or `XLARGE` 1200 pixels on the longest edge, and it is read when a poster is made.
+An image is fitted inside that square and never enlarged, and a JPEG that already
+fits is stored as it is rather than re-encoded. Everything else is converted to
+JPEG, which is the only format the reference stores either.
+
+A series with no poster of its own shows the poster of one of its books, chosen by
+the library's `seriesCover` setting: `FIRST`, `FIRST_UNREAD_OR_FIRST`,
+`FIRST_UNREAD_OR_LAST` or `LAST`, where an unread book is one the caller has not
+finished. Two people can therefore be shown different covers for one series, which
+the reference does too. The book it names decides: if that book has no poster, the
+series has none, and no other book is tried.
+
+A collection or a read list shows a mosaic of its first four members, laid out two
+by two on a cover-shaped black canvas. The reference does the same, including
+repeating the members when there are fewer than four, so a collection of one series
+is four of that series' cover. `PUT /books/thumbnails` regenerates them: every book,
+or with `for_bigger_result_only=true` only those whose poster is smaller than the
+size in force now.
+
+Deliberate differences:
+
+- A series, collection or read list cover is built when it is asked for and is not
+  stored, so there is no job that generates one. The reference's `SIDECAR`
+  thumbnails - an image sitting beside a series' books - arrive with the local
+  artwork work; a generated one is never written for a series.
+- A cover that was built on the fly is answered with `private, max-age=60` and no
+  entity tag, because a series' cover depends on who is asking. A stored poster
+  keeps the reference's `public, max-age=86400`, tagged with the row it came from.
+- An owner with nothing to show answers `404`. The reference builds an all-black
+  mosaic for a collection that holds nothing.
+- Making a poster is a job of its own, queued after the analysis that makes it
+  possible, so a book can be browsed before its poster exists. The reference
+  arranges it the same way.
 
 ## Scanning
 

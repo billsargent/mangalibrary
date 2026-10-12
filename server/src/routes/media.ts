@@ -10,6 +10,7 @@ import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
 import { openBook } from '../media/index.js'
 import { mediaTypeFor, profileFor } from '../media/kinds.js'
 import { bookFilePath, findBookRecord, type BookFileRecord } from '../content/files.js'
+import { resizedImage } from '../thumbnails/image.js'
 import { cacheHeaders, isNotModified } from './cache-headers.js'
 import { humanSize } from './content-dto.js'
 import { contentContext, seriesAllowed, type ContentContext } from './context.js'
@@ -162,17 +163,7 @@ async function convertImage(bytes: Buffer, target: string): Promise<Buffer | nul
 
 /** Shrink an image to fit inside a square, without enlarging it. */
 async function resizeImage(bytes: Buffer, mediaType: string, size: number): Promise<Buffer | null> {
-  try {
-    const metadata = await sharp(bytes).metadata()
-    const longest = Math.max(metadata.width ?? 0, metadata.height ?? 0)
-    // A JPEG that already fits is served as it is, as the reference does.
-    if (mediaType === 'image/jpeg' && longest > 0 && longest <= size) return bytes
-
-    const target = Math.min(longest > 0 ? longest : size, size)
-    return await sharp(bytes).resize(target, target, { fit: 'inside' }).jpeg().toBuffer()
-  } catch {
-    return null
-  }
+  return (await resizedImage(bytes, mediaType, size))?.bytes ?? null
 }
 
 export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptions): Promise<void> {

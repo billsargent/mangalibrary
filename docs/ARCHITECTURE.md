@@ -42,7 +42,10 @@ Komga's schema). Key groups:
   `books` + `book_metadata` (+locks) + related tables; `book_metadata_aggregation`
 - Media: `media`, `media_page`, `media_file`, `media_container`, `epub_toc`,
   `epub_positions`
-- `thumbnails` (unified, replacing Komga's five thumbnail tables)
+- `thumbnails` (unified, replacing Komga's five thumbnail tables): one row per
+  stored poster, generated or uploaded. A series, collection or read list cover
+  that has none of its own is built when it is asked for - from one of its books,
+  or as a mosaic of four - and is not stored.
 - Progress / organisation: `read_progress`, `read_progress_series`, `collections`,
   `collection_series`, `readlists`, `readlist_book`, `readlist_request`
 - Maintenance: `page_hash*`, `historical_events`, `jobs`, settings tables,
@@ -58,6 +61,6 @@ UI / client
     -> auth (session | basic | api key) + access checks
       -> domain service
         -> Kysely repository -> SQLite
-        -> jobs table (async work) -> piscina workers
+        -> jobs table (async work) -> in-process worker
         -> EventEmitter -> SSE stream + search reindex
 ```

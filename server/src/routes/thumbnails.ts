@@ -4,6 +4,15 @@ import { fileTypeFromBuffer } from 'file-type'
 import sharp from 'sharp'
 import { requireAdmin, requireAuth } from '../auth/session.js'
 import type { DB, ThumbnailOwnerType } from '../db/schema.js'
+import {
+  chosenThumbnail,
+  collectionMosaicThumbnail,
+  readListMosaicThumbnail,
+  seriesCoverThumbnail,
+  thumbnailRecord,
+  type ThumbnailRecord,
+  type ThumbnailRow,
+} from '../thumbnails/generate.js'
 import { nextTsid } from '../tsid.js'
 import { accessibleSeriesIds, contentContext, type ContentContext } from './context.js'
 import type { RouteOptions } from './libraries.js'
@@ -52,33 +61,17 @@ const EVENT_PREFIX: Record<
   READLIST: 'ThumbnailReadList',
 }
 
-interface ThumbnailRow {
-  id: string
-  owner_type: string
-  owner_id: string
-  type: string
-  page: number
-  selected: number
-  media_type: string
-  width: number
-  height: number
-  file_size: number
-  thumbnail: Buffer
-  created_date: string
-  last_modified_date: string
-}
-
 /** DTO shape is the same for every owner, with one renamed id field. */
-function toThumbnailDto(row: ThumbnailRow, spec: OwnerSpec): Record<string, unknown> {
+function toThumbnailDto(record: ThumbnailRecord, spec: OwnerSpec): Record<string, unknown> {
   return {
-    id: row.id,
-    type: row.type,
-    selected: row.selected === 1,
-    mediaType: row.media_type,
-    width: row.width,
-    height: row.height,
-    fileSize: row.file_size,
-    [spec.idField]: row.owner_id,
+    id: record.id,
+    type: record.type,
+    selected: record.selected,
+    mediaType: record.mediaType,
+    width: record.width,
+    height: record.height,
+    fileSize: record.fileSize,
+    [spec.idField]: record.ownerId,
   }
 }
 
@@ -157,36 +150,31 @@ async function ownerVisible(db: Kysely<DB>, context: ContentContext, spec: Owner
   }
 }
 
-/** The thumbnail to serve for an owner: the selected one, else the newest. */
-async function chosenThumbnail(db: Kysely<DB>, spec: OwnerSpec, id: string): Promise<ThumbnailRow | undefined> {
-  const row = await db
-    .selectFrom('thumbnails')
-    .selectAll()
-    .where('owner_type', '=', spec.ownerType)
-    .where('owner_id', '=', id)
-    .orderBy('selected', 'desc')
-    .orderBy('created_date', 'desc')
-    .orderBy('id', 'desc')
-    .limit(1)
-    .executeTakeFirst()
-  return row as ThumbnailRow | undefined
-}
-
 /**
  * Send image bytes with the headers a browser needs to cache them.
  *
- * `last_modified_date` is part of the tag, so replacing a poster invalidates
- * every cache that holds the old one.
+ * The row's id is part of the tag: replacing a poster writes a new row, so every
+ * cache holding the old image is invalidated by the changed tag.
  */
-function sendImage(req: FastifyRequest, reply: FastifyReply, row: ThumbnailRow): FastifyReply {
-  const etag = `"${row.id}-${Date.parse(row.last_modified_date) || 0}"`
+function sendImage(req: FastifyRequest, reply: FastifyReply, record: ThumbnailRecord): FastifyReply {
+  const etag = `"${record.id}-"`
   if (req.headers['if-none-match'] === etag) return reply.code(304).send()
 
   return reply
     .header('etag', etag)
     .header('cache-control', 'public, max-age=86400')
-    .type(row.media_type)
-    .send(row.thumbnail)
+    .type(record.mediaType)
+    .send(record.bytes)
+}
+
+/**
+ * Send an image this server just made - a series' borrowed poster, or a mosaic.
+ *
+ * Cached briefly and privately: a series shows the poster of a book the caller has
+ * not read, so two people looking at one series are not shown the same image.
+ */
+function sendComputedImage(reply: FastifyReply, image: { bytes: Buffer; mediaType: string }): FastifyReply {
+  return reply.header('cache-control', 'private, max-age=60').type(image.mediaType).send(image.bytes)
 }
 
 const FORMAT_TO_MEDIA_TYPE: Record<string, string> = {
@@ -227,9 +215,26 @@ export async function registerThumbnailRoutes(app: FastifyInstance, opts: RouteO
       const resolved = await resolve(req, reply)
       if (!resolved) return reply
 
-      const row = await chosenThumbnail(db, spec, resolved.id)
-      if (!row) return reply.code(404).send({ message: 'No thumbnail' })
-      return sendImage(req, reply, row)
+      const stored = await chosenThumbnail(db, spec.ownerType, resolved.id)
+      if (stored !== null) return sendImage(req, reply, stored)
+
+      // A series shows the poster of one of its books, and a collection or a read
+      // list shows four of its members side by side, which is what the reference
+      // does when the owner has no poster of its own.
+      if (spec.ownerType === 'SERIES') {
+        const borrowed = await seriesCoverThumbnail(db, resolved.id, resolved.context.user.id)
+        if (borrowed !== null) return sendImage(req, reply, borrowed)
+      }
+      if (spec.ownerType === 'COLLECTION') {
+        const built = await collectionMosaicThumbnail(db, resolved.id, resolved.context.user.id)
+        if (built !== null) return sendComputedImage(reply, built)
+      }
+      if (spec.ownerType === 'READLIST') {
+        const built = await readListMosaicThumbnail(db, resolved.id)
+        if (built !== null) return sendComputedImage(reply, built)
+      }
+
+      return reply.code(404).send({ message: 'No thumbnail' })
     })
 
     app.get(`${base}/thumbnails`, { preHandler: requireAuth }, async (req, reply) => {
@@ -245,7 +250,7 @@ export async function registerThumbnailRoutes(app: FastifyInstance, opts: RouteO
         .orderBy('created_date', 'desc')
         .orderBy('id', 'desc')
         .execute()
-      return (rows as ThumbnailRow[]).map((row) => toThumbnailDto(row, spec))
+      return (rows as unknown as ThumbnailRow[]).map((row) => toThumbnailDto(thumbnailRecord(row), spec))
     })
 
     app.get(`${base}/thumbnails/:thumbnailId`, { preHandler: requireAuth }, async (req, reply) => {
@@ -261,7 +266,7 @@ export async function registerThumbnailRoutes(app: FastifyInstance, opts: RouteO
         .where('owner_id', '=', resolved.id)
         .executeTakeFirst()
       if (!row) return reply.code(404).send({ message: 'Thumbnail not found' })
-      return sendImage(req, reply, row as ThumbnailRow)
+      return sendImage(req, reply, thumbnailRecord(row as unknown as ThumbnailRow))
     })
 
     /**
@@ -326,7 +331,7 @@ export async function registerThumbnailRoutes(app: FastifyInstance, opts: RouteO
         name: `${EVENT_PREFIX[spec.ownerType]}Added`,
         data: await thumbnailEventData(db, spec, id, true),
       })
-      return toThumbnailDto(row as ThumbnailRow, spec)
+      return toThumbnailDto(thumbnailRecord(row as unknown as ThumbnailRow), spec)
     })
 
     app.delete(`${base}/thumbnails/:thumbnailId`, { preHandler: requireAdmin }, async (req, reply) => {
