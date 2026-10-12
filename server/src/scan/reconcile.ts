@@ -5,6 +5,7 @@ import type { DB } from '../db/schema.js'
 import { naturalCompare } from '../media/kinds.js'
 import { refreshSeriesLocalArtwork } from '../metadata/localArtwork.js'
 import { refreshSeriesMetadata } from '../metadata/series.js'
+import { cleanupEmptySets } from '../organisation/cleanup.js'
 import { nextTsid } from '../tsid.js'
 import { LibraryScanError, walkLibrary, type ScannedBook, type ScanSettings } from './library.js'
 
@@ -16,6 +17,9 @@ export interface ScanSummary {
   booksCreated: number
   booksUpdated: number
   booksDeleted: number
+  /** Collections and read lists removed because the scan emptied them. */
+  collectionsDeleted: number
+  readListsDeleted: number
 }
 
 /**
@@ -218,6 +222,8 @@ export async function scanLibrary(
     booksCreated: 0,
     booksUpdated: 0,
     booksDeleted: 0,
+    collectionsDeleted: 0,
+    readListsDeleted: 0,
   }
 
   const existing = await db.selectFrom('series').selectAll().where('library_id', '=', libraryId).execute()
@@ -364,6 +370,12 @@ export async function scanLibrary(
   if (library.empty_trash_after_scan === 1) {
     await db.deleteFrom('books').where('library_id', '=', libraryId).where('deleted_date', 'is not', null).execute()
     await db.deleteFrom('series').where('library_id', '=', libraryId).where('deleted_date', 'is not', null).execute()
+
+    // Empting the trash is also when a collection or read list that has lost
+    // everything is removed, if the server is set to remove them.
+    const cleaned = await cleanupEmptySets(db)
+    summary.collectionsDeleted = cleaned.collectionsDeleted
+    summary.readListsDeleted = cleaned.readListsDeleted
   }
 
   return summary
