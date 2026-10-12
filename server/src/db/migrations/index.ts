@@ -14,6 +14,7 @@ import { migration0012ClientSettingsAllowUnauthorized } from './0012_client_sett
 import { migration0013AggregationSummaryNumber } from './0013_aggregation_summary_number.js'
 import { migration0014ThumbnailUrl } from './0014_thumbnail_url.js'
 import { migration0015PageHash } from './0015_page_hash.js'
+import { migration0016SearchSeriesTitleSort } from './0016_search_series_title_sort.js'
 
 /**
  * Ordered migration registry, applied in id order by the runner.
@@ -38,4 +39,5 @@ export const migrations: Migration[] = [
   migration0013AggregationSummaryNumber,
   migration0014ThumbnailUrl,
   migration0015PageHash,
+  migration0016SearchSeriesTitleSort,
 ]

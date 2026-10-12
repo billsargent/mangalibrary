@@ -13,8 +13,9 @@ import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { applySeriesMetadataPatch } from './metadata.js'
 import { toCollectionDto, type CollectionDto, type CollectionRow } from './organisation-dto.js'
-import { applySort, booleanParam, isRegex, likeAny, paging, parseSort, toArray, type SortSpec } from './query.js'
+import { applySort, booleanParam, isRegex, paging, parseSort, toArray, type SortSpec } from './query.js'
 import { seriesCondition, type ConditionFilter } from '../search/condition.js'
+import { INDEXES, matchFilter, relevanceSort } from '../search/fullText.js'
 import { zipStream } from '../zip.js'
 
 /**
@@ -68,7 +69,8 @@ const SERIES_BOOK_DEFAULT_SORT: SortSpec[] = [
 export interface SeriesFilters {
   libraryIds: string[]
   search?: string
-  searchRegex?: string
+  /** A `pattern,field` regex search, with the field resolved to a column. */
+  searchRegex?: { pattern: string; field: string }
   /** A translated search condition, ready to be a `where` clause. */
   condition?: ConditionFilter
   collectionIds: string[]
@@ -121,20 +123,15 @@ function seriesQuery(db: Kysely<DB>, filters: SeriesFilters) {
   if (filters.languages.length > 0) query = query.where('series_metadata.language', 'in', filters.languages)
 
   if (filters.search !== undefined && filters.search !== '') {
-    const term = filters.search
-    query = query.where((eb) =>
-      eb.or([
-        likeAny('series_metadata.title', term),
-        likeAny('series_metadata.title_sort', term),
-        likeAny('series.name', term),
-      ]),
-    )
+    // A term that cannot match anything matches nothing, rather than dropping the
+    // filter and answering with the whole library.
+    const filter = matchFilter(db, INDEXES.SERIES, filters.search)
+    query = filter === null ? query.where(sql<boolean>`false`) : query.where(filter)
   }
 
-  if (filters.searchRegex !== undefined && filters.searchRegex !== '') {
-    const pattern = filters.searchRegex
+  if (filters.searchRegex !== undefined) {
     query = query.where(
-      sql<boolean>`(${sql.ref('series_metadata.title')} regexp ${pattern} or ${sql.ref('series.name')} regexp ${pattern})`,
+      sql<boolean>`${sql.ref(`series_metadata.${filters.searchRegex.field}`)} regexp ${filters.searchRegex.pattern}`,
     )
   }
 
@@ -361,6 +358,32 @@ function integerParams(value: unknown): number[] {
     .filter((entry) => Number.isFinite(entry))
 }
 
+/**
+ * A `search_regex` parameter.
+ *
+ * The contract documents `pattern,field`, with `TITLE` and `TITLE_SORT` as the fields,
+ * and that is what a value in that form is read as. A value that names an unknown
+ * field is dropped rather than refused, which is what the reference does with it. A
+ * value that is not in that form at all - no comma - is read as a pattern for the
+ * title, because that is how this server read it before it read fields, and answering
+ * with every series would be a silent loss of the filter somebody asked for.
+ */
+export function regexSearch(value: unknown): { pattern: string; field: string } | undefined {
+  if (typeof value !== 'string' || value === '') return undefined
+
+  const separator = value.lastIndexOf(',')
+  if (separator < 0) return { pattern: value, field: 'title' }
+
+  const pattern = value.slice(0, separator)
+  const field = value
+    .slice(separator + 1)
+    .trim()
+    .toLowerCase()
+  if (field === 'title') return { pattern, field: 'title' }
+  if (field === 'title_sort') return { pattern, field: 'title_sort' }
+  return undefined
+}
+
 export function filtersFrom(
   context: ContentContext,
   query: Record<string, unknown>,
@@ -374,7 +397,7 @@ export function filtersFrom(
   return {
     libraryIds: libraries.length > 0 ? libraries : context.libraryIds,
     search: search ?? fullText,
-    searchRegex: typeof query.search_regex === 'string' ? query.search_regex : undefined,
+    searchRegex: regexSearch(query.search_regex),
     collectionIds: toArray(query.collection_id),
     statuses: toArray(query.status),
     readStatuses: toArray(query.read_status),
@@ -424,7 +447,7 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
     const unpaged = booleanParam(query.unpaged) === true
     const filters = filtersFrom(context, query, body)
 
-    if (filters.searchRegex !== undefined && !isRegex(filters.searchRegex)) {
+    if (filters.searchRegex !== undefined && !isRegex(filters.searchRegex.pattern)) {
       return reply.code(400).send({ validationErrors: { search_regex: 'must be a valid regular expression' } })
     }
 
@@ -434,7 +457,16 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
       filters.condition = translated.filter
     }
 
-    const sorts = parseSort(query.sort, SERIES_SORTS, SERIES_DEFAULT_SORT)
+    // A search ranks by how well each series matches, unless the caller asked for an
+    // order of their own - which is what the reference does too. A term with nothing
+    // searchable in it has nothing to rank by.
+    const relevance = filters.search === undefined ? null : relevanceSort(INDEXES.SERIES, filters.search)
+    const sorts = parseSort(
+      query.sort,
+      relevance === null ? SERIES_SORTS : { ...SERIES_SORTS, relevance },
+      relevance === null ? SERIES_DEFAULT_SORT : [{ column: relevance, direction: 'asc' }],
+    )
+
     return seriesPage(db, context, filters, sorts, page, size, unpaged)
   }
 

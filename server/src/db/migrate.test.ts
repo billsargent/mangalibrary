@@ -74,7 +74,7 @@ describe('migrate', () => {
       values ('mystery', 4096, ${now}, ${now})`.execute(database.db)
 
     const applied = await migrate(database.db, migrations)
-    expect(applied.applied).toEqual(['0015_page_hash'])
+    expect(applied.applied).toEqual(['0015_page_hash', '0016_search_series_title_sort'])
 
     // One row per hash, keeping the largest size and the highest delete count, and
     // importing a hash as "known, and remove nothing" because its action was never

@@ -13,7 +13,8 @@ import { accessibleSeriesIds, contentContext, type ContentContext } from './cont
 import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { toReadListDto, type ReadListDto, type ReadListRow } from './organisation-dto.js'
-import { applySort, booleanParam, likeAny, paging, parseSort, toArray, type SortSpec } from './query.js'
+import { applySort, booleanParam, paging, parseSort, toArray, type SortSpec } from './query.js'
+import { INDEXES, matchFilter } from '../search/fullText.js'
 
 /**
  * Read lists: named, ordered collections of books.
@@ -242,7 +243,10 @@ export async function registerReadListRoutes(app: FastifyInstance, opts: RouteOp
 
     let builder = db.selectFrom('readlists').select(READ_LIST_COLUMNS)
     if (typeof query.search === 'string' && query.search !== '') {
-      builder = builder.where(likeAny('readlists.name', query.search))
+      // A term that cannot match anything matches nothing, rather than dropping the
+      // filter and answering with every read list.
+      const filter = matchFilter(db, INDEXES.READ_LISTS, query.search)
+      builder = filter === null ? builder.where(sql<boolean>`false`) : builder.where(filter)
     }
     if (scoped.length > 0) {
       builder = builder.where((eb) =>
