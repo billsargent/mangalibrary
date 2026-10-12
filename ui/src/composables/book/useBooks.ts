@@ -1,5 +1,5 @@
 import { useBook } from '@/composables/book/useBook'
-import { bookReaderUrl } from '@/api/links'
+import { bookReaderRoute } from '@/api/links'
 import { useMessagesStore } from '@/stores/messages'
 import { type ReadListDto, type SeriesDto } from '@/generated/openapi'
 import { isReadList } from '@/functions/entity'
@@ -11,6 +11,7 @@ import { getFirstBookInParent } from '@/functions/book-container'
  */
 export function useBooks(parent: MaybeRefOrGetter<SeriesDto | ReadListDto>) {
   const messagesStore = useMessagesStore()
+  const router = useRouter()
 
   async function readFirstBook(incognito: boolean = false) {
     let book = await getFirstBookInParent(toValue(parent), true)
@@ -21,14 +22,13 @@ export function useBooks(parent: MaybeRefOrGetter<SeriesDto | ReadListDto>) {
       const { canRead, isEpubReader } = useBook(book)
       if (canRead.value) {
         const parentValue = toValue(parent)
-        window.open(
-          bookReaderUrl(
+        void router.push(
+          bookReaderRoute(
             book.id,
             isEpubReader.value,
             incognito,
             isReadList(parentValue) ? parentValue.id : undefined,
           ),
-          '_blank',
         )
       } else {
         messagesStore.messages.push({

@@ -1,4 +1,8 @@
 {
+  "+2U4xm": {
+    "defaultMessage": "Cycling scale: {scale}",
+    "description": "Reader: notice after changing the scale with a key"
+  },
   "+6YDzS": {
     "defaultMessage": "No data found",
     "description": "Known Duplicate Page Table: shown when table has no data"
@@ -38,6 +42,10 @@
   "+r8FCS": {
     "defaultMessage": "Server listening port",
     "description": "Server settings: input field for server port"
+  },
+  "+xj+4o": {
+    "defaultMessage": "Click or press next again to exit the reader.",
+    "description": "Reader: how to leave after the last book"
   },
   "+y+9xL": {
     "defaultMessage": "Files over the size limit: {filenames}",
@@ -171,6 +179,10 @@
     "defaultMessage": "Edit series metadata",
     "description": "Edit series metadata dialog title"
   },
+  "1ohPeX": {
+    "defaultMessage": "Paged",
+    "description": "Reader settings: paged section"
+  },
   "1qIfds": {
     "defaultMessage": "Pinned",
     "description": "Library tab navigation: library selection: pinned"
@@ -203,9 +215,17 @@
     "defaultMessage": "Series ordering",
     "description": "Form edit collection: General - series ordering"
   },
+  "38i8Bp": {
+    "defaultMessage": "Animate page transitions",
+    "description": "Reader settings: animate page transitions"
+  },
   "3DBPuv": {
     "defaultMessage": "Scroll",
     "description": "View mode scroll button tooltip"
+  },
+  "3J3Sbx": {
+    "defaultMessage": "Previous book",
+    "description": "Reader: go to the previous book"
   },
   "3J6FI8": {
     "defaultMessage": "Edit view",
@@ -226,6 +246,10 @@
   "3T1ln7": {
     "defaultMessage": "Delete library",
     "description": "Library delete dialog: title"
+  },
+  "3TR/a/": {
+    "defaultMessage": "Always full screen",
+    "description": "Reader settings: always full screen"
   },
   "3W0jUi": {
     "defaultMessage": "Exclude labels",
@@ -375,6 +399,14 @@
     "defaultMessage": "Page not found",
     "description": "Page not found view: error message title"
   },
+  "6aeqyq": {
+    "defaultMessage": "Menus",
+    "description": "Reader shortcuts: menus group"
+  },
+  "6ajff4": {
+    "defaultMessage": "Set current page as series poster",
+    "description": "Reader menu: use the page on screen as the poster of the series"
+  },
   "6eAECF": {
     "defaultMessage": "Library",
     "description": "Library bottom sheet, subtitle"
@@ -383,6 +415,10 @@
     "defaultMessage": "Type",
     "description": "History Table table header: Event type"
   },
+  "6o7oFN": {
+    "defaultMessage": "Cycle scale",
+    "description": "Reader shortcut: cycle scale"
+  },
   "70/wK4": {
     "defaultMessage": "Create library",
     "description": "Add library button: tooltip"
@@ -390,6 +426,10 @@
   "700A3r": {
     "defaultMessage": "Book",
     "description": "Import reading list table header: Book"
+  },
+  "7IpTnQ": {
+    "defaultMessage": "Cycle side padding",
+    "description": "Reader shortcut: cycle side padding"
   },
   "7M1pUf": {
     "defaultMessage": "Empty trash",
@@ -411,6 +451,14 @@
     "defaultMessage": "Writer",
     "description": "Author role: writer"
   },
+  "7tk6gh": {
+    "defaultMessage": "Page layout",
+    "description": "Reader settings: page layout"
+  },
+  "7xthj+": {
+    "defaultMessage": "Page {number}",
+    "description": "Reader: alternative text of a page image"
+  },
   "7z91nm": {
     "defaultMessage": "History",
     "description": "History table global header"
@@ -423,9 +471,17 @@
     "defaultMessage": "Import book metadata",
     "description": "Form add/edit library: Metadata - epub book metadata"
   },
+  "84PzV/": {
+    "defaultMessage": "Display",
+    "description": "Reader settings: display section"
+  },
   "87q6WX": {
     "defaultMessage": "None",
     "description": "Filter values: none"
+  },
+  "88oP6X": {
+    "defaultMessage": "Reader navigation",
+    "description": "Reader shortcuts: navigation group"
   },
   "8CVWWg": {
     "defaultMessage": "Delete files",
@@ -475,6 +531,14 @@
     "defaultMessage": "Generate book thumbnail",
     "description": "Task name: GenerateBookThumbnail"
   },
+  "9/ZR/T": {
+    "defaultMessage": "Pages",
+    "description": "Reader page explorer: title"
+  },
+  "9/axR0": {
+    "defaultMessage": "General",
+    "description": "Reader settings: general section"
+  },
   "90yqRq": {
     "defaultMessage": "add library",
     "description": "Add library button: aria label"
@@ -507,13 +571,25 @@
     "defaultMessage": "No release date",
     "description": "Card subtitle: no release date"
   },
+  "9nbGsJ": {
+    "defaultMessage": "Download current page",
+    "description": "Reader menu: download the page on screen"
+  },
   "9oA9gw": {
     "defaultMessage": "Unpinned",
     "description": "Library tab navigation: library selection: unpinned"
   },
+  "A+cB93": {
+    "defaultMessage": "Show or hide toolbars",
+    "description": "Reader shortcut: show or hide the toolbars"
+  },
   "AEaKHC": {
     "defaultMessage": "Find book thumbnails to regenerate",
     "description": "Task name: FindBookThumbnailsToRegenerate"
+  },
+  "AJ7eP6": {
+    "defaultMessage": "Click or press next again to move to the next book.",
+    "description": "Reader: how to go to the next book"
   },
   "AJa6Tq": {
     "defaultMessage": "No data",
@@ -611,6 +687,10 @@
     "defaultMessage": "activity details",
     "description": "Task Indicator button: aria-label"
   },
+  "CO471E": {
+    "defaultMessage": "Changing reading direction: {direction}",
+    "description": "Reader: notice after changing the reading direction with a key"
+  },
   "COn5A6": {
     "defaultMessage": "Local media assets",
     "description": "Form add/edit library: Metadata - section header for local media assets"
@@ -647,6 +727,10 @@
     "defaultMessage": "Contributors",
     "description": "Form edit book: Contributors"
   },
+  "CsYKkd": {
+    "defaultMessage": "Books made of text cannot be read here yet. You can download the file from the book page.",
+    "description": "EPUB reader placeholder: text"
+  },
   "Cv11G8": {
     "defaultMessage": "Total book count",
     "description": "Form edit series: General - series total book count"
@@ -682,6 +766,10 @@
   "DK4PsD": {
     "defaultMessage": "Series books",
     "description": "Book picker dialog: series books table header"
+  },
+  "DLjR22": {
+    "defaultMessage": "Show or hide settings",
+    "description": "Reader: settings button and shortcut"
   },
   "DNVnmS": {
     "defaultMessage": "Directory name",
@@ -1007,6 +1095,10 @@
     "defaultMessage": "Age rating",
     "description": "Filter by age rating: select placeholder"
   },
+  "KI56Ch": {
+    "defaultMessage": "Show or hide the page explorer",
+    "description": "Reader: page explorer button and shortcut"
+  },
   "Kie8HQ": {
     "defaultMessage": "Book",
     "description": "Import books table header: book"
@@ -1067,6 +1159,10 @@
     "defaultMessage": "Unknown file size",
     "description": "Poster card: unknown file size"
   },
+  "MhWVXd": {
+    "defaultMessage": "Gestures",
+    "description": "Reader settings: swipe gestures"
+  },
   "MoOECu": {
     "defaultMessage": "Import series metadata",
     "description": "Form add/edit library: Metadata - comicinfo series metadata"
@@ -1074,6 +1170,10 @@
   "MvwDsn": {
     "defaultMessage": "Known",
     "description": "Drawer menu for Media > Duplicate Pages > Known"
+  },
+  "N5LtZ4": {
+    "defaultMessage": "Next book",
+    "description": "Reader: go to the next book"
   },
   "N7+QXi": {
     "defaultMessage": "Import",
@@ -1118,6 +1218,10 @@
   "No9Upl": {
     "defaultMessage": "Title",
     "description": "Form edit series: General - series title"
+  },
+  "NoRj7h": {
+    "defaultMessage": "First page",
+    "description": "Reader: go to the first page"
   },
   "NpjqFA": {
     "defaultMessage": "Try adjusting the filters",
@@ -1211,6 +1315,10 @@
     "defaultMessage": "Library deleted: {library}",
     "description": "Snackbar notification shown upon successful library deletion"
   },
+  "PzbszR": {
+    "defaultMessage": "Background color",
+    "description": "Reader settings: background colour"
+  },
   "Q7tJAG": {
     "defaultMessage": "Read list",
     "description": "Container chip, subtitle for read list"
@@ -1230,6 +1338,10 @@
   "QM5+gW": {
     "defaultMessage": "Delete count",
     "description": "Known Duplicate Page Table header: delete count"
+  },
+  "QoELLi": {
+    "defaultMessage": "Side padding",
+    "description": "Reader settings: side padding of the webtoon reader"
   },
   "Qxij/I": {
     "defaultMessage": "Deleted page",
@@ -1263,6 +1375,14 @@
     "defaultMessage": "Book {number}",
     "description": "Book navigation siblings menu: book number in series"
   },
+  "RirQe8": {
+    "defaultMessage": "Close",
+    "description": "Reader settings: close button"
+  },
+  "RpleRj": {
+    "defaultMessage": "None",
+    "description": "Reader: no padding or margin"
+  },
   "Rw2Iwj": {
     "defaultMessage": "Go to next book within read list",
     "description": "Book navigation within read list: next button tootlip"
@@ -1278,6 +1398,10 @@
   "S39lnB": {
     "defaultMessage": "Year rating",
     "description": "Filter by release year: select placeholder"
+  },
+  "S6+Ruz": {
+    "defaultMessage": "Settings",
+    "description": "Reader shortcuts: settings group"
   },
   "SIfmpC": {
     "defaultMessage": "Select series",
@@ -1367,6 +1491,10 @@
     "defaultMessage": "Password",
     "description": "Claim server screen: password field label"
   },
+  "U6GPZV": {
+    "defaultMessage": "Cycling side padding: {padding}",
+    "description": "Reader: notice after changing the side padding with a key"
+  },
   "UFZ+PY": {
     "defaultMessage": "Tags",
     "description": "Form edit book: Tags"
@@ -1390,6 +1518,10 @@
   "UaD47n": {
     "defaultMessage": "Regenerate the 'remember me' key",
     "description": "Server settings: checkbox to regenerate the remember me key"
+  },
+  "UfRb7k": {
+    "defaultMessage": "Cycling page layout: {layout}",
+    "description": "Reader: notice after changing the page layout with a key"
   },
   "UfbIyV": {
     "defaultMessage": "Links",
@@ -1443,6 +1575,10 @@
     "defaultMessage": "The 'SeriesGroup' element will be used",
     "description": "Form add/edit library: Metadata - Comicinfo.xml collections - information tooltip"
   },
+  "VdfmY6": {
+    "defaultMessage": "Previous page",
+    "description": "Reader shortcut: previous page"
+  },
   "VeEnkD": {
     "defaultMessage": "Links",
     "description": "Form edit book: Links"
@@ -1491,6 +1627,10 @@
     "defaultMessage": "The book files will be deleted<ul><li>Book media file will be deleted from disk.</li><li>Book sidecar files will be deleted from disk.</li><li>Book will de deleted, along with its metadata and read progress.</li></ul><b>This action cannot be undone.</b>",
     "description": "Book files deletion warning notice"
   },
+  "WRC8hB": {
+    "defaultMessage": "Click or press previous again to move to the previous book.",
+    "description": "Reader: how to go to the previous book"
+  },
   "WSTiWA": {
     "defaultMessage": "Added to collection",
     "description": "Add to collection notification: series added to collection"
@@ -1518,6 +1658,10 @@
   "Wlzzv8": {
     "defaultMessage": "Requested number",
     "description": "Import reading list table header: requested number"
+  },
+  "Wrc2ey": {
+    "defaultMessage": "Show or hide help",
+    "description": "Reader: keyboard shortcuts button and shortcut"
   },
   "X/Z8x+": {
     "defaultMessage": "Make sure to copy your API key now. You won't be able to see it again!",
@@ -1566,6 +1710,10 @@
   "Xbf2fj": {
     "defaultMessage": "Force directory modified time",
     "description": "Form add/edit library: Scanner - Force directory modified time"
+  },
+  "Xl+4Wy": {
+    "defaultMessage": "Close",
+    "description": "Reader: close the book"
   },
   "XnidLu": {
     "defaultMessage": "Please type <b>{validateText}</b> to confirm.",
@@ -1659,6 +1807,14 @@
     "defaultMessage": "Series",
     "description": "Browsing context: series"
   },
+  "ZJqP9x": {
+    "defaultMessage": "Close",
+    "description": "Reader page explorer: close button"
+  },
+  "ZKPtkT": {
+    "defaultMessage": "Keyboard shortcuts",
+    "description": "Reader keyboard shortcuts: title"
+  },
   "ZPuFVu": {
     "defaultMessage": "General",
     "description": "Form edit series: General"
@@ -1678,6 +1834,10 @@
   "Zh8AOV": {
     "defaultMessage": "Edit User",
     "description": "Edit user dialog title"
+  },
+  "ZlYQlu": {
+    "defaultMessage": "Incognito mode: read progress will not be marked",
+    "description": "Reader: tooltip of the incognito icon"
   },
   "ZnjyI3": {
     "defaultMessage": "Show less",
@@ -1887,6 +2047,10 @@
     "defaultMessage": "All libraries",
     "description": "User creation/edit dialog: Shared Libraries field, value shown when user has access to all libraries"
   },
+  "ay4mgr": {
+    "defaultMessage": "Scale type",
+    "description": "Reader settings: scale type"
+  },
   "ayrmyn": {
     "defaultMessage": "Sort title",
     "description": "Form edit series: General - series sort title"
@@ -1910,6 +2074,10 @@
   "bDNv5+": {
     "defaultMessage": "Any",
     "description": "Filter values: any"
+  },
+  "bFTGEk": {
+    "defaultMessage": "The EPUB reader is not available yet",
+    "description": "EPUB reader placeholder: title"
   },
   "bFoCHJ": {
     "defaultMessage": "Destination file name",
@@ -1966,6 +2134,10 @@
   "cM9FuW": {
     "defaultMessage": "Choose a series",
     "description": "Import books: status message: choose a series"
+  },
+  "cQe6M2": {
+    "defaultMessage": "Webtoon",
+    "description": "Reader settings: webtoon section"
   },
   "cTPeOs": {
     "defaultMessage": "or paste using",
@@ -2163,6 +2335,58 @@
     "defaultMessage": "Unread",
     "description": "Read status: UNREAD"
   },
+  "enum.ReaderBackground.black": {
+    "defaultMessage": "Black",
+    "description": "Reader background colour: black"
+  },
+  "enum.ReaderBackground.gray": {
+    "defaultMessage": "Gray",
+    "description": "Reader background colour: gray"
+  },
+  "enum.ReaderBackground.white": {
+    "defaultMessage": "White",
+    "description": "Reader background colour: white"
+  },
+  "enum.ReaderContinuousScaleType.ORIGINAL": {
+    "defaultMessage": "Original",
+    "description": "Continuous reader scale type: original size"
+  },
+  "enum.ReaderContinuousScaleType.WIDTH": {
+    "defaultMessage": "Fit to width",
+    "description": "Continuous reader scale type: fit to width"
+  },
+  "enum.ReaderPageLayout.DOUBLE_NO_COVER": {
+    "defaultMessage": "Double pages (no cover)",
+    "description": "Reader page layout: double pages, the first page paired like the rest"
+  },
+  "enum.ReaderPageLayout.DOUBLE_PAGES": {
+    "defaultMessage": "Double pages",
+    "description": "Reader page layout: double pages, the cover alone"
+  },
+  "enum.ReaderPageLayout.SINGLE_PAGE": {
+    "defaultMessage": "Single page",
+    "description": "Reader page layout: single page"
+  },
+  "enum.ReaderScaleType.HEIGHT": {
+    "defaultMessage": "Fit to height",
+    "description": "Reader scale type: fit to height"
+  },
+  "enum.ReaderScaleType.ORIGINAL": {
+    "defaultMessage": "Original",
+    "description": "Reader scale type: original size"
+  },
+  "enum.ReaderScaleType.SCREEN": {
+    "defaultMessage": "Fit to screen",
+    "description": "Reader scale type: fit to screen"
+  },
+  "enum.ReaderScaleType.WIDTH": {
+    "defaultMessage": "Fit to width",
+    "description": "Reader scale type: fit to width"
+  },
+  "enum.ReaderScaleType.WIDTH_SHRINK_ONLY": {
+    "defaultMessage": "Fit to width (shrink only)",
+    "description": "Reader scale type: fit to width, shrink only"
+  },
   "enum.ReadingDirection.LEFT_TO_RIGHT": {
     "defaultMessage": "Left to right",
     "description": "Series status: LEFT_TO_RIGHT"
@@ -2347,6 +2571,10 @@
     "defaultMessage": "Links",
     "description": "Series view table: links header"
   },
+  "fk3rFu": {
+    "defaultMessage": "Close",
+    "description": "Reader keyboard shortcuts: close button"
+  },
   "fl2YLT": {
     "defaultMessage": "Media status",
     "description": "Filter panel: Media status"
@@ -2363,6 +2591,14 @@
     "defaultMessage": "Book format is not supported",
     "description": "Import books: status message: book format is not supported"
   },
+  "g9xLQw": {
+    "defaultMessage": "Cycling page margin: {margin}",
+    "description": "Reader: notice after changing the page margin with a key"
+  },
+  "gE59HA": {
+    "defaultMessage": "Reading mode",
+    "description": "Reader settings: reading mode"
+  },
   "gEBeQv": {
     "defaultMessage": "Series metadata updated: {series}",
     "description": "Snackbar notification shown upon successful series metadata update"
@@ -2374,6 +2610,10 @@
   "ggaOkE": {
     "defaultMessage": "No data found",
     "description": "Duplicate Page Hash Matches Table: shown when table has no data"
+  },
+  "gmuM7G": {
+    "defaultMessage": "None",
+    "description": "Reader settings: no padding or margin"
   },
   "gojrIJ": {
     "defaultMessage": "Select series",
@@ -2463,9 +2703,17 @@
     "defaultMessage": "Remember me duration (in days)",
     "description": "Server settings: input field for remember me duration"
   },
+  "iG5JHM": {
+    "defaultMessage": "Page margin",
+    "description": "Reader settings: gap between two pages of the webtoon reader"
+  },
   "iNBto3": {
     "defaultMessage": "Proxy unhandled requests to Kobo Store",
     "description": "Server settings: checkbox to enable Kobo Store proxying for Kobo Sync "
+  },
+  "iNVr5/": {
+    "defaultMessage": "Current page set as series poster",
+    "description": "Reader: notice after setting the series poster"
   },
   "iQKrku": {
     "defaultMessage": "EPUB",
@@ -2547,6 +2795,10 @@
     "defaultMessage": "Poster",
     "description": "Form edit read list: Poster"
   },
+  "kCj2gy": {
+    "defaultMessage": "Back to the book",
+    "description": "EPUB reader placeholder: button back to the book page"
+  },
   "kDc7YL": {
     "defaultMessage": "By default the media server doesn't remove information for media right away. This helps if a drive is temporarily disconnected. When you empty the trash for a library, all information about missing media is deleted.",
     "description": "Library empty trash dialog: warning text"
@@ -2563,6 +2815,10 @@
     "defaultMessage": "Scan library",
     "description": "Task name: ScanLibrary"
   },
+  "kN27W+": {
+    "defaultMessage": "Reader settings",
+    "description": "Reader settings: title"
+  },
   "kXuNY8": {
     "defaultMessage": "Add page to selection",
     "description": "Selection bar: add page to selection"
@@ -2570,6 +2826,10 @@
   "kYDPt1": {
     "defaultMessage": "File name",
     "description": "Import books table header: file name"
+  },
+  "kZ/ecO": {
+    "defaultMessage": "Cycle page layout",
+    "description": "Reader shortcut: cycle page layout"
   },
   "kZ0WlY": {
     "defaultMessage": "The book file could not be found",
@@ -2815,6 +3075,14 @@
     "defaultMessage": "The user account will be deleted from this server.<ul><li>The read progress for this user account will be permanently deleted.</li><li>Authentication activity for this user will be permanently deleted.</li></ul><b>This action cannot be undone.</b>",
     "description": "User deletion warning notice"
   },
+  "qSbZ1n": {
+    "defaultMessage": "You are at the beginning of the book.",
+    "description": "Reader: shown when going back from the first page"
+  },
+  "qcZK0O": {
+    "defaultMessage": "Last page",
+    "description": "Reader: go to the last page"
+  },
   "qiZm6U": {
     "defaultMessage": "Unknown",
     "description": "Drawer menu for Media > Duplicate Pages > Unknown"
@@ -2878,6 +3146,10 @@
   "rnClur": {
     "defaultMessage": "{rating}+",
     "description": "Series view: age rating chip"
+  },
+  "rqjoVt": {
+    "defaultMessage": "Next page",
+    "description": "Reader shortcut: next page"
   },
   "rrF/Z2": {
     "defaultMessage": "Name",
@@ -3011,6 +3283,10 @@
     "defaultMessage": "Undo",
     "description": "Poster card: action - undo"
   },
+  "u4eWbl": {
+    "defaultMessage": "{direction} (from series metadata)",
+    "description": "Reader: notice of the reading direction, when the series decides it"
+  },
   "uBqZMx": {
     "defaultMessage": "Existing",
     "description": "Book Compare: existing book label"
@@ -3058,6 +3334,10 @@
   "v3beFf": {
     "defaultMessage": "Must be a valid BCP 47 language code",
     "description": "Form edit series: General - language, error code"
+  },
+  "v6K9UZ": {
+    "defaultMessage": "Current page set as book poster",
+    "description": "Reader: notice after setting the book poster"
   },
   "vOS8Dl": {
     "defaultMessage": "A collection with that name already exists",
@@ -3127,6 +3407,10 @@
     "defaultMessage": "Filename",
     "description": "Book info: filename"
   },
+  "xLd5Qi": {
+    "defaultMessage": "You have reached the end of the book.",
+    "description": "Reader: shown when going forward from the last page"
+  },
   "xPBqGY": {
     "defaultMessage": "Delete series",
     "description": "Task name: DeleteSeries"
@@ -3191,6 +3475,10 @@
     "defaultMessage": "Generate new API key",
     "description": "Generate API key dialog: title"
   },
+  "yl2ic7": {
+    "defaultMessage": "Cycle page margin",
+    "description": "Reader shortcut: cycle page margin"
+  },
   "yrE0Rx": {
     "defaultMessage": "Details",
     "description": "Book picker dialog: series books table header: book details"
@@ -3211,6 +3499,10 @@
     "defaultMessage": "Size",
     "description": "Unknown Duplicate Page Table header: size"
   },
+  "zS535x": {
+    "defaultMessage": "Set current page as book poster",
+    "description": "Reader menu: use the page on screen as the poster of the book"
+  },
   "zWRhDm": {
     "defaultMessage": "Alternate titles",
     "description": "Form edit series: alternate titles"
@@ -3230,5 +3522,9 @@
   "zuhGGz": {
     "defaultMessage": "Reorder or pin",
     "description": "Libraries menu: reorder or pin"
+  },
+  "zxE3B/": {
+    "defaultMessage": "Full screen",
+    "description": "Reader: full screen button and shortcut"
   }
 }

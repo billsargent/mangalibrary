@@ -35,7 +35,7 @@ import { MediaStatus, mediaStatusMessages } from '@/types/MediaStatus'
 import { useBookReadProgress } from '@/composables/book/useBookReadProgress'
 import { useEditBookMetadataDialog } from '@/composables/book/useEditBookMetadataDialog'
 import { useBook } from '@/composables/book/useBook'
-import { bookReaderUrl } from '@/api/links'
+import { bookReaderRoute } from '@/api/links'
 import type { BookDto } from '@/generated/openapi'
 import { useImageCacheStore } from '@/stores/image-cache'
 import { BrowsingContextKey, formatBrowsingContextAsQueryParam } from '@/functions/browsing-context'
@@ -45,6 +45,7 @@ import { commonMessages } from '@/utils/i18n/common-messages'
 import { getFileSize } from '@/functions/filesize'
 
 const intl = useIntl()
+const router = useRouter()
 const cacheStore = useImageCacheStore()
 
 const id = useId()
@@ -208,6 +209,6 @@ function showEditMetadataDialog() {
 const menuActivator = ref()
 
 function openReader() {
-  window.open(bookReaderUrl(book.value.id, isEpubReader.value), '_blank')
+  void router.push(bookReaderRoute(book.value.id, isEpubReader.value))
 }
 </script>
