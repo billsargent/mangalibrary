@@ -82,14 +82,14 @@ export function createLegacyFixture(file: string): void {
     create table THUMBNAIL_BOOK (
       ID text primary key, BOOK_ID text not null, TYPE text not null, PAGE integer not null default 0,
       SELECTED integer not null default 1, MEDIA_TYPE text not null, WIDTH integer not null,
-      HEIGHT integer not null, FILE_SIZE integer not null, THUMBNAIL blob not null,
+      HEIGHT integer not null, FILE_SIZE integer not null, THUMBNAIL blob null, URL text null,
       CREATED_DATE datetime not null default current_timestamp,
       LAST_MODIFIED_DATE datetime not null default current_timestamp
     );
     create table THUMBNAIL_SERIES (
       ID text primary key, SERIES_ID text not null, TYPE text not null, PAGE integer not null default 0,
       SELECTED integer not null default 1, MEDIA_TYPE text not null, WIDTH integer not null,
-      HEIGHT integer not null, FILE_SIZE integer not null, THUMBNAIL blob not null,
+      HEIGHT integer not null, FILE_SIZE integer not null, THUMBNAIL blob null, URL text null,
       CREATED_DATE datetime not null default current_timestamp,
       LAST_MODIFIED_DATE datetime not null default current_timestamp
     );
@@ -191,12 +191,16 @@ export function createLegacyFixture(file: string): void {
     ],
   )
   insert(
-    'insert into THUMBNAIL_BOOK (ID, BOOK_ID, TYPE, PAGE, SELECTED, MEDIA_TYPE, WIDTH, HEIGHT, FILE_SIZE, THUMBNAIL) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [['T1', 'B1', 'GENERATED', 1, 1, 'image/jpeg', 4, 4, 11, Buffer.from([0xff, 0xd8, 0xff, 0xd9])]],
+    'insert into THUMBNAIL_BOOK (ID, BOOK_ID, TYPE, PAGE, SELECTED, MEDIA_TYPE, WIDTH, HEIGHT, FILE_SIZE, THUMBNAIL, URL) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      ['T1', 'B1', 'GENERATED', 1, 1, 'image/jpeg', 4, 4, 11, Buffer.from([0xff, 0xd8, 0xff, 0xd9]), null],
+      // A cover found beside the book, which Komga stores as the file's URL.
+      ['T3', 'B1', 'SIDECAR', 0, 0, 'image/png', 40, 60, 128, null, 'file:/library/Akira/Volume 1.png'],
+    ],
   )
   insert(
-    'insert into THUMBNAIL_SERIES (ID, SERIES_ID, TYPE, PAGE, SELECTED, MEDIA_TYPE, WIDTH, HEIGHT, FILE_SIZE, THUMBNAIL) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [['T2', 'S1', 'GENERATED', 1, 1, 'image/jpeg', 4, 4, 11, Buffer.from([0xff, 0xd8, 0xff, 0xd9])]],
+    'insert into THUMBNAIL_SERIES (ID, SERIES_ID, TYPE, PAGE, SELECTED, MEDIA_TYPE, WIDTH, HEIGHT, FILE_SIZE, THUMBNAIL, URL) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [['T2', 'S1', 'GENERATED', 1, 1, 'image/jpeg', 4, 4, 11, Buffer.from([0xff, 0xd8, 0xff, 0xd9]), null]],
   )
   insert('insert into READ_PROGRESS (USER_ID, BOOK_ID, PAGE, COMPLETED, READ_DATE) values (?, ?, ?, ?, ?)', [
     ['U1', 'B1', 42, 0, '2024-02-01 12:00:00'],
