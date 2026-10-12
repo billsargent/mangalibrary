@@ -183,6 +183,7 @@ declare module 'vue' {
     ReorderOverviewSections: typeof import('./components/ReorderOverviewSections.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SearchBox: typeof import('./components/search/Box.vue')['default']
     SelectionBar: typeof import('./components/selection/Bar.vue')['default']
     SelectionBarActions: typeof import('./components/selection/BarActions.vue')['default']
     SelectionFooter: typeof import('./components/selection/Footer.vue')['default']

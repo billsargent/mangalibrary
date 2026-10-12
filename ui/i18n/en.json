@@ -39,6 +39,10 @@
     "defaultMessage": "Unavailable",
     "description": "Filter: unavailable"
   },
+  "+qv7R9": {
+    "defaultMessage": "Try searching for something else",
+    "description": "Search page: text when a search finds nothing"
+  },
   "+r8FCS": {
     "defaultMessage": "Server listening port",
     "description": "Server settings: input field for server port"
@@ -599,6 +603,10 @@
     "defaultMessage": "Duplicate",
     "description": "Import reading list table filter: duplicate"
   },
+  "AXB/RI": {
+    "defaultMessage": "Series",
+    "description": "Search page: heading of the series that match"
+  },
   "AeA9Ka": {
     "defaultMessage": "No restriction",
     "description": "User creation/edit dialog: Age restriction field possible option"
@@ -823,6 +831,10 @@
     "defaultMessage": "Number",
     "description": "Book picker dialog: series books table header: number"
   },
+  "ELbS/T": {
+    "defaultMessage": "Read lists",
+    "description": "Search page: heading of the read lists that match"
+  },
   "ELttw/": {
     "defaultMessage": "Empty trash",
     "description": "Library empty trash dialog: title"
@@ -887,6 +899,10 @@
     "defaultMessage": "Save changes",
     "description": "Server settings: button to save any changes made"
   },
+  "FtrCl4": {
+    "defaultMessage": "Type in the search box above to find series, books, collections and read lists.",
+    "description": "Search page: text shown before anything has been searched for"
+  },
   "Fwvj/i": {
     "defaultMessage": "{count, plural, one {# series} other {# series} }",
     "description": "Collection add to: collection item subtitle: count of series"
@@ -910,6 +926,10 @@
   "GCwZB2": {
     "defaultMessage": "Scan library files",
     "description": "Library menu: scan"
+  },
+  "GVd3lj": {
+    "defaultMessage": "No results",
+    "description": "Search page: title when a search finds nothing"
   },
   "GnHrCd": {
     "defaultMessage": "Use local artwork",
@@ -1795,6 +1815,10 @@
     "defaultMessage": "{count} pages left",
     "description": "Book view: number of pages left"
   },
+  "ZCBxIm": {
+    "defaultMessage": "Search",
+    "description": "App bar search box: placeholder"
+  },
   "ZE3XpF": {
     "defaultMessage": "No sections configured",
     "description": "Overview: empty state text when no sections are configured"
@@ -2122,6 +2146,10 @@
   "cAu/I6": {
     "defaultMessage": "Duplicate Pages",
     "description": "Drawer menu for Media > Duplicate Pages"
+  },
+  "cGE5EN": {
+    "defaultMessage": "Books",
+    "description": "Search page: heading of the books that match"
   },
   "cGOJnB": {
     "defaultMessage": "{count, plural, one {# book} other {# books} }",
@@ -2554,6 +2582,10 @@
   "f3/J8+": {
     "defaultMessage": "Right",
     "description": "Page comparison table: table header - right"
+  },
+  "f5M08C": {
+    "defaultMessage": "Search results for \"{term}\"",
+    "description": "Search page: title naming what was searched for"
   },
   "fQIepD": {
     "defaultMessage": "Books",
@@ -3299,6 +3331,10 @@
     "defaultMessage": "Options",
     "description": "Form add/edit library: Options"
   },
+  "uNhlA4": {
+    "defaultMessage": "Search your libraries",
+    "description": "Search page: title shown before anything has been searched for"
+  },
   "uOPuSH": {
     "defaultMessage": "Genre",
     "description": "Book view table: genre header"
@@ -3394,6 +3430,10 @@
   "wmGcF+": {
     "defaultMessage": "Exclude over",
     "description": "User creation/edit dialog: Age restriction field possible option"
+  },
+  "wwJ0BM": {
+    "defaultMessage": "Collections",
+    "description": "Search page: heading of the collections that match"
   },
   "wwiazg": {
     "defaultMessage": "No valid image found in clipboard",
