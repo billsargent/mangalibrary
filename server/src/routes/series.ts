@@ -14,6 +14,7 @@ import type { RouteOptions } from './libraries.js'
 import { applySeriesMetadataPatch } from './metadata.js'
 import { toCollectionDto, type CollectionDto, type CollectionRow } from './organisation-dto.js'
 import { applySort, booleanParam, isRegex, likeAny, paging, parseSort, toArray, type SortSpec } from './query.js'
+import { seriesCondition, type ConditionFilter } from '../search/condition.js'
 import { zipStream } from '../zip.js'
 
 /**
@@ -68,6 +69,8 @@ export interface SeriesFilters {
   libraryIds: string[]
   search?: string
   searchRegex?: string
+  /** A translated search condition, ready to be a `where` clause. */
+  condition?: ConditionFilter
   collectionIds: string[]
   statuses: string[]
   readStatuses: string[]
@@ -112,6 +115,7 @@ function seriesQuery(db: Kysely<DB>, filters: SeriesFilters) {
       : query.where('series.deleted_date', 'is', null)
 
   if (filters.oneshot !== null) query = query.where('series.oneshot', '=', filters.oneshot ? 1 : 0)
+  if (filters.condition !== undefined) query = query.where(filters.condition)
   if (filters.statuses.length > 0) query = query.where('series_metadata.status', 'in', filters.statuses)
   if (filters.publishers.length > 0) query = query.where('series_metadata.publisher', 'in', filters.publishers)
   if (filters.languages.length > 0) query = query.where('series_metadata.language', 'in', filters.languages)
@@ -422,6 +426,12 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
 
     if (filters.searchRegex !== undefined && !isRegex(filters.searchRegex)) {
       return reply.code(400).send({ validationErrors: { search_regex: 'must be a valid regular expression' } })
+    }
+
+    if (body.condition !== undefined) {
+      const translated = seriesCondition(body.condition, { userId: context.user.id })
+      if ('error' in translated) return reply.code(400).send({ message: translated.error })
+      filters.condition = translated.filter
     }
 
     const sorts = parseSort(query.sort, SERIES_SORTS, SERIES_DEFAULT_SORT)

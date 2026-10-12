@@ -35,6 +35,24 @@ function installRegexp(sqlite: BetterSqlite3.Database): void {
 }
 
 /**
+ * A comparison key for a search: lower-case and without diacritics.
+ *
+ * SQLite's own `lower()` knows nothing beyond ASCII, and there is no way at all to
+ * fold an accent, so a search that should find "Pokemon" when somebody typed
+ * `pokémon` needs this. The search condition applies it to both sides of a substring
+ * comparison; nothing else uses it.
+ */
+function installFold(sqlite: BetterSqlite3.Database): void {
+  sqlite.function('fold', { deterministic: true }, (value: unknown) => {
+    if (value === null || value === undefined) return null
+    return String(value)
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+  })
+}
+
+/**
  * Open (or create) the SQLite database.
  *
  * Pragmas mirror Komga's connection setup: WAL journaling, foreign keys on and
@@ -49,6 +67,7 @@ export function createDatabase(file: string): Database {
   sqlite.pragma('foreign_keys = ON')
   sqlite.pragma('busy_timeout = 5000')
   installRegexp(sqlite)
+  installFold(sqlite)
 
   const db = new Kysely<DB>({ dialect: new SqliteDialect({ database: sqlite }) })
 
