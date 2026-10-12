@@ -114,8 +114,8 @@ describe('a book poster', () => {
     expect(rows[0]!.page).toBe(1)
     expect(rows[0]!.width).toBe(200)
     expect(rows[0]!.height).toBe(300)
-    expect(rows[0]!.file_size).toBe(rows[0]!.thumbnail.length)
-    expect((await sharp(rows[0]!.thumbnail).metadata()).format).toBe('jpeg')
+    expect(rows[0]!.file_size).toBe(rows[0]!.thumbnail!.length)
+    expect((await sharp(rows[0]!.thumbnail!).metadata()).format).toBe('jpeg')
 
     await database.close()
   })

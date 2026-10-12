@@ -525,8 +525,20 @@ describe('series listing', () => {
       403,
     )
 
-    const jobs = await database.db.selectFrom('jobs').select(['type']).orderBy('type').execute()
-    expect(jobs.map((job) => job.type)).toEqual(['AnalyzeSeries', 'RefreshSeriesMetadata'])
+    const jobs = await database.db.selectFrom('jobs').select(['type']).execute()
+    // The series' books are refreshed with it - metadata and artwork both - and the
+    // series' own folder is looked in for a cover, as the reference's endpoint does.
+    expect(new Set(jobs.map((job) => job.type))).toEqual(
+      new Set([
+        'AnalyzeSeries',
+        'RefreshSeriesMetadata',
+        'RefreshSeriesLocalArtwork',
+        'RefreshBookMetadata',
+        'RefreshBookLocalArtwork',
+      ]),
+    )
+    const books = await database.db.selectFrom('books').select('id').where('series_id', '=', 'S1').execute()
+    expect(jobs.filter((job) => job.type === 'RefreshBookMetadata')).toHaveLength(books.length)
     await app.close()
   })
 })

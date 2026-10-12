@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
@@ -231,6 +231,45 @@ describe('the worker', () => {
       expect(remade.id).not.toBe(first.id)
       expect(await database.db.selectFrom('thumbnails').selectAll().execute()).toHaveLength(1)
       expect(log.messages.some((entry) => entry.level === 'error')).toBe(false)
+    } finally {
+      await worker.stop()
+    }
+  })
+
+  it('looks for artwork beside a book, and drops it when the file goes', async () => {
+    const { database, root } = await setupLibrary()
+    const cover = join(root, 'Akira', 'Volume 1.png')
+    writeFileSync(cover, await page())
+
+    const worker = await startJobWorker({ db: database.db, log: logger(), schedule: false })
+    try {
+      await enqueueJob(database.db, {
+        type: 'ScanLibrary',
+        uniqueKey: scanKey('L1'),
+        payload: { libraryId: 'L1' },
+      })
+
+      // Analysing the book looks beside it, which is where a cover from a scan comes from.
+      const artwork = await until(async () => {
+        const rows = await database.db.selectFrom('thumbnails').selectAll().where('type', '=', 'SIDECAR').execute()
+        return rows[0]
+      })
+      expect(artwork.url).toMatch(/Volume 1\.png$/)
+      // The file is not copied into the database.
+      expect(artwork.thumbnail).toBeNull()
+
+      const book = await database.db.selectFrom('books').select('id').executeTakeFirstOrThrow()
+      rmSync(cover)
+      await enqueueJob(database.db, {
+        type: 'RefreshBookLocalArtwork',
+        uniqueKey: `REFRESH_BOOK_LOCAL_ARTWORK_${book.id}`,
+        payload: { bookId: book.id },
+      })
+
+      await until(async () => {
+        const rows = await database.db.selectFrom('thumbnails').selectAll().where('type', '=', 'SIDECAR').execute()
+        return rows.length === 0
+      })
     } finally {
       await worker.stop()
     }
