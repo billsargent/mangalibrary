@@ -249,18 +249,63 @@ describe('libraries', () => {
 
   it('queues a scan as an accepted job', async () => {
     const { app, database } = await setup()
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/libraries/L1/scan',
-      headers: admin,
-      payload: { deep: true },
-    })
+    const res = await app.inject({ method: 'POST', url: '/api/v1/libraries/L1/scan', headers: admin })
     expect(res.statusCode).toBe(202)
 
     const jobs = await database.db.selectFrom('jobs').selectAll().execute()
     expect(jobs).toHaveLength(1)
     expect(jobs[0]?.type).toBe('ScanLibrary')
+    expect(JSON.parse(jobs[0]!.payload)).toEqual({ libraryId: 'L1', scanDeep: false })
+    await app.close()
+  })
+
+  it('scans deep when the query asks for it, which is where the contract puts it', async () => {
+    const { app, database } = await setup()
+    const res = await app.inject({ method: 'POST', url: '/api/v1/libraries/L1/scan?deep=true', headers: admin })
+    expect(res.statusCode).toBe(202)
+
+    const jobs = await database.db.selectFrom('jobs').selectAll().execute()
     expect(JSON.parse(jobs[0]!.payload)).toEqual({ libraryId: 'L1', scanDeep: true })
+    await app.close()
+  })
+
+  it('scans a library as soon as it is added, with nothing more to ask for', async () => {
+    const { app, database } = await setup()
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/libraries',
+      headers: admin,
+      payload: { name: 'Comics', root: '/comics' },
+    })
+    const { id } = created.json() as { id: string }
+
+    const jobs = await database.db.selectFrom('jobs').selectAll().execute()
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0]?.type).toBe('ScanLibrary')
+    expect(jobs[0]?.unique_key).toBe(`SCANLIBRARY_${id}`)
+    expect(JSON.parse(jobs[0]!.payload)).toEqual({ libraryId: id, scanDeep: false })
+    await app.close()
+  })
+
+  it('scans a library again when it is pointed at another folder, and not when it is only renamed', async () => {
+    const { app, database } = await setup()
+    const jobTypes = async () => (await database.db.selectFrom('jobs').select('type').execute()).map((job) => job.type)
+    const patch = (payload: Record<string, unknown>) =>
+      app.inject({ method: 'PATCH', url: '/api/v1/libraries/L1', headers: admin, payload })
+
+    expect((await patch({ name: 'Renamed' })).statusCode).toBe(204)
+    expect(await jobTypes()).toEqual([])
+
+    const { root } = await database.db
+      .selectFrom('libraries')
+      .select('root')
+      .where('id', '=', 'L1')
+      .executeTakeFirstOrThrow()
+    expect((await patch({ root })).statusCode).toBe(204)
+    expect(await jobTypes()).toEqual([])
+
+    expect((await patch({ root: '/somewhere/else' })).statusCode).toBe(204)
+    expect(await jobTypes()).toEqual(['ScanLibrary'])
     await app.close()
   })
 })

@@ -1100,51 +1100,80 @@ describe('books', () => {
     await app.close()
   })
 
-  it('updates and clears read progress', async () => {
+  // B1 has 200 pages, and the administrator has not opened it.
+  const progressOf = async (database: Database) =>
+    database.db
+      .selectFrom('read_progress')
+      .select(['page', 'completed', 'read_date'])
+      .where('book_id', '=', 'B1')
+      .where('user_id', '=', 'U1')
+      .executeTakeFirst()
+  const mark = (app: FastifyInstance, payload: Record<string, unknown>) =>
+    app.inject({ method: 'PATCH', url: '/api/v1/books/B1/read-progress', headers: admin, payload })
+
+  it('records the page a reader is on, and that they have read today', async () => {
     const { app, database } = await setup()
 
-    const patch = await app.inject({
+    expect((await mark(app, { page: 12 })).statusCode).toBe(204)
+
+    const row = await progressOf(database)
+    expect(row).toMatchObject({ page: 12, completed: 0 })
+    expect(row?.read_date).not.toBeNull()
+    await app.close()
+  })
+
+  it('completes the book when its last page is reached, without being told', async () => {
+    const { app, database } = await setup()
+
+    expect((await mark(app, { page: 200 })).statusCode).toBe(204)
+    expect(await progressOf(database)).toMatchObject({ page: 200, completed: 1 })
+
+    // Going back a page is reading it again: it is no longer finished.
+    expect((await mark(app, { page: 199 })).statusCode).toBe(204)
+    expect(await progressOf(database)).toMatchObject({ page: 199, completed: 0 })
+    await app.close()
+  })
+
+  it('puts a book marked as read at its last page, whatever page came with it', async () => {
+    const { app, database } = await setup()
+
+    expect((await mark(app, { completed: true })).statusCode).toBe(204)
+    expect(await progressOf(database)).toMatchObject({ page: 200, completed: 1 })
+
+    await mark(app, { page: 12 })
+    expect((await mark(app, { page: 3, completed: true })).statusCode).toBe(204)
+    expect(await progressOf(database)).toMatchObject({ page: 200, completed: 1 })
+    await app.close()
+  })
+
+  it('refuses a page the book does not have, and a mark that names no page', async () => {
+    const { app, database } = await setup()
+
+    for (const payload of [{ page: 0 }, { page: 201 }, { page: -1 }, { page: 1.5 }, {}, { completed: false }]) {
+      const res = await mark(app, payload)
+      expect(res.statusCode, JSON.stringify(payload)).toBe(400)
+    }
+    expect(await progressOf(database)).toBeUndefined()
+
+    // B2 has not been analysed into pages, so no page of it can be the one being read.
+    const pageless = await app.inject({
       method: 'PATCH',
       url: '/api/v1/books/B2/read-progress',
-      headers: reader,
-      payload: { page: 12 },
+      headers: admin,
+      payload: { page: 1 },
     })
-    expect(patch.statusCode).toBe(204)
+    expect(pageless.statusCode).toBe(400)
+    await app.close()
+  })
 
-    let row = await database.db
-      .selectFrom('read_progress')
-      .select(['page', 'completed'])
-      .where('book_id', '=', 'B2')
-      .where('user_id', '=', 'U2')
-      .executeTakeFirstOrThrow()
-    expect(row).toEqual({ page: 12, completed: 0 })
-
-    await app.inject({
-      method: 'PATCH',
-      url: '/api/v1/books/B2/read-progress',
-      headers: reader,
-      payload: { completed: true },
-    })
-    row = await database.db
-      .selectFrom('read_progress')
-      .select(['page', 'completed'])
-      .where('book_id', '=', 'B2')
-      .where('user_id', '=', 'U2')
-      .executeTakeFirstOrThrow()
-    expect(row.completed).toBe(1)
-    expect(row.page).toBe(12)
+  it('clears read progress', async () => {
+    const { app, database } = await setup()
+    await mark(app, { page: 12 })
 
     expect(
-      (await app.inject({ method: 'DELETE', url: '/api/v1/books/B2/read-progress', headers: reader })).statusCode,
+      (await app.inject({ method: 'DELETE', url: '/api/v1/books/B1/read-progress', headers: admin })).statusCode,
     ).toBe(204)
-    expect(
-      await database.db
-        .selectFrom('read_progress')
-        .select('book_id')
-        .where('book_id', '=', 'B2')
-        .where('user_id', '=', 'U2')
-        .executeTakeFirst(),
-    ).toBeUndefined()
+    expect(await progressOf(database)).toBeUndefined()
     await app.close()
   })
 

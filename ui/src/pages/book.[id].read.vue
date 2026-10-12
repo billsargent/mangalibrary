@@ -563,13 +563,13 @@ const title = computed(() => {
 })
 useHead({ title: () => (title.value ? `${title.value} - Manga Library` : 'Manga Library') })
 
-const markProgress = useDebounceFn((forBook: string, number: number, lastPage: boolean) => {
+// Only the page is sent. Reaching the last one is what completes the book, and it is
+// the server that draws that conclusion.
+const markProgress = useDebounceFn((forBook: string, number: number) => {
   if (incognito.value) return
   void komgaMarkBookReadProgress({
     path: { bookId: forBook },
-    // The last page is also said to complete the book in so many words, so that it
-    // is marked read by a server that does not conclude that from the page number.
-    body: lastPage ? { page: number, completed: true } : { page: number },
+    body: { page: number },
   }).catch(() => {
     // A page that could not be recorded is not worth interrupting the reading for.
   })
@@ -578,7 +578,7 @@ const markProgress = useDebounceFn((forBook: string, number: number, lastPage: b
 watch([page, ready], ([number, isReady]) => {
   if (!isReady) return
   sliderPage.value = number
-  void markProgress(bookId.value, number, number === pageCount.value)
+  void markProgress(bookId.value, number)
   if (String(route.query.page) !== String(number)) {
     void router.replace({ query: { ...route.query, page: String(number) } })
   }

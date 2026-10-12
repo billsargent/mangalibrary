@@ -126,6 +126,18 @@ async function setup(env: NodeJS.ProcessEnv = {}): Promise<Fixture> {
       last_modified_date: now,
     })
     .execute()
+  // The book has been analysed: a page can only be read in a book that has pages.
+  await db
+    .insertInto('media')
+    .values({
+      book_id: 'B1',
+      media_type: 'application/vnd.comicbook+zip',
+      status: 'READY',
+      page_count: 20,
+      created_date: now,
+      last_modified_date: now,
+    })
+    .execute()
 
   // The stream is a long-lived response, so the tests talk to a listening socket
   // rather than through `inject`.
