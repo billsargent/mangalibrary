@@ -123,6 +123,10 @@
     "defaultMessage": "Genres",
     "description": "Combobox genre: label"
   },
+  "0P3HV6": {
+    "defaultMessage": "Font",
+    "description": "EPUB reader settings: typeface"
+  },
   "0UFr4y": {
     "defaultMessage": "All of",
     "description": "Any/All button: allOf value"
@@ -170,6 +174,10 @@
   "1E0Duw": {
     "defaultMessage": "File size",
     "description": "Book view table: file size header"
+  },
+  "1Emdn+": {
+    "defaultMessage": "Dark",
+    "description": "EPUB reader theme: dark"
   },
   "1MAL38": {
     "defaultMessage": "Duplicate book",
@@ -283,6 +291,10 @@
     "defaultMessage": "Click to confirm",
     "description": "Confirmation dialog: default checkbox label"
   },
+  "3w4CBv": {
+    "defaultMessage": "Previous page",
+    "description": "EPUB reader: previous page button"
+  },
   "40HXjy": {
     "defaultMessage": "Cancel",
     "description": "Metadata edition: add role dialog - cancel button"
@@ -334,6 +346,10 @@
   "4jKnoO": {
     "defaultMessage": "On deck — {number}",
     "description": "Series view: book on deck"
+  },
+  "4k3t1s": {
+    "defaultMessage": "Theme",
+    "description": "EPUB reader settings: colour theme"
   },
   "4uqafX": {
     "defaultMessage": "One-shot",
@@ -734,10 +750,6 @@
   "CqlsIa": {
     "defaultMessage": "Contributors",
     "description": "Form edit book: Contributors"
-  },
-  "CsYKkd": {
-    "defaultMessage": "Books made of text cannot be read here yet. You can download the file from the book page.",
-    "description": "EPUB reader placeholder: text"
   },
   "Cv11G8": {
     "defaultMessage": "Total book count",
@@ -1155,6 +1167,10 @@
     "defaultMessage": "A read list with that name already exists",
     "description": "Import reading list: error message if read list name already exists"
   },
+  "Lo4Bni": {
+    "defaultMessage": "Close the reader",
+    "description": "EPUB reader: button that closes the reader"
+  },
   "Lto2Lg": {
     "defaultMessage": "Must start with '/', not end with '/-_', and contain only '/-_a-z0-9'",
     "description": "Server settings: error message when server context path is invalid"
@@ -1331,6 +1347,10 @@
     "defaultMessage": "Status",
     "description": "Filter panel: Series status"
   },
+  "PtVpqD": {
+    "defaultMessage": "Serif",
+    "description": "EPUB reader font: serif"
+  },
   "PvKF7E": {
     "defaultMessage": "Library deleted: {library}",
     "description": "Snackbar notification shown upon successful library deletion"
@@ -1451,6 +1471,10 @@
     "defaultMessage": "{count} items",
     "description": "Multiple entities deletion dialog: subtitle"
   },
+  "SsHQdR": {
+    "defaultMessage": "Pages",
+    "description": "EPUB reader layout: pages to turn"
+  },
   "SuegoE": {
     "defaultMessage": "Automatic ordering",
     "description": "Read List view: automatic ordering"
@@ -1551,6 +1575,10 @@
     "defaultMessage": "Release date",
     "description": "Sort label: metadata.releaseDate"
   },
+  "UlOj+a": {
+    "defaultMessage": "Table of contents",
+    "description": "EPUB reader: table of contents button and heading"
+  },
   "UoaxO7": {
     "defaultMessage": "Book will be upgraded",
     "description": "Import books: status message: book will be upgraded"
@@ -1631,6 +1659,10 @@
     "defaultMessage": "I understand",
     "description": "Force Sync API Key dialog: confirmation button text"
   },
+  "W9tEnJ": {
+    "defaultMessage": "Scroll",
+    "description": "EPUB reader layout: one column to scroll"
+  },
   "WADecv": {
     "defaultMessage": "Installed",
     "description": "Updates view: badge showing next to the currently installed release number"
@@ -1654,6 +1686,10 @@
   "WSTiWA": {
     "defaultMessage": "Added to collection",
     "description": "Add to collection notification: series added to collection"
+  },
+  "WU2K0J": {
+    "defaultMessage": "Text size",
+    "description": "EPUB reader settings: text size"
   },
   "WVblsI": {
     "defaultMessage": "Page count",
@@ -1783,6 +1819,10 @@
     "defaultMessage": "Import requested",
     "description": "Import books: status message: import requested"
   },
+  "YK/9vX": {
+    "defaultMessage": "Reading without recording progress",
+    "description": "EPUB reader: tooltip of the icon shown when progress is not recorded"
+  },
   "YVQ49g": {
     "defaultMessage": "Edit collection",
     "description": "Edit collection dialog title"
@@ -1882,6 +1922,10 @@
   "a5jT6x": {
     "defaultMessage": "Delete read list",
     "description": "Readlist delete dialog: title"
+  },
+  "a8blbg": {
+    "defaultMessage": "Reader settings",
+    "description": "EPUB reader: settings button and heading"
   },
   "aDFZOW": {
     "defaultMessage": "Email",
@@ -2071,6 +2115,10 @@
     "defaultMessage": "All libraries",
     "description": "User creation/edit dialog: Shared Libraries field, value shown when user has access to all libraries"
   },
+  "aqD5OX": {
+    "defaultMessage": "Next page",
+    "description": "EPUB reader: next page button"
+  },
   "ay4mgr": {
     "defaultMessage": "Scale type",
     "description": "Reader settings: scale type"
@@ -2098,10 +2146,6 @@
   "bDNv5+": {
     "defaultMessage": "Any",
     "description": "Filter values: any"
-  },
-  "bFTGEk": {
-    "defaultMessage": "The EPUB reader is not available yet",
-    "description": "EPUB reader placeholder: title"
   },
   "bFoCHJ": {
     "defaultMessage": "Destination file name",
@@ -2142,6 +2186,10 @@
   "c+hx0g": {
     "defaultMessage": "Users",
     "description": "Users table global header"
+  },
+  "cA6T9s": {
+    "defaultMessage": "Full screen",
+    "description": "EPUB reader: full screen button"
   },
   "cAu/I6": {
     "defaultMessage": "Duplicate Pages",
@@ -2639,6 +2687,10 @@
     "defaultMessage": "Comment",
     "description": "API Key table header: key comment"
   },
+  "gXahuU": {
+    "defaultMessage": "Sans-serif",
+    "description": "EPUB reader font: sans-serif"
+  },
   "ggaOkE": {
     "defaultMessage": "No data found",
     "description": "Duplicate Page Hash Matches Table: shown when table has no data"
@@ -2662,6 +2714,10 @@
   "gxZjIe": {
     "defaultMessage": "Action",
     "description": "Unknown Duplicate Page Table header: action"
+  },
+  "h+jwbD": {
+    "defaultMessage": "Light",
+    "description": "EPUB reader theme: light"
   },
   "h6C8/l": {
     "defaultMessage": "General",
@@ -2690,6 +2746,10 @@
   "hPo41m": {
     "defaultMessage": "No data found",
     "description": "Unknown Duplicate Page Table: shown when table has no data"
+  },
+  "hQDs+b": {
+    "defaultMessage": "Book's own",
+    "description": "EPUB reader font: the book's own"
   },
   "hV3EW+": {
     "defaultMessage": "Deep scan",
@@ -2826,10 +2886,6 @@
   "k9X/05": {
     "defaultMessage": "Poster",
     "description": "Form edit read list: Poster"
-  },
-  "kCj2gy": {
-    "defaultMessage": "Back to the book",
-    "description": "EPUB reader placeholder: button back to the book page"
   },
   "kDc7YL": {
     "defaultMessage": "By default the media server doesn't remove information for media right away. This helps if a drive is temporarily disconnected. When you empty the trash for a library, all information about missing media is deleted.",
@@ -2975,6 +3031,10 @@
     "defaultMessage": "Edit",
     "description": "Library menu: manage > edit"
   },
+  "n7w50d": {
+    "defaultMessage": "Layout",
+    "description": "EPUB reader settings: paginated or scrolled"
+  },
   "n8mugB": {
     "defaultMessage": "Yes (upsize only)",
     "description": "Server settings: regenerate poster option - bigger"
@@ -3038,6 +3098,10 @@
   "oFOkWZ": {
     "defaultMessage": "API Keys",
     "description": "Drawer menu for My Account > API Keys"
+  },
+  "oI2295": {
+    "defaultMessage": "Sepia",
+    "description": "EPUB reader theme: sepia"
   },
   "oOtDhj": {
     "defaultMessage": "Copy to clipboard",
@@ -3290,6 +3354,10 @@
   "tPD6YO": {
     "defaultMessage": "Search series",
     "description": "Series picker dialog: search field label"
+  },
+  "tZ4VEB": {
+    "defaultMessage": "{position} of {total} · {percent}%",
+    "description": "EPUB reader: where the reader is in the book"
   },
   "tbNQ5v": {
     "defaultMessage": "{rating}+",
