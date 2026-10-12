@@ -4,3 +4,11 @@ indent_size = 2
 indent_style = space
 insert_final_newline = true
 trim_trailing_whitespace = true
+
+# The reference repository formats these with its root .editorconfig, which sets
+# four-space indentation and a 120-column line; matching it keeps the fork's copies
+# of upstream's files identical to upstream's.
+[*.{html,md,scss}]
+indent_size = 4
+indent_style = space
+max_line_length = 120
