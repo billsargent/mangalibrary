@@ -41,15 +41,17 @@ function allFiles(container: Container): FileEntry[] {
  * three of a book does not want the server to guess again. A caller that holds a
  * file whose name says nothing - a temporary rewrite of a book, before it replaces
  * the original - can state the container instead.
+ *
+ * A CBZ or an EPUB is read from disk an entry at a time and never held whole. A
+ * CBR and a PDF are: the libraries that read them want the whole file, so those
+ * two still cost their size in memory while they are open.
  */
 export async function openBook(path: string, stated?: ContainerKind): Promise<BookContents> {
   const kind = stated ?? containerFor(basename(path))
   if (kind === null) throw new Error(`${basename(path)} is not a book container this server reads`)
 
-  const buffer = await readFile(path)
-
   if (kind === 'PDF') {
-    const pdf = await openPdf(buffer)
+    const pdf = await openPdf(await readFile(path))
     return {
       kind,
       mediaType: MEDIA_TYPES.PDF,
@@ -68,7 +70,7 @@ export async function openBook(path: string, stated?: ContainerKind): Promise<Bo
   }
 
   if (kind === 'RAR') {
-    const container = await openRar(buffer)
+    const container = await openRar(await readFile(path))
     const pages = imagePages(container)
     return {
       kind,
@@ -87,7 +89,7 @@ export async function openBook(path: string, stated?: ContainerKind): Promise<Bo
   }
 
   if (kind === 'EPUB') {
-    const epub = await openEpub(buffer)
+    const epub = await openEpub(path)
     return {
       kind,
       mediaType: MEDIA_TYPES.EPUB,
@@ -110,7 +112,7 @@ export async function openBook(path: string, stated?: ContainerKind): Promise<Bo
     }
   }
 
-  const container = await openZip(buffer)
+  const container = await openZip(path)
   const pages = imagePages(container)
   return {
     kind,

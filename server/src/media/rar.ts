@@ -1,6 +1,6 @@
 import { createExtractorFromData } from 'node-unrar-js'
 
-import type { Container } from './zip.js'
+import { MAX_ENTRY_BYTES, type Container } from './zip.js'
 
 /**
  * Open a RAR - what a CBR is.
@@ -23,6 +23,11 @@ export async function openRar(buffer: Buffer): Promise<Container> {
     entries: headers.map((header) => header.name),
     sizes,
     read: async (name) => {
+      // The same limit a zip entry is held to: what is unpacked is held whole.
+      const size = sizes.get(name)
+      if (size !== undefined && size > MAX_ENTRY_BYTES) {
+        throw new Error(`${name} is too large to read: ${size} bytes`)
+      }
       // The extractor returns contents in the order of the list it was given.
       const extracted = extractor.extract({ files: [{ name, password: undefined }] as never })
       const file = [...extracted.files][0]
