@@ -47,4 +47,24 @@ describe('loadConfig', () => {
   it('rejects a non-numeric port', () => {
     expect(() => loadConfig({ KOMGA_CONFIG_DIR: tempDir(), SERVER_PORT: 'abc' } as NodeJS.ProcessEnv)).toThrow()
   })
+
+  it('allows no cross-origin caller by default', () => {
+    const config = loadConfig({ KOMGA_CONFIG_DIR: tempDir() } as NodeJS.ProcessEnv)
+    expect(config.corsAllowedOrigins).toEqual([])
+  })
+
+  it('reads the allowed origins from the environment, trimming and dropping blanks', () => {
+    const config = loadConfig({
+      KOMGA_CONFIG_DIR: tempDir(),
+      KOMGA_CORS_ALLOWED_ORIGINS: ' http://localhost:3000 , http://localhost:4173 ,',
+    } as NodeJS.ProcessEnv)
+    expect(config.corsAllowedOrigins).toEqual(['http://localhost:3000', 'http://localhost:4173'])
+  })
+
+  it('reads the allowed origins from the config file, which takes a list', () => {
+    const dir = tempDir()
+    writeFileSync(join(dir, 'config.json'), JSON.stringify({ corsAllowedOrigins: ['http://localhost:3000'] }))
+    const config = loadConfig({ KOMGA_CONFIG_DIR: dir } as NodeJS.ProcessEnv)
+    expect(config.corsAllowedOrigins).toEqual(['http://localhost:3000'])
+  })
 })

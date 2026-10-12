@@ -8,7 +8,7 @@ import { USER_ROLES, isUserRole, type AuthUser, type UserRole } from '../auth/ty
 import { findUserById } from '../auth/users.js'
 import type { DB } from '../db/schema.js'
 import { nextTsid } from '../tsid.js'
-import { springPage, toUserDto, type UserDto } from './dto.js'
+import { springPage, toUserDto, REPORTED_ROLE_USER, type UserDto } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 
 interface AgeRestrictionBody {
@@ -31,6 +31,12 @@ function currentUser(req: FastifyRequest): AuthUser {
  * the same reason - answering a bare string by stripping every role is the worst
  * possible reading of it. An empty array is allowed, as the reference allows it: an
  * account with no roles can sign in and read its own profile, and nothing else.
+ *
+ * `USER` is accepted and dropped. It is not a storable role - every user is reported
+ * with it, nobody can be given it - so a client that reads a user and writes it back
+ * unchanged sends a role it was told about and then gets a 400 for it. The reference
+ * reads role names through an enum and quietly ignores what it cannot store, which is
+ * the behaviour a client editing a user relies on.
  */
 function rolesFrom(value: unknown): { roles: UserRole[] } | { error: string } {
   if (!Array.isArray(value)) {
@@ -39,6 +45,7 @@ function rolesFrom(value: unknown): { roles: UserRole[] } | { error: string } {
 
   const roles: UserRole[] = []
   for (const entry of value) {
+    if (entry === REPORTED_ROLE_USER) continue
     if (typeof entry !== 'string' || !isUserRole(entry)) {
       return { error: `unknown role: ${String(entry)}` }
     }

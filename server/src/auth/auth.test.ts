@@ -238,6 +238,194 @@ describe('other auth transports', () => {
     await app.close()
   })
 
+  it('gives a browser that signs in with Basic a session to keep', async () => {
+    const { app, database } = await setup()
+    const header = `Basic ${Buffer.from('kid@example.com:kid-pass').toString('base64')}`
+
+    // This is how the forked UI signs in: credentials once, on the current-user call,
+    // with the header that says a browser is asking.
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me?remember-me=false',
+      headers: { authorization: header, 'x-requested-with': 'XMLHttpRequest' },
+    })
+    expect(res.statusCode).toBe(200)
+
+    const session = cookiesOf(res)[SESSION_COOKIE]
+    expect(session).toBeTruthy()
+    expect(cookiesOf(res)[REMEMBER_ME_COOKIE]).toBeUndefined()
+
+    // And what follows carries only that cookie.
+    const me = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me',
+      headers: { cookie: `${SESSION_COOKIE}=${session}` },
+    })
+    expect(me.statusCode).toBe(200)
+    expect(me.json().email).toBe('kid@example.com')
+
+    // The sign-in is in the activity log, as the reference records one.
+    const activity = await database.db
+      .selectFrom('authentication_activity')
+      .selectAll()
+      .where('user_id', '=', 'U2')
+      .execute()
+    expect(activity).toHaveLength(1)
+    expect(activity[0]!.success).toBe(1)
+
+    await database.close()
+    await app.close()
+  })
+
+  it('replaces a session cookie the server cannot resolve, instead of signing in behind it', async () => {
+    const { app, database } = await setup()
+    const header = `Basic ${Buffer.from('kid@example.com:kid-pass').toString('base64')}`
+
+    // What a browser holds after the session it was given has been purged, or after the
+    // server's database was recreated: a cookie naming a session nobody has.
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me?remember-me=false',
+      headers: {
+        authorization: header,
+        'x-requested-with': 'XMLHttpRequest',
+        cookie: `${SESSION_COOKIE}=0123456789abcdef`,
+      },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const issued = cookiesOf(res)[SESSION_COOKIE]
+    expect(issued).toBeTruthy()
+    expect(issued).not.toBe('0123456789abcdef')
+
+    // The browser is signed in for everything that follows, which is the whole point of
+    // issuing the cookie: a sign-in that leaves the browser holding a cookie the server
+    // does not know bounces straight back to the login page.
+    const me = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me',
+      headers: { cookie: `${SESSION_COOKIE}=${issued}` },
+    })
+    expect(me.statusCode).toBe(200)
+    expect(me.json().email).toBe('kid@example.com')
+
+    await database.close()
+    await app.close()
+  })
+
+  it('replaces an expired session cookie and signs in behind a session of another account', async () => {
+    const { app, database } = await setup()
+    const kid = `Basic ${Buffer.from('kid@example.com:kid-pass').toString('base64')}`
+    const admin = `Basic ${Buffer.from('admin@example.com:admin-pass').toString('base64')}`
+
+    const signedIn = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me?remember-me=false',
+      headers: { authorization: kid, 'x-requested-with': 'XMLHttpRequest' },
+    })
+    const kidSession = cookiesOf(signedIn)[SESSION_COOKIE]!
+
+    // The same account keeps the session it has: nothing to replace, nothing to issue.
+    const sameAccount = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me?remember-me=false',
+      headers: { authorization: kid, 'x-requested-with': 'XMLHttpRequest', cookie: `${SESSION_COOKIE}=${kidSession}` },
+    })
+    expect(sameAccount.statusCode).toBe(200)
+    expect(cookiesOf(sameAccount)[SESSION_COOKIE]).toBeUndefined()
+
+    // Signing in as somebody else in the same browser hands it the new account's session
+    // and takes the old one away with it.
+    const other = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me?remember-me=false',
+      headers: {
+        authorization: admin,
+        'x-requested-with': 'XMLHttpRequest',
+        cookie: `${SESSION_COOKIE}=${kidSession}`,
+      },
+    })
+    const adminSession = cookiesOf(other)[SESSION_COOKIE]
+    expect(adminSession).toBeTruthy()
+    expect(adminSession).not.toBe(kidSession)
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/v1/me', headers: { cookie: `${SESSION_COOKIE}=${kidSession}` } }))
+        .statusCode,
+    ).toBe(401)
+
+    const me = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me',
+      headers: { cookie: `${SESSION_COOKIE}=${adminSession}` },
+    })
+    expect(me.json().email).toBe('admin@example.com')
+
+    // An expired session is no more use to a browser than an unknown one.
+    await database.db
+      .insertInto('sessions')
+      .values({
+        id: 'expired-session-id',
+        user_id: 'U1',
+        data: '{}',
+        expires_at: Date.now() - 1000,
+        created_date: new Date().toISOString(),
+      })
+      .execute()
+    const expired = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me?remember-me=false',
+      headers: {
+        authorization: kid,
+        'x-requested-with': 'XMLHttpRequest',
+        cookie: `${SESSION_COOKIE}=expired-session-id`,
+      },
+    })
+    expect(expired.statusCode).toBe(200)
+    const renewed = cookiesOf(expired)[SESSION_COOKIE]
+    expect(renewed).toBeTruthy()
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/v1/me', headers: { cookie: `${SESSION_COOKIE}=${renewed}` } }))
+        .statusCode,
+    ).toBe(200)
+
+    await database.close()
+    await app.close()
+  })
+
+  it('gives a browser that asks to be remembered both cookies, and no session to a script', async () => {
+    const { app, database } = await setup()
+    const header = `Basic ${Buffer.from('kid@example.com:kid-pass').toString('base64')}`
+
+    const remembered = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me?remember-me=true',
+      headers: { authorization: header, 'x-requested-with': 'XMLHttpRequest' },
+    })
+    expect(cookiesOf(remembered)[SESSION_COOKIE]).toBeTruthy()
+    expect(cookiesOf(remembered)[REMEMBER_ME_COOKIE]).toBeTruthy()
+
+    // A caller that is not a browser - a script, a device - sends its credentials on
+    // every request and is left without a session to accumulate.
+    const script = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: header } })
+    expect(script.statusCode).toBe(200)
+    expect(cookiesOf(script)[SESSION_COOKIE]).toBeUndefined()
+
+    // A browser that already has a session is not given a second one either.
+    const again = await app.inject({
+      method: 'GET',
+      url: '/api/v1/me',
+      headers: {
+        authorization: header,
+        'x-requested-with': 'XMLHttpRequest',
+        cookie: `${SESSION_COOKIE}=${cookiesOf(remembered)[SESSION_COOKIE]}`,
+      },
+    })
+    expect(cookiesOf(again)[SESSION_COOKIE]).toBeUndefined()
+
+    await database.close()
+    await app.close()
+  })
+
   it('authenticates with an API key', async () => {
     const { app } = await setup()
     const res = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { [API_KEY_HEADER]: 'the-api-key' } })

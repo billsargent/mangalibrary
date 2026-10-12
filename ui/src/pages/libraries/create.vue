@@ -54,6 +54,7 @@
 import { useCurrentUser } from '@/colada/users'
 import { useCreateLibraryDialog } from '@/composables/library/useCreateLibraryDialog'
 import { useUserLibraries } from '@/composables/libraries'
+import { logger } from '@/services/logtape'
 
 const router = useRouter()
 const { isAdmin } = useCurrentUser()
@@ -61,6 +62,9 @@ const { activator, prepareDialog: createLibrary } = useCreateLibraryDialog()
 const { noLibraries } = useUserLibraries()
 
 watch(noLibraries, (newNoLibraries) => {
+  logger.debug('no-libraries page: noLibraries changed to {noLibraries}', {
+    noLibraries: newNoLibraries,
+  })
   if (!newNoLibraries) {
     void router.push({ name: '/' })
   }

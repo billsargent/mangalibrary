@@ -19,10 +19,11 @@ interface Fixture {
   url: string
 }
 
-async function setup(): Promise<Fixture> {
+async function setup(env: NodeJS.ProcessEnv = {}): Promise<Fixture> {
   const config = loadConfig({
     KOMGA_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'ml-sse-config-')),
     LOG_LEVEL: 'silent',
+    ...env,
   } as NodeJS.ProcessEnv)
 
   const database = createDatabase(':memory:')
@@ -194,6 +195,32 @@ describe('server-sent events', () => {
     expect(
       (await app.inject({ method: 'GET', url: '/sse/v1/events', headers: { 'x-api-key': 'nope' } })).statusCode,
     ).toBe(401)
+
+    await app.close()
+  })
+
+  it('answers a browser with the CORS headers its origin is allowed', async () => {
+    const { app, url } = await setup({ KOMGA_CORS_ALLOWED_ORIGINS: 'http://localhost:3000' })
+
+    // The stream is written by hand, so the headers the CORS plugin added have to
+    // survive onto it: without them a browser never opens the connection.
+    const controller = new AbortController()
+    const allowed = await fetch(`${url}/sse/v1/events`, {
+      headers: { 'x-api-key': READER_KEY, origin: 'http://localhost:3000' },
+      signal: controller.signal,
+    })
+    expect(allowed.status).toBe(200)
+    expect(allowed.headers.get('access-control-allow-origin')).toBe('http://localhost:3000')
+    expect(allowed.headers.get('access-control-allow-credentials')).toBe('true')
+    controller.abort()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    // An origin that was not configured still gets nothing.
+    const blocked = await fetch(`${url}/sse/v1/events`, {
+      headers: { 'x-api-key': READER_KEY, origin: 'http://evil.example' },
+    })
+    expect(blocked.headers.get('access-control-allow-origin')).toBeNull()
+    await blocked.body?.cancel().catch(() => {})
 
     await app.close()
   })

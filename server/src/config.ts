@@ -25,6 +25,15 @@ export interface Config {
   /** Where release notes are read from, if anywhere. */
   releasesUrl: string | null
   /**
+   * Origins allowed to call the API from a browser, empty meaning none.
+   *
+   * A browser refuses a cross-origin call unless the server says it may, and the
+   * UI's development server is a different origin from the API by definition, so
+   * this is what lets `npm run dev` in `ui/` talk to a server that is already
+   * running. Production serves both from one origin and needs nothing here.
+   */
+  corsAllowedOrigins: string[]
+  /**
    * Directory holding the fonts offered to the EPUB reader.
    *
    * Each subdirectory is a font family and its files are the faces of that family,
@@ -46,6 +55,7 @@ interface FileConfig {
   logLevel?: string
   announcementsUrl?: string
   releasesUrl?: string
+  corsAllowedOrigins?: string[]
   fontsDir?: string
 }
 
@@ -69,6 +79,16 @@ function toUrl(value: string | undefined): string | null {
   if (value === undefined) return null
   const trimmed = value.trim()
   return trimmed === '' ? null : trimmed
+}
+
+/** A comma-separated list, with blanks dropped: `a, b`, `a`, and `` all work. */
+function toList(value: string | string[] | undefined): string[] {
+  if (Array.isArray(value)) return value.map((entry) => entry.trim()).filter((entry) => entry !== '')
+  if (value === undefined) return []
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== '')
 }
 
 /**
@@ -98,6 +118,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     sessionTtlMs,
     announcementsUrl: toUrl(env.KOMGA_ANNOUNCEMENTS_URL ?? fileConfig.announcementsUrl),
     releasesUrl: toUrl(env.KOMGA_RELEASES_URL ?? fileConfig.releasesUrl),
+    corsAllowedOrigins: toList(env.KOMGA_CORS_ALLOWED_ORIGINS ?? fileConfig.corsAllowedOrigins),
     fontsDir: resolve(env.KOMGA_FONTS_DIR ?? fileConfig.fontsDir ?? join(configDir, 'fonts')),
   }
 }

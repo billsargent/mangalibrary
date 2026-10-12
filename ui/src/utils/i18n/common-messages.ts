@@ -21,6 +21,17 @@ export const commonMessages = {
     defaultMessage: 'error',
     id: 'HOBFqq',
   }),
+  sessionNotKept: defineMessage({
+    description:
+      'Login screen: the server accepted the credentials but the browser holds no session for what follows',
+    defaultMessage: 'Signed in, but the session was not kept. Please try again.',
+    id: 'sJZ+0o',
+  }),
+  noPermission: defineMessage({
+    description: 'Navigation guard: the signed-in user does not have the role a page requires',
+    defaultMessage: 'You do not have permission to view this page.',
+    id: '64/Mdx',
+  }),
   selectItemOrCreateOne: defineMessage({
     description: 'Common message: shown in combobox',
     defaultMessage: 'Select an item or create one',
