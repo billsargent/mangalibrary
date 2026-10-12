@@ -42,7 +42,13 @@ interface SettingsDto {
   serverPort: MultiSource<number>
   serverContextPath: MultiSource<string>
   koboProxy: boolean
-  koboPort: MultiSource<number>
+  /**
+   * A plain number, unlike the ports above: the contract reports the Kobo proxy port as an
+   * integer and only `serverPort` as a value with sources. Sending an object where a number
+   * is documented is not something a client can read - an admin UI binds it to a number
+   * field and gets `NaN` - so the stored value is what is reported.
+   */
+  koboPort: number | null
   kepubifyPath: MultiSource<string>
   maxUploadFileSizeBytes: number
 }
@@ -89,7 +95,7 @@ async function buildSettings(db: Kysely<DB>, opts: RouteOptions): Promise<Settin
     // A context path is not supported: the server always answers at the root.
     serverContextPath: multiSource<string>(null, null, null),
     koboProxy,
-    koboPort: multiSource<number>(null, databaseKoboPort, null),
+    koboPort: databaseKoboPort,
     kepubifyPath: multiSource(null, kepubifyPath ?? null, kepubifyPath ?? null),
     maxUploadFileSizeBytes: MAX_UPLOAD_BYTES,
   }

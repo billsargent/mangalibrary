@@ -98,7 +98,10 @@ export function useOverviewSection(
             condition: {
               allOf: [
                 valuesToConditions(libIds, 'libraryId'),
-                { oneshot: { operator: 'isFalse' } },
+                // `satisfies` rather than a cast on the array below: the cast checked
+                // nothing about what is in it, which is how this said `oneshot` - a key the
+                // API does not know, so the series list answered 400 - for as long as it has.
+                { oneShot: { operator: 'isFalse' } } satisfies SearchConditionSeries,
               ].filter(Boolean) as SearchConditionSeries[],
             },
           },
