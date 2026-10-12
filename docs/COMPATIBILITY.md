@@ -375,6 +375,50 @@ nothing. Rows that described matches or unknown hashes are dropped, because both
 read from `media_page` now, and the importer maps a Komga database - current or from
 before mid-2023, when the hash's media type was part of the key - into the same shape.
 
+## Hashing
+
+A book carries two hashes: its file's, which identifies the file itself, and
+KOReader's partial MD5 of it, which is how a KOReader reader finds the book on the
+server. Its pages carry hashes of their own, which is what finds a duplicate. Each
+kind is computed by a job the scan queues, at the lowest priority, and only for the
+library settings that ask for it (`hash_files`, `hash_pages`, `hash_koreader` -
+`hash_koreader` is off by default, as the reference leaves it).
+
+The file hash and the page hash are XXH3-128 seeded with zero, written as thirty-two
+lower-case hex characters, which is what the reference's hasher produces for the same
+input. Both are of the bytes as they are stored. The reference **re-encodes a JPEG
+page before hashing it**, to strip the EXIF data that makes two copies of one page
+differ; Java's encoder cannot be reproduced by the image library this server uses, so
+doing the same here would cost time and match nothing - a page that differs from
+another only in its metadata therefore hashes differently here. Komga ships no hash of
+its own to compare against, so the digest byte order is pinned by the published
+XXH3-128 value for an empty input, which both agree on.
+
+The KOReader hash is a partial MD5 over eleven sampled chunks, and follows the
+reference's reading of the file rather than KOReader's own, because a database carried
+over from Komga holds hashes computed that way:
+
+- the reference shifts a `Long` by a **negative** count for its first sample, which
+  Kotlin masks into a 62-bit shift and which overflows to zero, so its first chunk is
+  read from the start of the file. KOReader itself shifts by -2, which shifts right,
+  and reads from 256 bytes in.
+- the reference reads into a buffer it reuses and hands the **whole** buffer to the
+  digest, so a short read hashes the tail of the previous chunk again. KOReader hashes
+  only the bytes it read.
+
+Both are artefacts of how the reference is written rather than choices, and both are
+invisible until KOReader sync is implemented - which is the point at which a
+reader-side value has to be matched and this will have to be revisited.
+
+Page hashing follows the reference in what it covers, too: the first and last three
+pages of a comic archive (`pageHashing`), and only a comic archive - a PDF's pages are
+drawn when they are read and an EPUB's are not the unit a reader navigates, so neither
+is hashed. A page that already has a hash keeps it, so a book whose page count grew is
+not hashed from the start again.
+
+Hashing changes nothing a client sees but the two new fields on a book, so no event is
+announced and no modified date is touched.
+
 ## Events
 
 `/sse/v1/events` carries the changes a browser is watching for. The names and the
