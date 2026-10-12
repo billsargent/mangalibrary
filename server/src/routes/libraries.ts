@@ -9,6 +9,7 @@ import type { FetchJson } from '../http.js'
 import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
 import { nextTsid } from '../tsid.js'
 import { toLibraryDto, type LibraryDto, type LibraryRow } from './dto.js'
+import { booleanParam } from './query.js'
 
 export interface RouteOptions {
   db: Kysely<DB>
@@ -90,6 +91,21 @@ function currentUser(req: FastifyRequest) {
 export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOptions): Promise<void> {
   const { db } = opts
 
+  /**
+   * Queue a scan of a library.
+   *
+   * A library is nothing until it has been scanned, so adding one, or pointing one
+   * at another folder, asks for a scan in the same breath. The reference does the
+   * same and its UI relies on it: there is no "now scan it" step after the form.
+   */
+  const queueScan = (libraryId: string, scanDeep = false) =>
+    enqueueJob(db, {
+      type: 'ScanLibrary',
+      uniqueKey: `SCANLIBRARY_${libraryId}`,
+      priority: JOB_PRIORITY.HIGH,
+      payload: { libraryId, scanDeep },
+    })
+
   app.get('/api/v1/libraries', { preHandler: requireAuth }, async (req) => {
     const user = currentUser(req)
     const rows = await db.selectFrom('libraries').selectAll().orderBy('name').execute()
@@ -119,6 +135,7 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
       .where('id', '=', values.id as string)
       .executeTakeFirstOrThrow()
     announceLibrary(opts.events, 'LibraryAdded', values.id as string)
+    await queueScan(values.id as string)
     return toLibraryDto(row as unknown as LibraryRow)
   })
 
@@ -140,7 +157,7 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
     async (req, reply) => {
       const existing = await db
         .selectFrom('libraries')
-        .select('id')
+        .select(['id', 'root'])
         .where('id', '=', req.params.libraryId)
         .executeTakeFirst()
       if (!existing) return reply.code(404).send({ message: 'Library not found' })
@@ -155,6 +172,8 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
         .execute()
       await replaceExclusions(db, req.params.libraryId, body.scanDirectoryExclusions)
       announceLibrary(opts.events, 'LibraryChanged', req.params.libraryId)
+      // What was scanned is no longer what the library points at.
+      if (typeof values.root === 'string' && values.root !== existing.root) await queueScan(req.params.libraryId)
       return reply.code(204).send()
     },
   )
@@ -180,7 +199,7 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
     path: string,
     type: string,
     priority: number,
-    payload: (libraryId: string, body: Record<string, unknown>) => unknown = () => ({}),
+    payload: (libraryId: string, query: Record<string, unknown>) => unknown = () => ({}),
   ) => {
     app.post<{ Params: { libraryId: string } }>(path, { preHandler: requireAdmin }, async (req, reply) => {
       const existing = await db
@@ -190,20 +209,21 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
         .executeTakeFirst()
       if (!existing) return reply.code(404).send({ message: 'Library not found' })
 
-      const body = (req.body ?? {}) as Record<string, unknown>
       await enqueueJob(db, {
         type,
         uniqueKey: `${type.toUpperCase()}_${req.params.libraryId}`,
         priority,
-        payload: payload(req.params.libraryId, body),
+        payload: payload(req.params.libraryId, (req.query ?? {}) as Record<string, unknown>),
       })
       return reply.code(202).send()
     })
   }
 
-  action('/api/v1/libraries/:libraryId/scan', 'ScanLibrary', JOB_PRIORITY.HIGH, (libraryId, body) => ({
+  // `deep` is a query parameter in the contract. It was read from the body, which
+  // no client sends, so a deep scan never happened.
+  action('/api/v1/libraries/:libraryId/scan', 'ScanLibrary', JOB_PRIORITY.HIGH, (libraryId, query) => ({
     libraryId,
-    scanDeep: body.deep === true,
+    scanDeep: booleanParam(query.deep) === true,
   }))
   action('/api/v1/libraries/:libraryId/analyze', 'AnalyzeLibrary', JOB_PRIORITY.DEFAULT, (libraryId) => ({ libraryId }))
   action('/api/v1/libraries/:libraryId/empty-trash', 'EmptyTrash', JOB_PRIORITY.LOW, (libraryId) => ({ libraryId }))

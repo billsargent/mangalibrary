@@ -645,14 +645,32 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
       }
 
       const body = (req.body ?? {}) as { page?: unknown; completed?: unknown }
-      const update: ReadProgressUpdate = {}
-      if (typeof body.page === 'number' && Number.isFinite(body.page)) update.page = Math.max(0, Math.trunc(body.page))
+      const media = await db
+        .selectFrom('media')
+        .select('page_count')
+        .where('book_id', '=', req.params.bookId)
+        .executeTakeFirst()
+      const pageCount = media?.page_count ?? 0
+
+      // The reference's rules: a book said to be completed is at its last page
+      // whatever page came with it, and otherwise the page decides - it has to be
+      // a page of the book, and reaching the last one completes the book. Either
+      // way the reader has just read, and the date says so.
+      const update: ReadProgressUpdate = { readDate: new Date().toISOString() }
       if (body.completed === true) {
+        update.page = pageCount
         update.completed = true
-        update.readDate = new Date().toISOString()
-      } else if (body.completed === false) {
-        update.completed = false
-        update.readDate = null
+      } else {
+        if (typeof body.page !== 'number' || !Number.isInteger(body.page)) {
+          return reply.code(400).send({ message: 'page must be specified if completed is false or unspecified' })
+        }
+        if (body.page < 1 || body.page > pageCount) {
+          return reply
+            .code(400)
+            .send({ message: `Page argument (${body.page}) must be within 1 and book page count (${pageCount})` })
+        }
+        update.page = body.page
+        update.completed = body.page === pageCount
       }
 
       await upsertReadProgress(db, context.user.id, req.params.bookId, update)
