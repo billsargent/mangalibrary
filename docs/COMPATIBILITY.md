@@ -375,6 +375,34 @@ nothing. Rows that described matches or unknown hashes are dropped, because both
 read from `media_page` now, and the importer maps a Komga database - current or from
 before mid-2023, when the hash's media type was part of the key - into the same shape.
 
+The API is the reference's, and administrative only - what it lists names files on
+disk:
+
+| Route                                              | What it does                                                                                                                                                     |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/page-hashes`                          | The hashes somebody has judged, each with how many pages carry it. `action` filters, and repeating it asks for several; a name that is not an action is a `400`. |
+| `GET /api/v1/page-hashes/unknown`                  | The hashes nobody has judged, carried by **more than one** page.                                                                                                 |
+| `GET /api/v1/page-hashes/{hash}`                   | Every page carrying a hash: its book, the file it is in, its page number, size and media type.                                                                   |
+| `GET /api/v1/page-hashes/{hash}/thumbnail`         | The picture stored with a judged hash, which is a JPEG. `404` when it has none.                                                                                  |
+| `GET /api/v1/page-hashes/unknown/{hash}/thumbnail` | A page carrying an unjudged hash, as it is stored - or a JPEG when `resize` asks for a maximum edge.                                                             |
+| `PUT /api/v1/page-hashes`                          | Judges a hash as `DELETE_AUTO`, `DELETE_MANUAL` or `IGNORE`. A hash that is new keeps a JPEG of one of its pages.                                                |
+
+Three deliberate differences:
+
+- An unknown hash's `size` is the **largest** of the sizes of the pages carrying it.
+  The reference reads one of them, and which one is whatever the database returns
+  first.
+- The order is always defined here: by hash when nothing is asked for, and by the
+  property asked for otherwise. The reference leaves an unsorted page to the database,
+  which paging cannot be built on.
+- Sorting an unknown hash or a match by `url`, `bookId` or `pageNumber` is dropped
+  rather than honoured, because a group of pages has no single one of those.
+
+**Not implemented yet**: `POST /api/v1/page-hashes/{hash}/delete-all` and
+`.../delete-match` are absent rather than wrong - both rewrite a comic archive to take
+a page out of it, and they are the next step of this work. So is a scan's automatic
+removal of the pages of a hash marked `DELETE_AUTO`.
+
 ## Hashing
 
 A book carries two hashes: its file's, which identifies the file itself, and
@@ -449,13 +477,13 @@ An account's roles decide what it may do. The set is the reference's:
 `ADMIN`, `FILE_DOWNLOAD`, `PAGE_STREAMING`, `KOBO_SYNC`, `KOREADER_SYNC`, and `ADMIN`
 satisfies every check.
 
-| Role             | What it gates                                                                                                                                                                         |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ADMIN`          | Every administrative endpoint: users, libraries, settings, the task queue, the history, editing series and book metadata, uploading or deleting artwork, claiming an unclaimed server |
-| `PAGE_STREAMING` | A book's page list, a page image, a page's thumbnail                                                                                                                                  |
-| `FILE_DOWNLOAD`  | Downloading a book's own file, and the series and read list archives built from them                                                                                                  |
-| `KOBO_SYNC`      | Nothing yet: the Kobo sync API is not implemented, and the role is accepted on an account so a client that asks for it is not refused                                                 |
-| `KOREADER_SYNC`  | Nothing yet, for the same reason                                                                                                                                                      |
+| Role             | What it gates                                                                                                                                                                                              |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ADMIN`          | Every administrative endpoint: users, libraries, settings, the task queue, the history, the duplicate pages, editing series and book metadata, uploading or deleting artwork, claiming an unclaimed server |
+| `PAGE_STREAMING` | A book's page list, a page image, a page's thumbnail                                                                                                                                                       |
+| `FILE_DOWNLOAD`  | Downloading a book's own file, and the series and read list archives built from them                                                                                                                       |
+| `KOBO_SYNC`      | Nothing yet: the Kobo sync API is not implemented, and the role is accepted on an account so a client that asks for it is not refused                                                                      |
+| `KOREADER_SYNC`  | Nothing yet, for the same reason                                                                                                                                                                           |
 
 Everything else - browsing series, books, collections and read lists, reading a
 poster, searching, one's own read progress and profile - needs only to be signed in.

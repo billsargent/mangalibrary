@@ -56,9 +56,11 @@ export function booleanParam(value: unknown): boolean | null {
  *
  * Unknown properties are dropped rather than rejected: a client asking for a
  * property we do not support still gets a stable, documented order, and the
- * fallback guarantees the result is deterministic (which paging requires).
+ * fallback guarantees the result is deterministic (which paging requires). A
+ * property may name an expression rather than a column, which is what sorting by a
+ * count needs.
  */
-export function parseSort(raw: unknown, allowed: Record<string, string>, fallback: readonly SortSpec[]): SortSpec[] {
+export function parseSort(raw: unknown, allowed: Record<string, SortKey>, fallback: readonly SortSpec[]): SortSpec[] {
   const specs: SortSpec[] = []
   for (const entry of toArray(raw)) {
     const [rawField, rawDirection] = entry.split(',')
