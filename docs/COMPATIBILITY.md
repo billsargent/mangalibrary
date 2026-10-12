@@ -349,6 +349,32 @@ credentials, so a client knows whether to offer a sign-up screen. `POST
   what went wrong. **No email is verified** - the project sends no mail yet - so an
   address is an identifier here exactly as it is for an admin-created account.
 
+## Duplicate pages
+
+Where a page's hash lives, and what a "known" hash is, follow current Komga rather
+than the shapes this project started with:
+
+- `media_page.file_hash` is the page's own hash, so "which pages hold this hash" is
+  one indexed lookup and a match carries the book, page number, file name, size and
+  media type the API returns.
+- `page_hash` is one row per hash somebody has judged: its `action` (`DELETE_AUTO`,
+  `DELETE_MANUAL` or `IGNORE`), the size, how many times pages with it have been
+  deleted, and when it was seen.
+- `page_hash_thumbnail` is the image of a known duplicate, which the browser shows
+  before removing anything.
+- An _unknown_ hash is not stored: it is a page whose hash is absent from
+  `page_hash`, with more than one page carrying it, which the API asks for by
+  joining the two tables.
+
+An earlier version of this project kept a `page_hash` naming one book and one page, a
+`page_hash_match` table and a `page_hash_unknown` table. Migration 0015 reshapes them:
+one row per hash, keeping the largest size and the highest delete count, with
+`IGNORE` as the action - the old tables had no action column, and `IGNORE` is the
+honest reading of "somebody marked this and we do not know why", since it removes
+nothing. Rows that described matches or unknown hashes are dropped, because both are
+read from `media_page` now, and the importer maps a Komga database - current or from
+before mid-2023, when the hash's media type was part of the key - into the same shape.
+
 ## Events
 
 `/sse/v1/events` carries the changes a browser is watching for. The names and the

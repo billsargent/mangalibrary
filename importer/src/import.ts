@@ -68,8 +68,7 @@ const CORE_TABLES = [
   'client_settings_global',
   'client_settings_user',
   'page_hash',
-  'page_hash_unknown',
-  'page_hash_match',
+  'page_hash_thumbnail',
 ] as const
 
 /** Tables copied with `--rescan-only`: identity and settings, no content. */
@@ -397,6 +396,10 @@ function mapMedia(legacy: LegacyDatabase, timestamp: string): Record<string, unk
 }
 
 function mapMediaPages(legacy: LegacyDatabase): Record<string, unknown>[] {
+  // A page's hash lives with the page in Komga too, and the column arrived after the
+  // table did.
+  const hasHash = legacy.hasColumns('MEDIA_PAGE', 'FILE_HASH')
+
   return legacy.rows('MEDIA_PAGE').map((row) => ({
     book_id: text(row.BOOK_ID),
     number: number(row.NUMBER, 0),
@@ -405,6 +408,7 @@ function mapMediaPages(legacy: LegacyDatabase): Record<string, unknown>[] {
     width: row.WIDTH === null || row.WIDTH === undefined ? null : number(row.WIDTH),
     height: row.HEIGHT === null || row.HEIGHT === undefined ? null : number(row.HEIGHT),
     file_size: row.FILE_SIZE === null || row.FILE_SIZE === undefined ? null : number(row.FILE_SIZE),
+    file_hash: hasHash ? text(row.FILE_HASH) : '',
   }))
 }
 
@@ -533,32 +537,49 @@ function mapClientSettings(legacy: LegacyDatabase, table: string, withUser: bool
   }))
 }
 
-function mapPageHash(legacy: LegacyDatabase): Record<string, unknown>[] {
-  return legacy.rows('PAGE_HASH').map((row) => ({
-    hash: text(row.HASH),
-    book_id: text(row.BOOK_ID),
-    page_number: number(row.PAGE_NUMBER, 0),
-    file_size: number(row.FILE_SIZE, 0),
-    delete_count: number(row.DELETE_COUNT, 0),
-  }))
+/**
+ * The hashes somebody has judged, one row per hash.
+ *
+ * Komga's own table is keyed by hash alone, but a database from before mid-2023 also
+ * carried the media type in the key, so the same hash could appear more than once.
+ * The first row wins - they describe the same image - and a hash with no action
+ * recorded is treated as one that removes nothing.
+ */
+function mapPageHash(legacy: LegacyDatabase, timestamp: string): Record<string, unknown>[] {
+  const seen = new Set<string>()
+  const rows: Record<string, unknown>[] = []
+
+  for (const row of legacy.rows('PAGE_HASH')) {
+    const hash = text(row.HASH)
+    if (hash === '' || seen.has(hash)) continue
+    seen.add(hash)
+
+    rows.push({
+      hash,
+      size: row.SIZE === null || row.SIZE === undefined ? null : number(row.SIZE),
+      action: text(row.ACTION, 'IGNORE'),
+      delete_count: number(row.DELETE_COUNT, 0),
+      created_date: isoDate(row.CREATED_DATE, timestamp),
+      last_modified_date: isoDate(row.LAST_MODIFIED_DATE, timestamp),
+    })
+  }
+  return rows
 }
 
-function mapPageHashUnknown(legacy: LegacyDatabase, timestamp: string): Record<string, unknown>[] {
-  return legacy.rows('PAGE_HASH_UNKNOWN').map((row) => ({
-    hash: text(row.HASH),
-    file_size: number(row.FILE_SIZE, 0),
-    delete_count: number(row.DELETE_COUNT, 0),
-    created_date: isoDate(row.CREATED_DATE, timestamp),
-    last_modified_date: isoDate(row.LAST_MODIFIED_DATE, timestamp),
-  }))
-}
+/** The image of a known duplicate, one per hash, as the table is keyed now. */
+function mapPageHashThumbnails(legacy: LegacyDatabase): Record<string, unknown>[] {
+  if (!legacy.hasTable('PAGE_HASH_THUMBNAIL')) return []
 
-function mapPageHashMatch(legacy: LegacyDatabase): Record<string, unknown>[] {
-  return legacy.rows('PAGE_HASH_MATCH').map((row) => ({
-    hash: text(row.HASH),
-    book_id: text(row.BOOK_ID),
-    page_number: number(row.PAGE_NUMBER, 0),
-  }))
+  const seen = new Set<string>()
+  const rows: Record<string, unknown>[] = []
+  for (const row of legacy.rows('PAGE_HASH_THUMBNAIL')) {
+    const hash = text(row.HASH)
+    const blob = row.THUMBNAIL
+    if (hash === '' || !blob || seen.has(hash)) continue
+    seen.add(hash)
+    rows.push({ hash, thumbnail: blob })
+  }
+  return rows
 }
 
 /** Column tidying for `series_metadata_sharing`, which lives in its own legacy table. */
@@ -573,8 +594,7 @@ function mapSeriesSharing(legacy: LegacyDatabase): Record<string, unknown>[] {
 
 /** Child-first table order used when clearing a destination for `--force`. */
 const CLEAR_ORDER: (keyof DB)[] = [
-  'page_hash_match',
-  'page_hash_unknown',
+  'page_hash_thumbnail',
   'page_hash',
   'announcements_read',
   'sync_point_readlist',
@@ -689,11 +709,9 @@ async function copyTable(name: keyof DB, legacy: LegacyDatabase, db: Kysely<DB>,
     case 'client_settings_user':
       return insertAll(db, name, mapClientSettings(legacy, 'CLIENT_SETTINGS_USER', true))
     case 'page_hash':
-      return insertAll(db, name, mapPageHash(legacy))
-    case 'page_hash_unknown':
-      return insertAll(db, name, mapPageHashUnknown(legacy, timestamp))
-    case 'page_hash_match':
-      return insertAll(db, name, mapPageHashMatch(legacy))
+      return insertAll(db, name, mapPageHash(legacy, timestamp))
+    case 'page_hash_thumbnail':
+      return insertAll(db, name, mapPageHashThumbnails(legacy))
     default:
       return 0
   }

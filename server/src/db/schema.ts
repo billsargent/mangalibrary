@@ -65,8 +65,7 @@ export interface DB {
 
   // Maintenance
   page_hash: PageHashTable
-  page_hash_match: PageHashMatchTable
-  page_hash_unknown: PageHashUnknownTable
+  page_hash_thumbnail: PageHashThumbnailTable
   historical_events: HistoricalEventsTable
   jobs: JobsTable
   client_settings_global: ClientSettingsGlobalTable
@@ -353,6 +352,8 @@ export interface MediaPageTable {
   width: number | null
   height: number | null
   file_size: number | null
+  /** The page's own hash, empty when the library does not hash pages. */
+  file_hash: Generated<string>
 }
 
 export interface MediaFileTable {
@@ -462,26 +463,22 @@ export interface ReadListRequestTable {
   last_modified_date: string
 }
 
+/** What to do about a hash somebody has judged, as the API names it. */
+export type PageHashAction = 'DELETE_AUTO' | 'DELETE_MANUAL' | 'IGNORE'
+
 export interface PageHashTable {
   hash: string
-  book_id: string
-  page_number: number
-  file_size: number
-  delete_count: Generated<number>
-}
-
-export interface PageHashMatchTable {
-  hash: string
-  book_id: string
-  page_number: number
-}
-
-export interface PageHashUnknownTable {
-  hash: string
-  file_size: number
+  size: number | null
+  action: PageHashAction
   delete_count: Generated<number>
   created_date: string
   last_modified_date: string
+}
+
+/** The image of a known duplicate page, so a client can show what it removes. */
+export interface PageHashThumbnailTable {
+  hash: string
+  thumbnail: Buffer
 }
 
 export type HistoricalEventType =

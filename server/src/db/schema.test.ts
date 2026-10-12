@@ -51,8 +51,7 @@ const EXPECTED_TABLES = [
   'readlist_request',
   // maintenance
   'page_hash',
-  'page_hash_match',
-  'page_hash_unknown',
+  'page_hash_thumbnail',
   'historical_events',
   'jobs',
   'server_settings',

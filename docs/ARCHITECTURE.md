@@ -48,7 +48,9 @@ Komga's schema). Key groups:
   or as a mosaic of four - and is not stored.
 - Progress / organisation: `read_progress`, `read_progress_series`, `collections`,
   `collection_series`, `readlists`, `readlist_book`, `readlist_request`
-- Maintenance: `page_hash*`, `historical_events`, `jobs`, settings tables,
+- Maintenance: `page_hash` + `page_hash_thumbnail` (a page's hash lives on
+  `media_page.file_hash`; an unknown hash is one nobody has judged, which is a join
+  between the two), `historical_events`, `jobs`, settings tables,
   `sync_points*`
 - Search: FTS5 tables `fts_books`, `fts_series`, `fts_collections`,
   `fts_readlists`, `fts_authors`
