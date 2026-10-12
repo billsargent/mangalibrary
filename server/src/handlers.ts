@@ -18,6 +18,16 @@ import { bookFilePath, findBookRecord } from './content/files.js'
 import { announceBook, announceSeries, bookRef, seriesRef } from './content-events.js'
 import type { DB } from './db/schema.js'
 import type { EventBus } from './events.js'
+import {
+  booksNeedingFileHash,
+  booksNeedingKoreaderHash,
+  booksNeedingPageHash,
+  hashBookFile,
+  hashBookKoreader,
+  hashBookPages,
+  hashSettings,
+  type HashOutcome,
+} from './hashing/books.js'
 import { JOB_PRIORITY, enqueueJob, type JobRecord } from './jobs.js'
 import { analyzeBook } from './media/analyze.js'
 import { refreshBookLocalArtwork, refreshSeriesLocalArtwork } from './metadata/localArtwork.js'
@@ -150,6 +160,89 @@ async function queueThumbnail(context: JobContext, bookId: string, priority: num
   })
 }
 
+/** How many books each kind of hashing was queued for. */
+interface HashesQueued {
+  files: number
+  koreader: number
+  pages: number
+}
+
+/**
+ * Queue hashing for the books of a library that need it.
+ *
+ * The reference asks for hashing at the end of a scan, as one of the things a scan
+ * arranges, and only for the kinds the library asks for - so an operator who turns
+ * hashing off, or leaves it off, does not fill the queue with work that would be
+ * skipped on arrival. Hashing runs at the lowest priority, because nothing a reader
+ * does depends on it.
+ */
+async function queueBookHashes(context: JobContext, libraryId: string): Promise<HashesQueued> {
+  const settings = await hashSettings(context.db, libraryId)
+  const queued: HashesQueued = { files: 0, koreader: 0, pages: 0 }
+
+  if (settings.files) {
+    for (const bookId of await booksNeedingFileHash(context.db, libraryId)) {
+      await enqueueJob(context.db, {
+        type: 'HashBook',
+        uniqueKey: `HASH_BOOK_${bookId}`,
+        priority: JOB_PRIORITY.LOWEST,
+        payload: { bookId },
+      })
+      queued.files += 1
+    }
+  }
+
+  if (settings.koreader) {
+    for (const bookId of await booksNeedingKoreaderHash(context.db, libraryId)) {
+      await enqueueJob(context.db, {
+        type: 'HashBookKoreader',
+        uniqueKey: `HASH_BOOK_KOREADER_${bookId}`,
+        priority: JOB_PRIORITY.LOWEST,
+        payload: { bookId },
+      })
+      queued.koreader += 1
+    }
+  }
+
+  if (settings.pages) {
+    for (const bookId of await booksNeedingPageHash(context.db, libraryId)) {
+      await enqueueJob(context.db, {
+        type: 'HashBookPages',
+        uniqueKey: `HASH_BOOK_PAGES_${bookId}`,
+        priority: JOB_PRIORITY.LOWEST,
+        payload: { bookId },
+      })
+      queued.pages += 1
+    }
+  }
+
+  return queued
+}
+
+/** Say what a hashing job did. Doing nothing is usual, so that is only a debug line. */
+function logHashing(log: JobLogger, type: string, bookId: string, outcome: HashOutcome): void {
+  if (outcome.status === 'SKIPPED') return log.debug({ bookId, reason: outcome.reason }, `${type}: nothing to do`)
+  if (outcome.status === 'PAGES_HASHED' && outcome.pages === 0)
+    return log.debug({ bookId }, `${type}: pages already hashed`)
+
+  log.info({ bookId, ...outcome }, `${type}: hashed`)
+}
+
+/** Hash one book's file, its KOReader hash, or its pages. */
+async function hashOne(context: JobContext, job: JobRecord, order: 'file' | 'koreader' | 'pages'): Promise<void> {
+  const bookId = text((job.payload as BookPayload).bookId)
+  if (bookId === null) return context.log.warn({ job: job.id, type: job.type }, `${job.type} without a book`)
+
+  const outcome =
+    order === 'file'
+      ? await hashBookFile(context.db, bookId)
+      : order === 'koreader'
+        ? await hashBookKoreader(context.db, bookId)
+        : await hashBookPages(context.db, bookId)
+
+  logHashing(context.log, job.type, bookId, outcome)
+}
+
 /** Make one book's poster, saying so when the book has nothing to make it from. */
 async function generateOneThumbnail(context: JobContext, bookId: string): Promise<void> {
   const generated = await generateBookThumbnail(context.db, bookId)
@@ -260,6 +353,13 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       log.info({ libraryId, ...summary }, 'scanned a library')
       const queued = await analyzeMissingBooks(context, libraryId)
       if (queued > 0) log.info({ libraryId, queued }, 'queued books to analyse')
+
+      // Hashing is asked for by the scan, as the reference asks for it, and sees the
+      // library as the scan left it: a book that was just added has no analysis yet,
+      // so its pages are hashed by the scan that follows this one.
+      const hashes = await queueBookHashes(context, libraryId)
+      if (hashes.files > 0 || hashes.koreader > 0 || hashes.pages > 0)
+        log.info({ libraryId, ...hashes }, 'queued hashing')
       return
     }
 
@@ -438,6 +538,15 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       if (bookId === null) return log.warn({ job: job.id }, 'GenerateBookThumbnail without a book')
       return generateOneThumbnail(context, bookId)
     }
+
+    case 'HashBook':
+      return hashOne(context, job, 'file')
+
+    case 'HashBookKoreader':
+      return hashOne(context, job, 'koreader')
+
+    case 'HashBookPages':
+      return hashOne(context, job, 'pages')
 
     case 'RegenerateBookThumbnails':
       return regenerateThumbnails(context, job.payload as ThumbnailPayload, job.priority)

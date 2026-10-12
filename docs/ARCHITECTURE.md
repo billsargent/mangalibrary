@@ -25,6 +25,7 @@ API but replaces everything behind it.
 | Events     | `EventEmitter` -> SSE + search reindex                                    |
 | Search     | SQLite FTS5 (`bm25` relevance)                                            |
 | Images     | `sharp`                                                                   |
+| Hashing    | `hash-wasm` (XXH3-128); KOReader's partial MD5 via `node:crypto`          |
 | Archives   | `yauzl` (cbz), `node-unrar-js` (cbr), 7z (cb7)                            |
 | EPUB / PDF | `mupdf` for PDF; EPUB packages are read with targeted patterns            |
 | Auth       | Session cookie, `X-Auth-Token`, Basic, API key, remember-me; bcrypt       |
@@ -40,8 +41,9 @@ Komga's schema). Key groups:
 - Library: `libraries`, `library_exclusions`
 - Content: `series` + `series_metadata` (+per-field locks) + related tables;
   `books` + `book_metadata` (+locks) + related tables; `book_metadata_aggregation`
-- Media: `media`, `media_page`, `media_file`, `media_container`, `epub_toc`,
-  `epub_positions`
+- Media: `media`, `media_page` (including each page's own `file_hash`),
+  `media_file`, `media_container`, `epub_toc`, `epub_positions`; a book's file hash
+  and KOReader hash live on its `books` row
 - `thumbnails` (unified, replacing Komga's five thumbnail tables): one row per
   stored poster, generated or uploaded. A series, collection or read list cover
   that has none of its own is built when it is asked for - from one of its books,

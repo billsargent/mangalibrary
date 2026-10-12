@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { createDatabase, type Database } from './db/index.js'
 import { migrate } from './db/migrate.js'
 import { migrations } from './db/migrations/index.js'
+import { fileHash } from './hashing/hashes.js'
 import type { JobLogger } from './handlers.js'
 import { JOB_PRIORITY, deleteJob, disownJobs, enqueueJob, takeNextJob } from './jobs.js'
 import { SETTING_KEYS, setSetting } from './settings.js'
@@ -173,6 +174,60 @@ describe('the worker', () => {
 
       // And nothing is left behind: the queue is empty once the work is done.
       await until(async () => (await database.db.selectFrom('jobs').selectAll().execute()).length === 0)
+    } finally {
+      await worker.stop()
+    }
+  })
+
+  it('hashes a book and its pages when the library asks for it', async () => {
+    const { database, root } = await setupLibrary()
+    await database.db.updateTable('libraries').set({ hash_pages: 1, hash_koreader: 1 }).where('id', '=', 'L1').execute()
+
+    const log = logger()
+    const worker = await startJobWorker({ db: database.db, log, schedule: false })
+    try {
+      await enqueueJob(database.db, {
+        type: 'ScanLibrary',
+        uniqueKey: scanKey('L1'),
+        priority: JOB_PRIORITY.HIGH,
+        payload: { libraryId: 'L1' },
+      })
+
+      // The file itself is hashed by the scan that found the book, which is what
+      // makes a book recognisable again after it moves.
+      const book = await until(async () => {
+        const row = await database.db.selectFrom('books').selectAll().executeTakeFirst()
+        return row && row.file_hash ? row : null
+      })
+      expect(book.file_hash).toBe(await fileHash(join(root, 'Akira', 'Volume 1.cbz')))
+
+      await until(async () => {
+        const row = await database.db.selectFrom('books').select('file_hash_koreader').executeTakeFirst()
+        return row?.file_hash_koreader !== null && row?.file_hash_koreader !== ''
+      })
+
+      // The pages are not hashed yet: the scan asked for hashing before the book it
+      // had just added was analysed, so it found no page list to hash - which is what
+      // the reference's scan does too.
+      const pages = await database.db.selectFrom('media_page').selectAll().execute()
+      expect(pages.every((row) => row.file_hash === '')).toBe(true)
+
+      // So the next scan - of a library that has not changed - does it, which is
+      // how a second scan of the same library is worth as much as the first.
+      await until(async () => (await database.db.selectFrom('jobs').selectAll().execute()).length === 0)
+      await enqueueJob(database.db, {
+        type: 'ScanLibrary',
+        uniqueKey: scanKey('L1'),
+        priority: JOB_PRIORITY.HIGH,
+        payload: { libraryId: 'L1' },
+      })
+
+      const page = await until(async () => {
+        const row = await database.db.selectFrom('media_page').selectAll().executeTakeFirst()
+        return row && row.file_hash ? row : null
+      })
+      expect(page.file_hash).toMatch(/^[0-9a-f]{32}$/)
+      expect(log.messages.some((entry) => entry.message === 'HashBookPages: hashed')).toBe(true)
     } finally {
       await worker.stop()
     }
