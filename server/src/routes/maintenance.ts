@@ -1,5 +1,4 @@
 import { readdir, stat } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
 import { dirname, isAbsolute, join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { requireAdmin, requireAuth } from '../auth/session.js'
@@ -27,16 +26,55 @@ function isHidden(name: string): boolean {
   return name.startsWith('.')
 }
 
-/** The drives of a Windows host, or the single root of a POSIX one. */
-function rootDirectories(): PathEntry[] {
+/**
+ * The drives of a Windows host, or the single root of a POSIX one.
+ */
+async function rootDirectories(): Promise<PathEntry[]> {
   if (process.platform !== 'win32') return [{ type: 'directory', name: '/', path: '/' }]
+  return await driveRoots()
+}
 
-  const roots: PathEntry[] = []
-  for (let code = 'A'.charCodeAt(0); code <= 'Z'.charCodeAt(0); code += 1) {
-    const path = `${String.fromCharCode(code)}:\\`
-    if (existsSync(path)) roots.push({ type: 'directory', name: path, path })
-  }
-  return roots
+/** How long a drive is given to answer before it is taken to be there but away. */
+export const DRIVE_PROBE_MS = 250
+
+/** Whether a drive letter answers at all. */
+async function driveAnswers(path: string): Promise<boolean> {
+  return await stat(path).then(
+    () => true,
+    () => false,
+  )
+}
+
+/**
+ * The drives a Windows host has, without waiting on one that is not answering.
+ *
+ * A mapped network drive whose host is unreachable makes a check on it block for as
+ * long as its own timeout - twenty seconds and more. Node's synchronous check would
+ * hold the whole event loop for that long, which is a hung server rather than a slow
+ * request; even the asynchronous one would tie up a thread of the pool. So every
+ * letter is given a moment, and one that does not answer in time is listed anyway: an
+ * unresponsive letter is a drive that exists and is away, which is exactly the drive
+ * somebody may be pointing a library at while they bring it back.
+ *
+ * A letter with nothing on it fails immediately, so it is left out as before.
+ */
+export async function driveRoots(
+  probe: (path: string) => Promise<boolean> = driveAnswers,
+  deadlineMs: number = DRIVE_PROBE_MS,
+): Promise<PathEntry[]> {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
+  const answered = await Promise.all(
+    letters.map(async (letter) => {
+      const path = `${letter}:\\`
+      const answer = await Promise.race([
+        probe(path).then((exists) => (exists ? 'there' : 'gone')),
+        new Promise<'silent'>((resolve) => setTimeout(() => resolve('silent'), deadlineMs).unref()),
+      ])
+      return answer === 'gone' ? null : path
+    }),
+  )
+
+  return answered.filter((path) => path !== null).map((path) => ({ type: 'directory', name: path, path }))
 }
 
 async function listDirectory(path: string, showFiles: boolean): Promise<PathEntry[]> {
@@ -133,7 +171,7 @@ export async function registerMaintenanceRoutes(app: FastifyInstance, opts: Rout
     const path = typeof body.path === 'string' ? body.path : ''
     const showFiles = body.showFiles === true
 
-    if (path === '') return { directories: rootDirectories(), files: [] }
+    if (path === '') return { directories: await rootDirectories(), files: [] }
     if (!isAbsolute(path)) return reply.code(400).send({ message: 'Path must be absolute' })
 
     let target = path

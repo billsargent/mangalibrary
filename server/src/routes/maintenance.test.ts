@@ -11,6 +11,7 @@ import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
 import type { DB } from '../db/schema.js'
+import { driveRoots } from './maintenance.js'
 
 const ADMIN_KEY = 'admin-key'
 const READER_KEY = 'reader-key'
@@ -241,6 +242,28 @@ describe('sync points', () => {
 
     expect((await app.inject({ method: 'DELETE', url: '/api/v1/syncpoints/me' })).statusCode).toBe(401)
     await app.close()
+  })
+})
+
+describe('the drives of a host', () => {
+  it('leaves out a letter with nothing on it, and keeps one that says nothing at all', async () => {
+    // A letter with no drive fails at once; a mapped network drive whose host is away
+    // does not answer for twenty seconds, and is a drive all the same.
+    const roots = await driveRoots(async (path) => {
+      if (path === 'C:\\') return true
+      if (path === 'D:\\') return false
+      return await new Promise<boolean>(() => {})
+    }, 20)
+
+    expect(roots.map((root) => root.path)).toEqual([...'ABCEFGHIJKLMNOPQRSTUVWXYZ'].map((letter) => `${letter}:\\`))
+  })
+
+  it('answers without waiting for a drive that is away', async () => {
+    const started = Date.now()
+    const roots = await driveRoots(async (path) => (path === 'C:\\' ? true : await new Promise<boolean>(() => {})), 50)
+
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(roots.map((root) => root.path)).toContain('C:\\')
   })
 })
 
