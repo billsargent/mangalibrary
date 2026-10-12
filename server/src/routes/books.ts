@@ -380,8 +380,10 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
     if (libraryIds.length === 0) return springPage([], page, size, 0)
 
     const userId = context.user.id
-    // One book per series the caller has started: the first one they have not
-    // read yet, with series ordered by how recently they were read.
+    // One book per series the caller has read something of and is not in the
+    // middle of: the first one they have not read yet, with series ordered by how
+    // recently they were read. A series with a book in progress is left out, as
+    // the reference leaves it out - that book is already under "keep reading".
     const rows = await db
       .selectFrom('books')
       .select(['books.id', 'books.series_id'])
@@ -396,11 +398,23 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
         )`,
       )
       .where(
+        sql<boolean>`books.series_id not in (
+          select distinct rp_books.series_id
+          from read_progress rp
+          join books rp_books on rp_books.id = rp.book_id
+          where rp.user_id = ${userId} and rp.completed = 0 and rp_books.deleted_date is null
+        )`,
+      )
+      .where(
         sql<boolean>`books.id in (
           select ranked.id from (
             select b2.id,
-                   row_number() over (partition by b2.series_id order by b2.number asc, b2.id asc) as rn
+                   row_number() over (
+                     partition by b2.series_id
+                     order by coalesce(m2.number_sort, b2.number) asc, b2.id asc
+                   ) as rn
             from books b2
+            left join book_metadata m2 on m2.book_id = b2.id
             where b2.deleted_date is null
               and b2.id not in (select book_id from read_progress where user_id = ${userId} and completed = 1)
           ) ranked where ranked.rn = 1
