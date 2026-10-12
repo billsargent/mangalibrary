@@ -435,6 +435,51 @@ describe('the worker', () => {
     }
   })
 
+  it('takes the next job as soon as one finishes, not at the next tick', async () => {
+    const { database } = await setupLibrary()
+    const log = logger()
+    // Twenty jobs that do nothing. One at a time and half a second apart, they
+    // would take ten seconds.
+    for (let index = 0; index < 20; index += 1) {
+      await enqueueJob(database.db, { type: 'DoNothing', uniqueKey: `nothing-${index}`, payload: {} })
+    }
+
+    const started = Date.now()
+    const worker = await startJobWorker({ db: database.db, log, schedule: false })
+    try {
+      await until(async () => (await database.db.selectFrom('jobs').selectAll().execute()).length === 0)
+      expect(Date.now() - started).toBeLessThan(2000)
+      expect(log.messages.filter((entry) => entry.message === 'unknown job type')).toHaveLength(20)
+    } finally {
+      await worker.stop()
+    }
+  })
+
+  it('never runs more jobs at once than the pool allows', async () => {
+    const { database } = await setupLibrary()
+    await setSetting(database.db, SETTING_KEYS.taskPoolSize, '2')
+
+    // A job is claimed while it runs, so the queue says how many are running. It
+    // is looked at as often as the wait allows, which samples rather than proves.
+    let most = 0
+    const log = logger()
+    for (let index = 0; index < 12; index += 1) {
+      await enqueueJob(database.db, { type: 'DoNothing', uniqueKey: `nothing-${index}`, payload: {} })
+    }
+
+    const worker = await startJobWorker({ db: database.db, log, schedule: false })
+    try {
+      await until(async () => {
+        const jobs = await database.db.selectFrom('jobs').select('owner').execute()
+        most = Math.max(most, jobs.filter((job) => job.owner !== null).length)
+        return jobs.length === 0
+      })
+      expect(most).toBeLessThanOrEqual(2)
+    } finally {
+      await worker.stop()
+    }
+  })
+
   it('scans a library that asks to be scanned on startup', async () => {
     const { database } = await setupLibrary()
     await database.db.updateTable('libraries').set({ scan_on_startup: 1 }).where('id', '=', 'L1').execute()

@@ -243,9 +243,10 @@ library with `scanOnStartup` is scanned when the server comes up.
 
 Deliberate differences:
 
-- The queue is polled every half second rather than pushed to. A job that queues
-  more work - a scan queues the books it found - is picked up by the next tick, and
-  a queue that is briefly unreadable does not stop the worker.
+- The queue is polled every half second rather than pushed to: work queued while
+  nothing runs is picked up by the next tick. A job that finishes hands its place to
+  the next one at once, and a queue that is briefly unreadable does not stop the
+  worker.
 - A job that fails is logged with its error and dropped, as the reference drops it,
   so a broken library does not wedge the queue. Nothing retries it: the schedule or
   the next scan asks for the work again, and a request that was refused is visible

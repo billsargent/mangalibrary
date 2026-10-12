@@ -4,6 +4,7 @@ import { createDatabase } from './db/index.js'
 import { migrate } from './db/migrate.js'
 import { migrations } from './db/migrations/index.js'
 import { bundledUiDir, hasUiBundle } from './routes/ui.js'
+import { startThreads, stopThreads } from './threads/index.js'
 import { startJobWorker } from './worker.js'
 
 async function main(): Promise<void> {
@@ -17,6 +18,11 @@ async function main(): Promise<void> {
   const app = await buildServer({ config, database })
   if (applied.length > 0) app.log.info({ applied }, 'applied migrations')
 
+  // Reading a book's file - unpacking it, rendering it, hashing it - happens on
+  // threads of its own, so a scan does not hold up the requests beside it.
+  if (config.workerThreads) app.log.info({ threads: startThreads() }, 'reading books on worker threads')
+  else app.log.info('reading books on the main thread: worker threads are turned off')
+
   // The queue is what makes a scan, an analysis and a metadata refresh happen at
   // all: the API only records what was asked for.
   const worker = await startJobWorker({ db: database.db, log: app.log, events: app.events })
@@ -26,6 +32,8 @@ async function main(): Promise<void> {
     worker
       .stop()
       .catch((err: unknown) => app.log.error({ err: String(err) }, 'could not stop the job worker'))
+      .then(() => stopThreads())
+      .catch((err: unknown) => app.log.error({ err: String(err) }, 'could not stop the worker threads'))
       .then(() => app.close())
       .then(() => process.exit(0))
       .catch((err) => {

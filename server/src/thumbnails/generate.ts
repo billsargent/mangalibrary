@@ -13,9 +13,8 @@ import type { Kysely } from 'kysely'
 
 import { bookFilePath, findBookRecord } from '../content/files.js'
 import type { DB, ThumbnailOwnerType } from '../db/schema.js'
-import { mediaTypeFor } from '../media/kinds.js'
-import { openBook } from '../media/index.js'
 import { SETTING_KEYS, getStringSetting } from '../settings.js'
+import { onThread } from '../threads/index.js'
 import { nextTsid } from '../tsid.js'
 import { maxEdgeFor, mosaic, resizedImage, type RenderedImage } from './image.js'
 
@@ -122,33 +121,6 @@ export async function chosenThumbnail(
   return null
 }
 
-/** The bytes of a book's poster, from its first page or its cover. */
-async function posterOf(path: string): Promise<{ bytes: Buffer; mediaType: string } | null> {
-  let book: Awaited<ReturnType<typeof openBook>> | null = null
-  try {
-    book = await openBook(path)
-
-    if (book.kind === 'EPUB') {
-      const cover = book.epub?.cover ?? null
-      // A reflowable EPUB has no page that is an image, so its cover is the only
-      // thing a poster can be made of; a fixed-layout one can use its first page.
-      if (cover !== null) return { bytes: await book.readResource(cover), mediaType: mediaTypeFor(cover) }
-      if (book.epub?.divinaCompatible === true) {
-        return { bytes: await book.readPage(1), mediaType: book.pages[0]?.mediaType ?? 'image/jpeg' }
-      }
-      return null
-    }
-
-    const page = book.pages[0]
-    if (page === undefined) return null
-    return { bytes: await book.readPage(1), mediaType: page.mediaType }
-  } catch {
-    return null
-  } finally {
-    book?.close()
-  }
-}
-
 /**
  * Generate a book's poster from its first page, and store it.
  *
@@ -167,11 +139,13 @@ export async function generateBookThumbnail(
   const path = await bookFilePath(record)
   if (path === null) return null
 
-  const poster = await posterOf(path)
+  const poster = await onThread('poster', { path })
   if (poster === null) return null
 
   const maxEdge = options.maxEdge ?? (await thumbnailMaxEdge(db))
-  const rendered = await resizedImage(poster.bytes, poster.mediaType, maxEdge)
+  // What crosses from a thread is bytes, not a buffer; the same memory is looked at as one.
+  const bytes = Buffer.from(poster.bytes.buffer, poster.bytes.byteOffset, poster.bytes.byteLength)
+  const rendered = await resizedImage(bytes, poster.mediaType, maxEdge)
   if (rendered === null) return null
 
   const now = new Date().toISOString()

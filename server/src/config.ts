@@ -48,6 +48,13 @@ export interface Config {
    * gets one with no UI unless it asks for it.
    */
   uiDir: string | null
+  /**
+   * Whether a book's file is read on worker threads.
+   *
+   * On unless it is turned off, which is there for a machine too small to want
+   * them: with it off the same work runs on the main thread, one piece at a time.
+   */
+  workerThreads: boolean
 }
 
 export const DEFAULT_PORT = 25600
@@ -66,6 +73,7 @@ interface FileConfig {
   corsAllowedOrigins?: string[]
   fontsDir?: string
   uiDir?: string
+  workerThreads?: boolean
 }
 
 function readFileConfig(path: string): FileConfig {
@@ -105,6 +113,12 @@ function toList(value: string | string[] | undefined): string[] {
     .filter((entry) => entry !== '')
 }
 
+/** A switch from the environment: off for "false", "0", "no" or "off", on for anything else set. */
+function toSwitch(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined || value.trim() === '') return fallback
+  return !['false', '0', 'no', 'off'].includes(value.trim().toLowerCase())
+}
+
 /**
  * Resolve configuration from environment variables, falling back to
  * `config.json` in the config directory, then to defaults.
@@ -135,5 +149,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     corsAllowedOrigins: toList(env.KOMGA_CORS_ALLOWED_ORIGINS ?? fileConfig.corsAllowedOrigins),
     fontsDir: resolve(env.KOMGA_FONTS_DIR ?? fileConfig.fontsDir ?? join(configDir, 'fonts')),
     uiDir: toDirectory(env.KOMGA_UI_DIR ?? fileConfig.uiDir),
+    workerThreads: toSwitch(env.KOMGA_WORKER_THREADS, fileConfig.workerThreads ?? true),
   }
 }
