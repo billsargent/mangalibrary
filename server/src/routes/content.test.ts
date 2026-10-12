@@ -671,6 +671,130 @@ describe('series read progress', () => {
   })
 })
 
+describe('search conditions', () => {
+  it('filters a book list by the typed condition', async () => {
+    const { app, database } = await setup()
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/books/list',
+      headers: admin,
+      payload: { condition: { title: { operator: 'is', value: 'Akira Volume One' } } },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().content.map((entry: { id: string }) => entry.id)).toEqual(['B1'])
+    expect(res.json().totalElements).toBe(1)
+
+    const anyOf = await app.inject({
+      method: 'POST',
+      url: '/api/v1/books/list',
+      headers: admin,
+      payload: {
+        condition: {
+          allOf: [
+            { libraryId: { operator: 'is', value: 'L1' } },
+            {
+              anyOf: [
+                { title: { operator: 'endsWith', value: 'Two' } },
+                { mediaProfile: { operator: 'is', value: 'PDF' } },
+              ],
+            },
+          ],
+        },
+      },
+    })
+    expect(
+      anyOf
+        .json()
+        .content.map((entry: { id: string }) => entry.id)
+        .sort(),
+    ).toEqual(['B2', 'B3'])
+
+    await database.close()
+  })
+
+  it('answers 400 for a condition it cannot translate', async () => {
+    const { app, database } = await setup()
+
+    const unknownField = await app.inject({
+      method: 'POST',
+      url: '/api/v1/books/list',
+      headers: admin,
+      payload: { condition: { nonsense: { operator: 'is', value: 'x' } } },
+    })
+    expect(unknownField.statusCode).toBe(400)
+    expect(unknownField.json()).toEqual({ message: 'nonsense is not a field a book search knows' })
+
+    const wrongOperator = await app.inject({
+      method: 'POST',
+      url: '/api/v1/series/list',
+      headers: admin,
+      payload: { condition: { title: { operator: 'greaterThan', value: 3 } } },
+    })
+    expect(wrongOperator.statusCode).toBe(400)
+    expect(wrongOperator.json().message).toContain('does not take the operator greaterThan')
+
+    const bookFieldOnASeries = await app.inject({
+      method: 'POST',
+      url: '/api/v1/series/list',
+      headers: admin,
+      payload: { condition: { mediaStatus: { operator: 'is', value: 'READY' } } },
+    })
+    expect(bookFieldOnASeries.statusCode).toBe(400)
+
+    await database.close()
+  })
+
+  it('narrows a condition by what the caller may see, and by their read progress', async () => {
+    const { app, database } = await setup()
+
+    // The reader may only see one library, so a condition that asks for the other
+    // one finds nothing rather than everything.
+    const otherLibrary = await app.inject({
+      method: 'POST',
+      url: '/api/v1/books/list',
+      headers: reader,
+      payload: { condition: { libraryId: { operator: 'is', value: 'L2' } } },
+    })
+    expect(otherLibrary.json().content).toEqual([])
+
+    // Read status is the caller's own: the reader finished the first book, the
+    // administrator has no progress at all.
+    const condition = { condition: { readStatus: { operator: 'is', value: 'READ' } } }
+    const forReader = await app.inject({
+      method: 'POST',
+      url: '/api/v1/books/list',
+      headers: reader,
+      payload: condition,
+    })
+    expect(forReader.json().content.map((entry: { id: string }) => entry.id)).toEqual(['B1'])
+
+    const forAdmin = await app.inject({ method: 'POST', url: '/api/v1/books/list', headers: admin, payload: condition })
+    expect(forAdmin.json().content).toEqual([])
+
+    await database.close()
+  })
+
+  it('filters a series list by the typed condition', async () => {
+    const { app, database } = await setup()
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/series/list',
+      headers: admin,
+      payload: {
+        condition: {
+          allOf: [{ libraryId: { operator: 'is', value: 'L1' } }, { tag: { operator: 'isNull' } }],
+        },
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().content.map((entry: { id: string }) => entry.id)).toEqual(['S2'])
+
+    await database.close()
+  })
+})
+
 describe('books', () => {
   it('returns pages of books scoped to the caller', async () => {
     const { app } = await setup()

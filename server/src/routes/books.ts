@@ -13,6 +13,7 @@ import type { RouteOptions } from './libraries.js'
 import { applyBookMetadataPatch } from './metadata.js'
 import { toReadListDto, type ReadListRow } from './organisation-dto.js'
 import { applySort, booleanParam, likeAny, paging, parseSort, toArray, type SortSpec } from './query.js'
+import { bookCondition, type ConditionFilter } from '../search/condition.js'
 
 /**
  * Book browsing, metadata, progression and progress.
@@ -42,6 +43,8 @@ export interface BookQueryFilters {
   libraryIds: string[]
   seriesId?: string
   search?: string
+  /** A translated search condition, ready to be a `where` clause. */
+  condition?: ConditionFilter
   mediaStatuses?: string[]
   readStatuses?: string[]
   tags?: string[]
@@ -66,6 +69,8 @@ function bookQuery(db: Kysely<DB>, filters: BookQueryFilters) {
       : query.where('books.deleted_date', 'is', null)
 
   if (filters.seriesId !== undefined) query = query.where('books.series_id', '=', filters.seriesId)
+
+  if (filters.condition !== undefined) query = query.where(filters.condition)
 
   if (filters.search !== undefined && filters.search !== '') {
     const term = filters.search
@@ -320,7 +325,7 @@ async function aggregateSeriesOfBook(db: Kysely<DB>, bookId: string): Promise<st
 export async function registerBookRoutes(app: FastifyInstance, opts: RouteOptions): Promise<void> {
   const { db } = opts
 
-  const list = async (req: FastifyRequest, body: Record<string, unknown>) => {
+  const list = async (req: FastifyRequest, body: Record<string, unknown>, reply: FastifyReply) => {
     const context = await contentContext(db, req)
     const query = (req.query ?? {}) as Record<string, unknown>
     const { page, size } = paging(query)
@@ -338,15 +343,21 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
     }
     if (typeof query.released_after === 'string') filters.releasedAfter = query.released_after
 
+    if (body.condition !== undefined) {
+      const translated = bookCondition(body.condition, { userId: context.user.id })
+      if ('error' in translated) return reply.code(400).send({ message: translated.error })
+      filters.condition = translated.filter
+    }
+
     const { rows, total } = await findBooks(db, context, filters, sorts, page, size, unpaged)
     const dtos = await buildBookDtos(db, rows, context.user.id)
     return springPage(dtos, page, effectiveSize(total, size, unpaged), total)
   }
 
-  app.get('/api/v1/books', { preHandler: requireAuth }, async (req) => list(req, {}))
+  app.get('/api/v1/books', { preHandler: requireAuth }, async (req, reply) => list(req, {}, reply))
 
-  app.post('/api/v1/books/list', { preHandler: requireAuth }, async (req) =>
-    list(req, (req.body ?? {}) as Record<string, unknown>),
+  app.post('/api/v1/books/list', { preHandler: requireAuth }, async (req, reply) =>
+    list(req, (req.body ?? {}) as Record<string, unknown>, reply),
   )
 
   app.get('/api/v1/books/latest', { preHandler: requireAuth }, async (req) => {
