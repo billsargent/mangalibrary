@@ -246,6 +246,13 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
+    '/search': RouteRecordInfo<
+      '/search',
+      '/search',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/series/[id]': RouteRecordInfo<
       '/series/[id]',
       '/series/:id',
@@ -568,6 +575,14 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | 'id'
+    }
+    'src/pages/search.vue': {
+      routes:
+        | '/search'
+      views:
+        | never
+      pathParamNames:
+        | never
     }
     'src/pages/series/[id].vue': {
       routes:

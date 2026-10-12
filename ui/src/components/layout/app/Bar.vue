@@ -45,6 +45,8 @@
       </RouterLink>
     </v-app-bar-title>
 
+    <SearchBox class="mx-2" />
+
     <template #append>
       <TaskIndicator />
       <LocaleSelector />
