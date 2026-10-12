@@ -15,6 +15,10 @@
     "defaultMessage": "Nothing to show",
     "description": "Overview: empty state text when sections are configured but no data is available"
   },
+  "+gC3Ba": {
+    "defaultMessage": "Check that the server is running",
+    "description": "Server unreachable error view: error message subtitle"
+  },
   "+jaADC": {
     "defaultMessage": "File name",
     "description": "Sort label: name"
@@ -194,10 +198,6 @@
   "2g7iOx": {
     "defaultMessage": "Metrics",
     "description": "Drawer menu for Server > Metrics"
-  },
-  "2p+JVw": {
-    "defaultMessage": "This Komga server is not yet active, you need to create a user account to be able to access it.",
-    "description": "Claim server screen: information banner"
   },
   "2uUiqM": {
     "defaultMessage": "Series ordering",
@@ -779,10 +779,6 @@
     "defaultMessage": "Pages",
     "description": "Book Compare: Pages"
   },
-  "FLqm9f": {
-    "defaultMessage": "Help us translate",
-    "description": "Translations pop-up menu footer"
-  },
   "FSJoDl": {
     "defaultMessage": "Select a series to see its books",
     "description": "File name picker dialog: info text shown when there are no existing series books to show"
@@ -1063,6 +1059,10 @@
     "defaultMessage": "Overview",
     "description": "Library navigation: overview"
   },
+  "MUl132": {
+    "defaultMessage": "Welcome to Manga Library",
+    "description": "No libraries view: title"
+  },
   "MYYgTv": {
     "defaultMessage": "Unknown file size",
     "description": "Poster card: unknown file size"
@@ -1187,10 +1187,6 @@
     "defaultMessage": "Go to previous book within series",
     "description": "Book navigation within series: previous button tootlip"
   },
-  "PTr5Wc": {
-    "defaultMessage": "Check that your Komga server is running",
-    "description": "Server unreachable error view: error message subtitle"
-  },
   "PguYSD": {
     "defaultMessage": "Overwrite existing read list",
     "description": "Import reading list: bottom bar: reading list overwrite checkbox label"
@@ -1198,6 +1194,10 @@
   "Pj29A+": {
     "defaultMessage": "Required for detecting duplicate pages",
     "description": "Form add/edit library: Options - hash pages - information tooltip"
+  },
+  "Pncpp3": {
+    "defaultMessage": "The latest version is already installed",
+    "description": "Updates view: banner shown at the top"
   },
   "Po0Z4Z": {
     "defaultMessage": "Read list",
@@ -1262,10 +1262,6 @@
   "RcbD73": {
     "defaultMessage": "Book {number}",
     "description": "Book navigation siblings menu: book number in series"
-  },
-  "Rm52xk": {
-    "defaultMessage": "Welcome to Komga",
-    "description": "No libraries view: title"
   },
   "Rw2Iwj": {
     "defaultMessage": "Go to next book within read list",
@@ -1379,6 +1375,10 @@
     "defaultMessage": "Clear search",
     "description": "Search empty state: button"
   },
+  "URZj/U": {
+    "defaultMessage": "The API key will be deleted from this server.<ul><li>Any application or scripts using this API key will no longer be able to access the API.</li><li>Authentication activity for this API key will be permanently deleted.</li></ul><b>This action cannot be undone.</b>",
+    "description": "API Key deletion warning notice"
+  },
   "USJuJ1": {
     "defaultMessage": "Local artwork",
     "description": "Poster card: type - local artwork"
@@ -1487,10 +1487,6 @@
     "defaultMessage": "No API keys created yet",
     "description": "API Key table: shown when table has no data"
   },
-  "WNY0pu": {
-    "defaultMessage": "The latest version of Komga is already installed",
-    "description": "Updates view: banner shown at the top"
-  },
   "WPxleH": {
     "defaultMessage": "The book files will be deleted<ul><li>Book media file will be deleted from disk.</li><li>Book sidecar files will be deleted from disk.</li><li>Book will de deleted, along with its metadata and read progress.</li></ul><b>This action cannot be undone.</b>",
     "description": "Book files deletion warning notice"
@@ -1534,6 +1530,10 @@
   "X80giU": {
     "defaultMessage": "Add",
     "description": "Users table global header: add user button"
+  },
+  "XA7C9H": {
+    "defaultMessage": "This server is not yet active, you need to create a user account to be able to access it.",
+    "description": "Claim server screen: information banner"
   },
   "XCwAkR": {
     "defaultMessage": "Open",
@@ -1594,10 +1594,6 @@
   "Y/fJj5": {
     "defaultMessage": "File size",
     "description": "Sort label: fileSize"
-  },
-  "Y0cG3G": {
-    "defaultMessage": "The API key will be deleted from this server.<ul><li>Any application or scripts using this API key will no longer be able to access the Komga API.</li><li>Authentication activity for this API key will be permanently deleted.</li></ul><b>This action cannot be undone.</b>",
-    "description": "API Key deletion warning notice"
   },
   "Y4xJBN": {
     "defaultMessage": "Last modified",
@@ -2839,10 +2835,6 @@
     "defaultMessage": "Delete user",
     "description": "Tooltip for the delete user button in the users table"
   },
-  "r6JNfI": {
-    "defaultMessage": "Forgot your password?",
-    "description": "Login screen: Forgot your password link"
-  },
   "r7xCeA": {
     "defaultMessage": "Change password",
     "description": "Tooltip for the change password button in the users table"
@@ -3042,10 +3034,6 @@
   "uW+6XG": {
     "defaultMessage": "Summary",
     "description": "Import reading list: bottom bar: reading list summary"
-  },
-  "uXY7Eg": {
-    "defaultMessage": "Komga logo",
-    "description": "Login page: Komga logo alt text"
   },
   "uY7N6Z": {
     "defaultMessage": "Media profile",

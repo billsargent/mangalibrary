@@ -10,7 +10,7 @@
           cols="7"
           sm="10"
         >
-          <v-img src="@/assets/logo.svg" />
+          <AppName large />
         </v-col>
       </v-row>
 
@@ -24,8 +24,8 @@
               $formatMessage({
                 description: 'Claim server screen: information banner',
                 defaultMessage:
-                  'This Komga server is not yet active, you need to create a user account to be able to access it.',
-                id: '2p+JVw',
+                  'This server is not yet active, you need to create a user account to be able to access it.',
+                id: 'XA7C9H',
               })
             "
           >

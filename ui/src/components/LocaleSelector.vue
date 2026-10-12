@@ -43,21 +43,6 @@
         :value="locale.value"
         @click="setLocale(locale.value)"
       />
-
-      <v-list-item
-        href="https://hosted.weblate.org/projects/komga/nextui/"
-        target="_blank"
-      >
-        <v-list-item-title class="font-weight-bold">
-          {{
-            $formatMessage({
-              description: 'Translations pop-up menu footer',
-              defaultMessage: 'Help us translate',
-              id: 'FLqm9f',
-            })
-          }}
-        </v-list-item-title>
-      </v-list-item>
     </v-list>
   </v-menu>
 </template>
