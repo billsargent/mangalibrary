@@ -62,6 +62,13 @@ export interface EpubInfo {
    * a second set of fields to keep in step.
    */
   packageDocument: string
+  /**
+   * The href of the cover image inside the archive, or null when it names none.
+   *
+   * A reflowable EPUB has no page that is an image, so its cover is the only thing
+   * a poster can be made of.
+   */
+  cover: string | null
 }
 
 /** An open book. Closing releases whatever the container holds. */

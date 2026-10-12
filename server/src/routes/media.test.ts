@@ -367,11 +367,104 @@ describe('artwork', () => {
     await app.close()
   })
 
-  it('returns 404 when an item has no artwork at all', async () => {
+  it('gives a series the poster of one of its books', async () => {
     const { app } = await setup()
-    expect((await app.inject({ method: 'GET', url: '/api/v1/series/S1/thumbnail', headers: admin })).statusCode).toBe(
+
+    const res = await app.inject({ method: 'GET', url: '/api/v1/series/S1/thumbnail', headers: admin })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toBe('image/png')
+    // The borrowed poster is the book's own row, so it keeps the book's tag.
+    expect(res.headers.etag).toBe('"T1-"')
+    await app.close()
+  })
+
+  it('picks the book a series shows according to the library setting', async () => {
+    const { app, database } = await setup()
+    const db = database.db
+    const now = new Date().toISOString()
+
+    // B3 is the second book of S1 and the only other one with a poster, so it is
+    // distinguishable from the first.
+    await db
+      .insertInto('thumbnails')
+      .values({
+        id: 'T3',
+        owner_type: 'BOOK',
+        owner_id: 'B3',
+        type: 'GENERATED',
+        page: 1,
+        selected: 1,
+        media_type: 'image/png',
+        width: 8,
+        height: 8,
+        file_size: 100,
+        thumbnail: await png(8, 8),
+        created_date: now,
+        last_modified_date: now,
+      })
+      .execute()
+
+    const withCover = async (cover: string, headers: Record<string, string>) => {
+      await db.updateTable('libraries').set({ series_cover: cover }).where('id', '=', 'L1').execute()
+      return app.inject({ method: 'GET', url: '/api/v1/series/S1/thumbnail', headers })
+    }
+
+    expect((await withCover('FIRST', admin)).headers.etag).toBe('"T1-"')
+    expect((await withCover('FIRST_UNREAD_OR_FIRST', admin)).headers.etag).toBe('"T1-"')
+
+    // The reader finishes the first book, so the unread one becomes the cover.
+    await db
+      .insertInto('read_progress')
+      .values({
+        book_id: 'B1',
+        user_id: 'U2',
+        page: 2,
+        completed: 1,
+        created_date: now,
+        last_modified_date: now,
+      })
+      .execute()
+    expect((await withCover('FIRST_UNREAD_OR_FIRST', reader)).headers.etag).toBe('"T3-"')
+
+    // LAST picks the last book, which has no poster of its own: the reference
+    // returns nothing rather than falling back to another book.
+    expect((await withCover('LAST', admin)).statusCode).toBe(404)
+    await app.close()
+  })
+
+  it('shows a collection and a read list as a mosaic of their members', async () => {
+    const { app } = await setup()
+
+    for (const url of ['/api/v1/collections/C1/thumbnail', '/api/v1/readlists/RL1/thumbnail']) {
+      const res = await app.inject({ method: 'GET', url, headers: admin })
+      expect(res.statusCode, url).toBe(200)
+      expect(res.headers['content-type'], url).toBe('image/jpeg')
+      // Built per request from what the caller can see, so it is only cached
+      // privately, and only for a moment.
+      expect(res.headers['cache-control'], url).toBe('private, max-age=60')
+
+      const metadata = await sharp(res.rawPayload).metadata()
+      expect(metadata.width, url).toBe(212)
+      expect(metadata.height, url).toBe(300)
+    }
+    await app.close()
+  })
+
+  it('returns 404 when an item has no artwork at all', async () => {
+    const { app, database } = await setup()
+    const now = new Date().toISOString()
+    // S2 has no books to borrow a poster from, and C2 holds nothing at all.
+    await database.db
+      .insertInto('collections')
+      .values({ id: 'C2', name: 'Empty', created_date: now, last_modified_date: now })
+      .execute()
+
+    expect((await app.inject({ method: 'GET', url: '/api/v1/series/S2/thumbnail', headers: admin })).statusCode).toBe(
       404,
     )
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/v1/collections/C2/thumbnail', headers: admin })).statusCode,
+    ).toBe(404)
     await app.close()
   })
 

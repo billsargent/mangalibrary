@@ -173,6 +173,21 @@ function stripTags(value: string): string {
 }
 
 /**
+ * The cover image's href, or null when the package document names none.
+ *
+ * EPUB 3 marks the item with `properties="cover-image"`; EPUB 2 points at it from
+ * a `meta` element by id, which is what most of the books on disk still do.
+ */
+function coverOf(pkg: EpubPackage): string | null {
+  const marked = [...pkg.manifest.values()].find((item) => item.properties.split(/\s+/).includes('cover-image'))
+  if (marked !== undefined) return marked.href
+
+  const meta = /<meta\b[^>]*name\s*=\s*"cover"[^>]*>/i.exec(pkg.xml)
+  const id = meta === null ? null : (/content\s*=\s*"([^"]*)"/i.exec(meta[0])?.[1] ?? null)
+  return id === null ? null : (pkg.manifest.get(id)?.href ?? null)
+}
+
+/**
  * Read an EPUB through its container and package documents.
  *
  * A fixed-layout EPUB whose spine points straight at images is read as pages of
@@ -186,6 +201,7 @@ export async function openEpub(buffer: Buffer): Promise<{
   toc: TocEntry[]
   divinaCompatible: boolean
   packageDocument: string
+  cover: string | null
 }> {
   const container = await openZip(buffer)
   const pkg = await readPackage(container)
@@ -217,7 +233,15 @@ export async function openEpub(buffer: Buffer): Promise<{
       size: container.sizes.get(fileName) ?? 0,
     }))
 
-  return { container, pages, files, toc: await readToc(container, pkg), divinaCompatible, packageDocument: pkg.xml }
+  return {
+    container,
+    pages,
+    files,
+    toc: await readToc(container, pkg),
+    divinaCompatible,
+    packageDocument: pkg.xml,
+    cover: coverOf(pkg),
+  }
 }
 
 /** How much of a resource one position covers, as the Readium algorithm does. */

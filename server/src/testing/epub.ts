@@ -14,16 +14,17 @@ import { writeZip } from './zip.js'
  * A package document around a `<metadata>` section.
  *
  * The chapter is real, because an EPUB without a spine is not a book the server
- * opens at all.
+ * opens at all. `manifest` adds items alongside it, which is how a cover image is
+ * declared.
  */
-export function opfDocument(metadata: string, spine: { attributes?: string } = {}): string {
+export function opfDocument(metadata: string, spine: { attributes?: string } = {}, manifest = ''): string {
   return `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
     ${metadata}
   </metadata>
   <manifest>
-    <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>${manifest}
   </manifest>
   <spine${spine.attributes === undefined ? '' : ` ${spine.attributes}`}>
     <itemref idref="chapter1"/>
@@ -32,7 +33,11 @@ export function opfDocument(metadata: string, spine: { attributes?: string } = {
 }
 
 /** The entries an EPUB holds, before they are zipped. */
-export function epubEntries(metadata: string, spine: { attributes?: string } = {}): { name: string; data: Buffer }[] {
+export function epubEntries(
+  metadata: string,
+  spine: { attributes?: string } = {},
+  options: { manifest?: string; entries?: { name: string; data: Buffer }[] } = {},
+): { name: string; data: Buffer }[] {
   return [
     { name: 'mimetype', data: Buffer.from('application/epub+zip') },
     {
@@ -43,12 +48,17 @@ export function epubEntries(metadata: string, spine: { attributes?: string } = {
           '</container>',
       ),
     },
-    { name: 'OEBPS/content.opf', data: Buffer.from(opfDocument(metadata, spine), 'utf8') },
+    { name: 'OEBPS/content.opf', data: Buffer.from(opfDocument(metadata, spine, options.manifest ?? ''), 'utf8') },
     { name: 'OEBPS/chapter1.xhtml', data: Buffer.from('<html><body><p>one</p></body></html>', 'utf8') },
+    ...(options.entries ?? []),
   ]
 }
 
 /** The zip an EPUB is, around a package document. */
-export function epubBuffer(metadata: string, spine: { attributes?: string } = {}): Buffer {
-  return writeZip(epubEntries(metadata, spine))
+export function epubBuffer(
+  metadata: string,
+  spine: { attributes?: string } = {},
+  options: { manifest?: string; entries?: { name: string; data: Buffer }[] } = {},
+): Buffer {
+  return writeZip(epubEntries(metadata, spine, options))
 }

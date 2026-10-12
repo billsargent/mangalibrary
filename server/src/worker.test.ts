@@ -1,14 +1,23 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { createDatabase, type Database } from './db/index.js'
 import { migrate } from './db/migrate.js'
 import { migrations } from './db/migrations/index.js'
 import type { JobLogger } from './handlers.js'
 import { JOB_PRIORITY, deleteJob, disownJobs, enqueueJob, takeNextJob } from './jobs.js'
+import { SETTING_KEYS, setSetting } from './settings.js'
 import { writeZip } from './testing/zip.js'
 import { startJobWorker, scanKey } from './worker.js'
+
+/** A real page image, so the fixture is a book a poster can be made from. */
+async function page(): Promise<Buffer> {
+  return sharp({ create: { width: 600, height: 900, channels: 3, background: { r: 10, g: 20, b: 30 } } })
+    .jpeg()
+    .toBuffer()
+}
 
 /** A logger that remembers what it was told. */
 function logger(): JobLogger & { messages: { level: string; message: string; context: Record<string, unknown> }[] } {
@@ -44,7 +53,7 @@ async function setupLibrary(): Promise<{ database: Database; libraryId: string; 
   writeFileSync(
     join(root, 'Akira', 'Volume 1.cbz'),
     writeZip([
-      { name: 'page1.jpg', data: Buffer.from('a page') },
+      { name: 'page1.jpg', data: await page() },
       {
         name: 'ComicInfo.xml',
         data: Buffer.from('<ComicInfo><Series>Akira</Series><Writer>Katsuhiro Otomo</Writer></ComicInfo>', 'utf8'),
@@ -153,6 +162,15 @@ describe('the worker', () => {
       const series = await database.db.selectFrom('series_metadata').selectAll().executeTakeFirstOrThrow()
       expect(series.title).toBe('Akira')
 
+      // Analysing a book gives it a poster, made from its first page.
+      const poster = await until(async () => {
+        const rows = await database.db.selectFrom('thumbnails').selectAll().execute()
+        return rows[0]
+      })
+      expect(poster.type).toBe('GENERATED')
+      expect(poster.selected).toBe(1)
+      expect(poster.height).toBe(300)
+
       // And nothing is left behind: the queue is empty once the work is done.
       await until(async () => (await database.db.selectFrom('jobs').selectAll().execute()).length === 0)
     } finally {
@@ -178,15 +196,40 @@ describe('the worker', () => {
     }
   })
 
-  it('declines a job whose work is not implemented yet, without failing', async () => {
+  it('remakes the posters the server has outgrown', async () => {
     const { database } = await setupLibrary()
     const log = logger()
-    await enqueueJob(database.db, { type: 'RegenerateBookThumbnails', uniqueKey: 'thumbs', payload: {} })
+    await enqueueJob(database.db, {
+      type: 'ScanLibrary',
+      uniqueKey: scanKey('L1'),
+      payload: { libraryId: 'L1' },
+    })
 
     const worker = await startJobWorker({ db: database.db, log, schedule: false })
     try {
+      const stored = async () => (await database.db.selectFrom('thumbnails').selectAll().execute())[0]
+      const first = await until(stored)
       await until(async () => (await database.db.selectFrom('jobs').selectAll().execute()).length === 0)
-      expect(log.messages.some((entry) => entry.message.includes('not implemented yet'))).toBe(true)
+
+      // Asking for the bigger ones only replaces a poster that is too small for
+      // the size in force now.
+      await setSetting(database.db, SETTING_KEYS.thumbnailSize, 'MEDIUM')
+      await enqueueJob(database.db, {
+        type: 'RegenerateBookThumbnails',
+        uniqueKey: 'thumbs',
+        payload: { forBiggerResultOnly: true },
+      })
+
+      const remade = await until(async () => {
+        const row = await stored()
+        return row !== undefined && row.height > 300 ? row : null
+      })
+      expect(remade.width).toBe(400)
+      expect(remade.height).toBe(600)
+      // The same book, and still only one poster: it is replaced, not added to.
+      expect(remade.owner_id).toBe(first.owner_id)
+      expect(remade.id).not.toBe(first.id)
+      expect(await database.db.selectFrom('thumbnails').selectAll().execute()).toHaveLength(1)
       expect(log.messages.some((entry) => entry.level === 'error')).toBe(false)
     } finally {
       await worker.stop()

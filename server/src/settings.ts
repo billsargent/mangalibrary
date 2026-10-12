@@ -63,6 +63,11 @@ export async function getBooleanSetting(db: Kysely<DB>, key: string, fallback: b
   return fallback
 }
 
+/** A stored string, or `fallback` when unset. */
+export async function getStringSetting(db: Kysely<DB>, key: string, fallback: string): Promise<string> {
+  return (await storedValue(db, key)) ?? fallback
+}
+
 /** A stored integer, or `fallback` when unset or unparseable. */
 export async function getIntSetting(db: Kysely<DB>, key: string, fallback: number): Promise<number> {
   const value = await storedValue(db, key)

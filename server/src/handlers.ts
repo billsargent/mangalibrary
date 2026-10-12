@@ -21,6 +21,7 @@ import { analyzeBook } from './media/analyze.js'
 import { refreshBookMetadata } from './metadata/refresh.js'
 import { refreshSeriesMetadata } from './metadata/series.js'
 import { scanLibrary } from './scan/reconcile.js'
+import { booksNeedingThumbnail, generateBookThumbnail } from './thumbnails/generate.js'
 
 /**
  * What a handler needs from a logger.
@@ -50,6 +51,10 @@ interface SeriesPayload {
 }
 interface BookPayload {
   bookId?: unknown
+}
+interface ThumbnailPayload {
+  bookId?: unknown
+  forBiggerResultOnly?: unknown
 }
 
 function text(value: unknown): string | null {
@@ -88,18 +93,18 @@ async function analyzeMissingBooks(context: JobContext, libraryId: string): Prom
   return books.length
 }
 
-/** Analyse one book, if its file is still there. */
-async function analyzeOne(context: JobContext, bookId: string): Promise<void> {
+/** Analyse one book, if its file is still there. Says whether it analysed. */
+async function analyzeOne(context: JobContext, bookId: string): Promise<boolean> {
   const record = await findBookRecord(context.db, bookId)
   if (record === null) {
     context.log.warn({ bookId }, 'book to analyse is gone')
-    return
+    return false
   }
 
   const path = await bookFilePath(record)
   if (path === null) {
     context.log.warn({ bookId }, 'book to analyse has no file')
-    return
+    return false
   }
 
   const library = await context.db
@@ -113,7 +118,36 @@ async function analyzeOne(context: JobContext, bookId: string): Promise<void> {
   })
   if (analysis.status !== 'READY') {
     context.log.warn({ bookId, status: analysis.status, comment: analysis.comment }, 'analysis did not succeed')
+    return false
   }
+  return true
+}
+
+/** Queue making a book's poster from its first page. */
+async function queueThumbnail(context: JobContext, bookId: string, priority: number): Promise<void> {
+  await enqueueJob(context.db, {
+    type: 'GenerateBookThumbnail',
+    uniqueKey: `GENERATE_BOOK_THUMBNAIL_${bookId}`,
+    priority,
+    payload: { bookId },
+  })
+}
+
+/** Make one book's poster, saying so when the book has nothing to make it from. */
+async function generateOneThumbnail(context: JobContext, bookId: string): Promise<void> {
+  const generated = await generateBookThumbnail(context.db, bookId)
+  if (generated === null) {
+    context.log.warn({ bookId }, 'no page to make a poster from')
+  }
+}
+
+/** Queue a poster for every book that wants one, which is all of them on request. */
+async function regenerateThumbnails(context: JobContext, payload: ThumbnailPayload, priority: number): Promise<void> {
+  const forBiggerResultOnly = payload.forBiggerResultOnly === true
+  const bookIds = await booksNeedingThumbnail(context.db, { forBiggerResultOnly })
+
+  for (const bookId of bookIds) await queueThumbnail(context, bookId, priority)
+  context.log.info({ queued: bookIds.length, forBiggerResultOnly }, 'queued books to regenerate posters for')
 }
 
 /** Delete what a scan soft-deleted, which is the only thing that removes rows. */
@@ -223,7 +257,12 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
     case 'AnalyzeBook': {
       const bookId = text((job.payload as BookPayload).bookId)
       if (bookId === null) return log.warn({ job: job.id }, 'AnalyzeBook without a book')
-      return analyzeOne(context, bookId)
+
+      const analysed = await analyzeOne(context, bookId)
+      // A book that analysed has a first page to make a poster from, and making it
+      // is a job of its own - which is also how the reference arranges it.
+      if (analysed) await queueThumbnail(context, bookId, job.priority + 1)
+      return
     }
 
     case 'RefreshBookMetadata': {
@@ -302,13 +341,23 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       return deleteSeriesFiles(context, seriesId)
     }
 
-    case 'GenerateBookThumbnail':
+    case 'GenerateBookThumbnail': {
+      const bookId = text((job.payload as ThumbnailPayload).bookId)
+      if (bookId === null) return log.warn({ job: job.id }, 'GenerateBookThumbnail without a book')
+      return generateOneThumbnail(context, bookId)
+    }
+
     case 'RegenerateBookThumbnails':
+      return regenerateThumbnails(context, job.payload as ThumbnailPayload, job.priority)
+
     case 'GenerateSeriesThumbnail':
     case 'GenerateCollectionThumbnail':
     case 'GenerateReadListThumbnail': {
-      // The tables and the routes are there; the images arrive with M6d.
-      return log.info({ type: job.type }, 'thumbnail generation is not implemented yet')
+      // A series shows one of its books' posters, and a collection or read list
+      // shows a mosaic of four members: both are built when they are asked for, so
+      // there is nothing to generate ahead of time. The types are accepted so that
+      // anything already queued still drains.
+      return log.debug({ type: job.type }, 'nothing to generate for this owner')
     }
 
     default:
