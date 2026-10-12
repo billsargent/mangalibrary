@@ -6,6 +6,7 @@ import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
 import { analyzeBook } from '../media/analyze.js'
+import { SETTING_KEYS, setSetting } from '../settings.js'
 import { writeZip } from '../testing/zip.js'
 import { scanLibrary } from './reconcile.js'
 
@@ -110,6 +111,8 @@ describe('scanning a library', () => {
       booksCreated: 0,
       booksUpdated: 0,
       booksDeleted: 0,
+      collectionsDeleted: 0,
+      readListsDeleted: 0,
     })
   })
 
@@ -187,6 +190,66 @@ describe('scanning a library', () => {
 
     // The trash was emptied, so the row is really gone rather than soft-deleted.
     expect((await database.db.selectFrom('books').selectAll().execute()).map((book) => book.name)).toEqual(['Volume 1'])
+  })
+
+  it('removes a collection and a read list the emptied trash left holding nothing', async () => {
+    const { database, root } = await setup({ empty_trash_after_scan: 1 })
+    files(root, ['Akira/Volume 1.cbz'])
+    await scanLibrary(database.db, 'L1')
+
+    const series = (await seriesRows(database))[0]!
+    const book = (await bookRows(database))[0]!
+    const now = new Date().toISOString()
+    await database.db
+      .insertInto('collections')
+      .values({ id: 'C1', name: 'Favourites', created_date: now, last_modified_date: now })
+      .execute()
+    await database.db
+      .insertInto('collection_series')
+      .values({ collection_id: 'C1', series_id: series.id, number: 0 })
+      .execute()
+    await database.db
+      .insertInto('readlists')
+      .values({ id: 'R1', name: 'To read', created_date: now, last_modified_date: now })
+      .execute()
+    await database.db.insertInto('readlist_book').values({ readlist_id: 'R1', book_id: book.id, number: 0 }).execute()
+
+    await setSetting(database.db, SETTING_KEYS.deleteEmptyCollections, 'true')
+    await setSetting(database.db, SETTING_KEYS.deleteEmptyReadLists, 'true')
+
+    rmSync(join(root, 'Akira'), { recursive: true })
+    const summary = await scanLibrary(database.db, 'L1')
+
+    expect(summary.collectionsDeleted).toBe(1)
+    expect(summary.readListsDeleted).toBe(1)
+    expect(await database.db.selectFrom('collections').selectAll().execute()).toEqual([])
+    expect(await database.db.selectFrom('readlists').selectAll().execute()).toEqual([])
+  })
+
+  it('leaves them alone when the settings are off, even though the trash was emptied', async () => {
+    const { database, root } = await setup({ empty_trash_after_scan: 1 })
+    files(root, ['Akira/Volume 1.cbz'])
+    await scanLibrary(database.db, 'L1')
+
+    const series = (await seriesRows(database))[0]!
+    const now = new Date().toISOString()
+    await database.db
+      .insertInto('collections')
+      .values({ id: 'C1', name: 'Favourites', created_date: now, last_modified_date: now })
+      .execute()
+    await database.db
+      .insertInto('collection_series')
+      .values({ collection_id: 'C1', series_id: series.id, number: 0 })
+      .execute()
+
+    rmSync(join(root, 'Akira'), { recursive: true })
+    const summary = await scanLibrary(database.db, 'L1')
+
+    expect(summary.collectionsDeleted).toBe(0)
+    // The series went for good, so the membership did too: the collection is empty
+    // but still there, which is what leaving the setting off means.
+    expect(await database.db.selectFrom('collection_series').selectAll().execute()).toEqual([])
+    expect((await database.db.selectFrom('collections').selectAll().execute()).map((row) => row.id)).toEqual(['C1'])
   })
 
   it('marks a changed book outdated when the scan is deep', async () => {

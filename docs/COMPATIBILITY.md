@@ -255,6 +255,21 @@ Deliberate differences:
 - Reading `TASK_POOL_SIZE` happens per tick rather than on a settings change, so
   changing it takes effect without a restart.
 
+## Sets that have been emptied
+
+When a library's trash is emptied - by the task the API queues, or at the end of a
+scan for a library with `emptyTrashAfterScan` set - a collection or read list that
+has lost everything it held is removed with it, if the server is set to remove them:
+`DELETE_EMPTY_COLLECTIONS` and `DELETE_EMPTY_READLISTS`, which are stored settings
+and default to off, as they do in the reference. The removal takes the set's poster
+with it, and a scan reports how many of each it removed.
+
+What counts as empty is the reference's rule: a collection with no series in it,
+and a read list with no book in it. A collection whose series are still stored keeps
+its place even when those series have lost all their books, and a read list whose
+books are still only _soft_-deleted is not empty either - which is why the cleanup
+happens when the trash is emptied rather than on every scan.
+
 ## Thumbnails
 
 A book's poster is made from its first page - its cover, for an EPUB - as part of

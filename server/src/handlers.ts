@@ -21,6 +21,7 @@ import { analyzeBook } from './media/analyze.js'
 import { refreshBookLocalArtwork, refreshSeriesLocalArtwork } from './metadata/localArtwork.js'
 import { refreshBookMetadata } from './metadata/refresh.js'
 import { refreshSeriesMetadata } from './metadata/series.js'
+import { cleanupEmptySets } from './organisation/cleanup.js'
 import { scanLibrary } from './scan/reconcile.js'
 import { booksNeedingThumbnail, generateBookThumbnail } from './thumbnails/generate.js'
 
@@ -169,6 +170,14 @@ async function emptyTrash(context: JobContext, libraryId: string): Promise<numbe
     .where('library_id', '=', libraryId)
     .where('deleted_date', 'is not', null)
     .executeTakeFirst()
+
+  // A set that has just lost everything it held is removed with it, if the server is
+  // set to, which is where the reference does the same thing.
+  const cleaned = await cleanupEmptySets(context.db)
+  if (cleaned.collectionsDeleted > 0 || cleaned.readListsDeleted > 0) {
+    context.log.info({ ...cleaned }, 'removed collections and read lists that hold nothing')
+  }
+
   return Number(books.numDeletedRows ?? 0) + Number(series.numDeletedRows ?? 0)
 }
 
