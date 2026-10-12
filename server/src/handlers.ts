@@ -30,6 +30,12 @@ import {
 } from './hashing/books.js'
 import { JOB_PRIORITY, enqueueJob, type JobRecord } from './jobs.js'
 import { analyzeBook } from './media/analyze.js'
+import {
+  pagesToRemoveAutomatically,
+  queuePageRemoval,
+  removeHashedPages,
+  type PageToRemove,
+} from './media/removePages.js'
 import { refreshBookLocalArtwork, refreshSeriesLocalArtwork } from './metadata/localArtwork.js'
 import { refreshBookMetadata } from './metadata/refresh.js'
 import { refreshSeriesMetadata } from './metadata/series.js'
@@ -243,6 +249,61 @@ async function hashOne(context: JobContext, job: JobRecord, order: 'file' | 'kor
   logHashing(context.log, job.type, bookId, outcome)
 }
 
+/** The pages a removal job was queued for, as they were written. */
+function readPages(value: unknown): PageToRemove[] {
+  if (!Array.isArray(value)) return []
+
+  const pages: PageToRemove[] = []
+  for (const entry of value) {
+    const page = entry as Record<string, unknown>
+    if (typeof page.fileName !== 'string' || typeof page.fileHash !== 'string') continue
+    if (typeof page.mediaType !== 'string' || typeof page.pageNumber !== 'number') continue
+
+    pages.push({
+      fileName: page.fileName,
+      mediaType: page.mediaType,
+      fileHash: page.fileHash,
+      fileSize: typeof page.fileSize === 'number' ? page.fileSize : null,
+      pageNumber: page.pageNumber,
+    })
+  }
+  return pages
+}
+
+/** Remove the pages a book was queued for, and say what happened. */
+async function removePages(context: JobContext, job: JobRecord): Promise<void> {
+  const payload = job.payload as { bookId?: unknown; pages?: unknown }
+  const bookId = text(payload.bookId)
+  if (bookId === null) return context.log.warn({ job: job.id }, 'RemoveHashedPages without a book')
+
+  const pages = readPages(payload.pages)
+  const result = await removeHashedPages(context.db, bookId, pages)
+
+  if (result.status !== 'REMOVED') {
+    return context.log.info({ bookId, ...result }, 'did not remove duplicate pages from a book')
+  }
+
+  // A book whose pages changed is a book a client has to reload, and one whose first
+  // page went needs a new poster - which is the picture of the page that went.
+  const ref = await bookRef(context.db, bookId)
+  if (ref) announceBook(context.events, 'BookChanged', ref)
+  if (result.removedFirstPage) await queueThumbnail(context, bookId, job.priority + 1)
+  context.log.info({ bookId, pages: result.pages }, 'removed duplicate pages from a book')
+}
+
+/**
+ * Queue the removals a library has asked to happen by itself.
+ *
+ * A hash marked `DELETE_AUTO` means "take every page carrying this out, without
+ * asking me again", and a scan is when that is looked for - as it is in the
+ * reference, which queues the same work from its own scan.
+ */
+async function queueAutomaticRemovals(context: JobContext, libraryId: string): Promise<number> {
+  const groups = await pagesToRemoveAutomatically(context.db, libraryId)
+  for (const group of groups) await queuePageRemoval(context.db, group.bookId, group.pages, JOB_PRIORITY.LOWEST)
+  return groups.length
+}
+
 /** Make one book's poster, saying so when the book has nothing to make it from. */
 async function generateOneThumbnail(context: JobContext, bookId: string): Promise<void> {
   const generated = await generateBookThumbnail(context.db, bookId)
@@ -360,6 +421,11 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       const hashes = await queueBookHashes(context, libraryId)
       if (hashes.files > 0 || hashes.koreader > 0 || hashes.pages > 0)
         log.info({ libraryId, ...hashes }, 'queued hashing')
+
+      // A hash marked for automatic removal is carried out the same way: the scan
+      // asks, and the worker does the rewriting.
+      const removals = await queueAutomaticRemovals(context, libraryId)
+      if (removals > 0) log.info({ libraryId, removals }, 'queued duplicate pages to remove')
       return
     }
 
@@ -547,6 +613,9 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
 
     case 'HashBookPages':
       return hashOne(context, job, 'pages')
+
+    case 'RemoveHashedPages':
+      return removePages(context, job)
 
     case 'RegenerateBookThumbnails':
       return regenerateThumbnails(context, job.payload as ThumbnailPayload, job.priority)

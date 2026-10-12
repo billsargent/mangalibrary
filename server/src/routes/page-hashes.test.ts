@@ -402,6 +402,88 @@ describe('the thumbnail of a hash', () => {
   })
 })
 
+describe('removing duplicate pages', () => {
+  it('queues one job per book for a hash, with the pages of that book', async () => {
+    const { app, database } = await setup()
+
+    const res = await app.inject({ method: 'POST', url: '/api/v1/page-hashes/dup-1/delete-all', headers: admin })
+    expect(res.statusCode).toBe(202)
+
+    const jobs = await database.db
+      .selectFrom('jobs')
+      .select(['type', 'unique_key', 'payload'])
+      .orderBy('unique_key')
+      .execute()
+    expect(jobs.map((job) => job.type)).toEqual(['RemoveHashedPages', 'RemoveHashedPages'])
+    expect(jobs.map((job) => job.unique_key)).toEqual(['REMOVE_HASHED_PAGES_B1', 'REMOVE_HASHED_PAGES_B2'])
+
+    const payload = JSON.parse(jobs[0]!.payload) as {
+      bookId: string
+      pages: { fileName: string; pageNumber: number }[]
+    }
+    expect(payload.bookId).toBe('B1')
+    expect(payload.pages).toEqual([expect.objectContaining({ fileName: '1.png', pageNumber: 1 })])
+
+    await database.close()
+  })
+
+  it('queues a single page when one match is asked for', async () => {
+    const { app, database } = await setup()
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/page-hashes/dup-1/delete-match',
+      headers: admin,
+      payload: { bookId: 'B2', pageNumber: 1, fileName: '1.png', fileSize: 0, mediaType: 'image/png', url: 'v2.cbz' },
+    })
+    expect(res.statusCode).toBe(202)
+
+    const job = await database.db.selectFrom('jobs').select(['unique_key', 'payload']).executeTakeFirstOrThrow()
+    expect(job.unique_key).toBe('REMOVE_HASHED_PAGES_B2')
+    expect(JSON.parse(job.payload)).toMatchObject({ bookId: 'B2', pages: [{ fileName: '1.png', pageNumber: 1 }] })
+
+    await database.close()
+  })
+
+  it('refuses a match that does not name a page carrying the hash, or that is incomplete', async () => {
+    const { app, database } = await setup()
+
+    const notAMatch = await app.inject({
+      method: 'POST',
+      url: '/api/v1/page-hashes/dup-1/delete-match',
+      headers: admin,
+      payload: { bookId: 'B1', pageNumber: 2, fileName: '2.png' },
+    })
+    expect(notAMatch.statusCode).toBe(400)
+
+    const incomplete = await app.inject({
+      method: 'POST',
+      url: '/api/v1/page-hashes/dup-1/delete-match',
+      headers: admin,
+      payload: { bookId: 'B1' },
+    })
+    expect(incomplete.statusCode).toBe(400)
+
+    expect(await database.db.selectFrom('jobs').selectAll().execute()).toHaveLength(0)
+
+    await database.close()
+  })
+
+  it('is administrative only, and does nothing for a hash nothing carries', async () => {
+    const { app, database } = await setup()
+
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/v1/page-hashes/dup-1/delete-all', headers: reader })).statusCode,
+    ).toBe(403)
+
+    const nothing = await app.inject({ method: 'POST', url: '/api/v1/page-hashes/nothing/delete-all', headers: admin })
+    expect(nothing.statusCode).toBe(202)
+    expect(await database.db.selectFrom('jobs').selectAll().execute()).toHaveLength(0)
+
+    await database.close()
+  })
+})
+
 describe('judging a hash', () => {
   it('marks an unknown hash as known, with a picture of one of its pages', async () => {
     const { app, database } = await setup()

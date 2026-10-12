@@ -13,23 +13,23 @@ API but replaces everything behind it.
 
 ## Server stack
 
-| Concern    | Choice                                                                    |
-| ---------- | ------------------------------------------------------------------------- |
-| Runtime    | Node.js >= 22                                                             |
-| HTTP       | Fastify 5 (+ cookie, session, multipart, static, cors, helmet, etag, SSE) |
-| Contract   | Komga `openapi.json` -> route schemas + types at build time               |
-| Database   | SQLite via `better-sqlite3`, queried with Kysely                          |
-| Migrations | Own runner + `schema_migrations` table                                    |
-| IDs        | TSID (13-char Crockford Base32, time-sortable)                            |
-| Jobs       | `jobs` table, run in-process by a worker with a configurable pool size    |
-| Events     | `EventEmitter` -> SSE + search reindex                                    |
-| Search     | SQLite FTS5 (`bm25` relevance)                                            |
-| Images     | `sharp`                                                                   |
-| Hashing    | `hash-wasm` (XXH3-128); KOReader's partial MD5 via `node:crypto`          |
-| Archives   | `yauzl` (cbz), `node-unrar-js` (cbr), 7z (cb7)                            |
-| EPUB / PDF | `mupdf` for PDF; EPUB packages are read with targeted patterns            |
-| Auth       | Session cookie, `X-Auth-Token`, Basic, API key, remember-me; bcrypt       |
-| Logging    | `pino`                                                                    |
+| Concern    | Choice                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------- |
+| Runtime    | Node.js >= 22                                                                                                 |
+| HTTP       | Fastify 5 (+ cookie, session, multipart, static, cors, helmet, etag, SSE)                                     |
+| Contract   | Komga `openapi.json` -> route schemas + types at build time                                                   |
+| Database   | SQLite via `better-sqlite3`, queried with Kysely                                                              |
+| Migrations | Own runner + `schema_migrations` table                                                                        |
+| IDs        | TSID (13-char Crockford Base32, time-sortable)                                                                |
+| Jobs       | `jobs` table, run in-process by a worker with a configurable pool size                                        |
+| Events     | `EventEmitter` -> SSE + search reindex                                                                        |
+| Search     | SQLite FTS5 (`bm25` relevance)                                                                                |
+| Images     | `sharp`                                                                                                       |
+| Hashing    | `hash-wasm` (XXH3-128); KOReader's partial MD5 via `node:crypto`                                              |
+| Archives   | `yauzl` (cbz), `node-unrar-js` (cbr), 7z (cb7); own ZIP writer for downloads and for rewriting a book's pages |
+| EPUB / PDF | `mupdf` for PDF; EPUB packages are read with targeted patterns                                                |
+| Auth       | Session cookie, `X-Auth-Token`, Basic, API key, remember-me; bcrypt                                           |
+| Logging    | `pino`                                                                                                        |
 
 ## Data model
 

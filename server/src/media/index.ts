@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { basename } from 'node:path'
 
 import { openEpub } from './epub.js'
-import { containerFor, isImageEntry, MEDIA_TYPES, mediaTypeFor, naturalCompare } from './kinds.js'
+import { containerFor, isImageEntry, MEDIA_TYPES, mediaTypeFor, naturalCompare, type ContainerKind } from './kinds.js'
 import { openPdf } from './pdf.js'
 import { openRar } from './rar.js'
 import type { BookContents, FileEntry, PageEntry } from './types.js'
@@ -38,10 +38,12 @@ function allFiles(container: Container): FileEntry[] {
  *
  * The container is decided by the file name, because that is what the library
  * settings were about when the file was accepted, and a reader asking for page
- * three of a book does not want the server to guess again.
+ * three of a book does not want the server to guess again. A caller that holds a
+ * file whose name says nothing - a temporary rewrite of a book, before it replaces
+ * the original - can state the container instead.
  */
-export async function openBook(path: string): Promise<BookContents> {
-  const kind = containerFor(basename(path))
+export async function openBook(path: string, stated?: ContainerKind): Promise<BookContents> {
+  const kind = stated ?? containerFor(basename(path))
   if (kind === null) throw new Error(`${basename(path)} is not a book container this server reads`)
 
   const buffer = await readFile(path)

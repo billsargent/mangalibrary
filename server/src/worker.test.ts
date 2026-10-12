@@ -1,11 +1,13 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
+import yauzl from 'yauzl'
 import { createDatabase, type Database } from './db/index.js'
 import { migrate } from './db/migrate.js'
 import { migrations } from './db/migrations/index.js'
+import { EventBus } from './events.js'
 import { fileHash } from './hashing/hashes.js'
 import type { JobLogger } from './handlers.js'
 import { JOB_PRIORITY, deleteJob, disownJobs, enqueueJob, takeNextJob } from './jobs.js'
@@ -47,20 +49,43 @@ function settle(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 5))
 }
 
+/** Read a ZIP back with an independent reader, to check what a rewrite wrote. */
+function readZip(buffer: Buffer): Promise<{ name: string; data: Buffer }[]> {
+  return new Promise((resolve, reject) => {
+    yauzl.fromBuffer(buffer, { lazyEntries: true }, (error, zipfile) => {
+      if (error || !zipfile) return reject(error ?? new Error('not a zip'))
+      const entries: { name: string; data: Buffer }[] = []
+      zipfile.on('entry', (entry: yauzl.Entry) => {
+        zipfile.openReadStream(entry, (streamError, stream) => {
+          if (streamError || !stream) return reject(streamError ?? new Error('no entry stream'))
+          const chunks: Buffer[] = []
+          stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+          stream.on('end', () => {
+            entries.push({ name: entry.fileName, data: Buffer.concat(chunks) })
+            zipfile.readEntry()
+          })
+        })
+      })
+      zipfile.on('end', () => resolve(entries))
+      zipfile.on('error', reject)
+      zipfile.readEntry()
+    })
+  })
+}
+
 /** A library holding one CBZ that carries a ComicInfo document. */
-async function setupLibrary(): Promise<{ database: Database; libraryId: string; root: string }> {
+async function setupLibrary(pageCount = 1): Promise<{ database: Database; libraryId: string; root: string }> {
   const root = mkdtempSync(join(tmpdir(), 'ml-worker-'))
   mkdirSync(join(root, 'Akira'), { recursive: true })
-  writeFileSync(
-    join(root, 'Akira', 'Volume 1.cbz'),
-    writeZip([
-      { name: 'page1.jpg', data: await page() },
-      {
-        name: 'ComicInfo.xml',
-        data: Buffer.from('<ComicInfo><Series>Akira</Series><Writer>Katsuhiro Otomo</Writer></ComicInfo>', 'utf8'),
-      },
-    ]),
-  )
+
+  const entries: { name: string; data: Buffer }[] = []
+  for (let number = 1; number <= pageCount; number += 1) entries.push({ name: `page${number}.jpg`, data: await page() })
+  entries.push({
+    name: 'ComicInfo.xml',
+    data: Buffer.from('<ComicInfo><Series>Akira</Series><Writer>Katsuhiro Otomo</Writer></ComicInfo>', 'utf8'),
+  })
+
+  writeFileSync(join(root, 'Akira', 'Volume 1.cbz'), writeZip(entries))
 
   const database = createDatabase(':memory:')
   await migrate(database.db, migrations)
@@ -228,6 +253,72 @@ describe('the worker', () => {
       })
       expect(page.file_hash).toMatch(/^[0-9a-f]{32}$/)
       expect(log.messages.some((entry) => entry.message === 'HashBookPages: hashed')).toBe(true)
+    } finally {
+      await worker.stop()
+    }
+  })
+
+  it('removes a duplicate page, and says the book changed', async () => {
+    const { database, root, libraryId } = await setupLibrary(2)
+    const log = logger()
+    const events = new EventBus()
+    const announced: string[] = []
+    events.subscribe((event) => announced.push(event.name))
+
+    const worker = await startJobWorker({ db: database.db, log, schedule: false, events })
+    try {
+      // A scan finds the book and analyses it, which is what gives it pages to name.
+      await enqueueJob(database.db, {
+        type: 'ScanLibrary',
+        uniqueKey: scanKey(libraryId),
+        priority: JOB_PRIORITY.HIGH,
+        payload: { libraryId },
+      })
+
+      const pages = await until(async () => {
+        const rows = await database.db.selectFrom('media_page').selectAll().orderBy('number').execute()
+        return rows.length === 2 ? rows : null
+      })
+      await until(async () => (await database.db.selectFrom('jobs').selectAll().execute()).length === 0)
+
+      const book = await database.db.selectFrom('books').selectAll().executeTakeFirstOrThrow()
+      const page = pages[0]!
+      await enqueueJob(database.db, {
+        type: 'RemoveHashedPages',
+        uniqueKey: `REMOVE_HASHED_PAGES_${book.id}`,
+        priority: JOB_PRIORITY.HIGH,
+        payload: {
+          bookId: book.id,
+          pages: [
+            {
+              fileName: page.file_name,
+              mediaType: page.media_type,
+              fileHash: page.file_hash,
+              fileSize: page.file_size,
+              pageNumber: page.number,
+            },
+          ],
+        },
+      })
+
+      // The book describes one page again, and the file itself no longer holds it.
+      const remaining = await until(async () => {
+        const rows = await database.db.selectFrom('media_page').selectAll().orderBy('number').execute()
+        return rows.length === 1 ? rows : null
+      })
+      expect(remaining[0]!.file_name).toBe('page2.jpg')
+      expect((await readZip(readFileSync(join(root, 'Akira', 'Volume 1.cbz')))).map((entry) => entry.name)).toEqual([
+        'page2.jpg',
+        'ComicInfo.xml',
+      ])
+
+      // The poster is made of the first page, which is the page that went, so a new
+      // one is made - and a client is told the book changed either way.
+      await until(async () => {
+        const thumbnails = await database.db.selectFrom('thumbnails').selectAll().execute()
+        return thumbnails.some((row) => row.selected === 1 && row.page === 1) ? thumbnails : null
+      })
+      expect(announced).toContain('BookChanged')
     } finally {
       await worker.stop()
     }
