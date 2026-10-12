@@ -1,6 +1,7 @@
 import { bookPageUrl } from '@/api/images'
 import type { PageDto } from '@/generated/openapi'
 import type { ReaderPage } from '@/types/reader'
+import { ReadingDirectionValues, type ReadingDirection } from '@/types/ReadingDirection'
 
 /**
  * Image types every browser this application runs in can show.
@@ -43,6 +44,31 @@ export function clampPage(page: unknown, pageCount: number): number | undefined 
   const number = Number(page)
   if (!Number.isInteger(number) || number < 1 || number > pageCount) return undefined
   return number
+}
+
+/**
+ * The direction a book is read in, and whether its series is what decided it.
+ *
+ * What the reader picked while reading this series comes first, then what the
+ * series' metadata names, then the reader's general preference. A series names a
+ * direction more often than anybody meant it to - a `ComicInfo.xml` saying the
+ * book is not a manga makes it left-to-right - so it must not undo, book after
+ * book, a choice the reader has already made.
+ */
+export function readingDirectionFor(sources: {
+  chosenForSeries?: ReadingDirection
+  fromSeries?: string | null
+  preference: ReadingDirection
+}): { direction: ReadingDirection; decidedBySeries: boolean } {
+  if (sources.chosenForSeries !== undefined) {
+    return { direction: sources.chosenForSeries, decidedBySeries: false }
+  }
+
+  const named = ReadingDirectionValues.find((value) => value === sources.fromSeries)
+  if (named !== undefined) {
+    return { direction: named, decidedBySeries: named !== sources.preference }
+  }
+  return { direction: sources.preference, decidedBySeries: false }
 }
 
 /** The next value after `current` in a list, going round to the first after the last. */

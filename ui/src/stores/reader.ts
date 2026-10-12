@@ -13,6 +13,9 @@ export const useReaderStore = defineStore(
   'reader',
   () => {
     const readingDirection = ref<ReadingDirection>('LEFT_TO_RIGHT')
+    // What the reader picked for a series whose metadata names another direction,
+    // by series id, so the metadata does not undo the choice at every book.
+    const seriesDirections = ref<Record<string, ReadingDirection>>({})
     const animations = ref(true)
     const swipe = ref(false)
     const alwaysFullscreen = ref(false)
@@ -27,6 +30,7 @@ export const useReaderStore = defineStore(
 
     return {
       readingDirection,
+      seriesDirections,
       animations,
       swipe,
       alwaysFullscreen,
