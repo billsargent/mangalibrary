@@ -4,6 +4,7 @@ import { librariesQuery } from '@/colada/libraries'
 import { clientSettingsUserQuery } from '@/colada/client-settings'
 import { parseUserSettings } from '@/functions/user-settings'
 import { getUserLibrariesState } from '@/functions/libraries'
+import { logger } from '@/services/logtape'
 
 /**
  * Redirect from /libraries/[viewId] and its child routes to the appropriate sub-route.
@@ -28,6 +29,16 @@ export function useLibraryViewRedirectGuard(router: Router) {
     const { noLibraries, anyPinned, anyUnpinned } = getUserLibrariesState(
       stateLibraries.data,
       userSettings,
+    )
+    logger.debug(
+      'guard: {viewId} - libraries={count}, noLibraries={noLibraries}, anyPinned={anyPinned}, anyUnpinned={anyUnpinned}',
+      {
+        viewId: viewId,
+        count: stateLibraries.data?.length ?? -1,
+        noLibraries,
+        anyPinned,
+        anyUnpinned,
+      },
     )
 
     if (noLibraries) return { name: '/libraries/create' }
