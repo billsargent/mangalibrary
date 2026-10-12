@@ -41,6 +41,22 @@ export function insideRoot(root: string, candidate: string): boolean {
 }
 
 /**
+ * Whether `candidate` is `root` or sits inside it, as the disk spells them both.
+ *
+ * A path can be typed in more than one way - another letter case on a filesystem
+ * that ignores it, a mapped drive, a link - and comparing what was typed would
+ * call the same folder two different places. A path that does not resolve is
+ * inside nothing.
+ */
+export async function insideRootOnDisk(root: string, candidate: string): Promise<boolean> {
+  const [resolvedRoot, resolved] = await Promise.all([
+    realpath(root).catch(() => null),
+    realpath(candidate).catch(() => null),
+  ])
+  return resolvedRoot !== null && resolved !== null && insideRoot(resolvedRoot, resolved)
+}
+
+/**
  * Every book file under a folder.
  *
  * This is the part of Komga's `FileSystemScanner` that transient-book scanning
