@@ -19,6 +19,19 @@ The server reads configuration from environment variables, falling back to
 | Release notes        | `KOMGA_RELEASES_URL`         | `releasesUrl`        | unset                         |
 | Fonts directory      | `KOMGA_FONTS_DIR`            | `fontsDir`           | `<configDir>/fonts`           |
 | Cross-origin callers | `KOMGA_CORS_ALLOWED_ORIGINS` | `corsAllowedOrigins` | none                          |
+| Web UI bundle        | `KOMGA_UI_DIR`               | `uiDir`              | `ui/dist` beside the server   |
+
+## The web UI
+
+The server serves the built web UI from its own origin, at `/`. It looks for the bundle in
+`ui/dist` beside the server, which is where `npm run build:ui` leaves it; `KOMGA_UI_DIR`
+names another directory. A directory with no `index.html` in it is not a bundle: the
+server then starts without a UI, says so in its log, and answers the API as usual.
+
+The UI is a single-page application, so a `GET` for a path that is neither a file in the
+bundle nor part of the API (`/api`, `/sse`, `/actuator`, `/health`, `/opds`, `/kobo`,
+`/koreader`) is answered with the application's page. That is what lets a reload on
+`/series/...` come back to the same screen. An unknown API path still answers `404` in JSON.
 
 The announcements feed and the release notes are where the server reads something hosted
 elsewhere from. Unset means there is

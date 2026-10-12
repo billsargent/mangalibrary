@@ -40,6 +40,17 @@ npm run install:all    # installs the root tooling, server/ and importer/
 cd ui && npm install   # UI (separate Vite app)
 ```
 
+Run it (from the repo root):
+
+```bash
+npm run build:ui       # build the web UI into ui/dist
+npm start              # start the server on http://localhost:25600, UI included
+```
+
+The first visit asks you to claim the server by creating its administrator; then add a
+library under _Libraries_ and let it scan. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+for the port, the data directory and the rest.
+
 Common commands (from the repo root):
 
 ```bash
