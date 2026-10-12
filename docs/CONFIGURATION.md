@@ -20,6 +20,17 @@ The server reads configuration from environment variables, falling back to
 | Fonts directory      | `KOMGA_FONTS_DIR`            | `fontsDir`           | `<configDir>/fonts`           |
 | Cross-origin callers | `KOMGA_CORS_ALLOWED_ORIGINS` | `corsAllowedOrigins` | none                          |
 | Web UI bundle        | `KOMGA_UI_DIR`               | `uiDir`              | `ui/dist` beside the server   |
+| Worker threads       | `KOMGA_WORKER_THREADS`       | `workerThreads`      | on                            |
+
+## Worker threads
+
+Reading a book's file - listing its pages, measuring them, hashing it, taking its cover -
+happens on worker threads, so a scan does not hold up the requests made beside it. How
+many books are worked on at once is the _Task threads_ server setting, in the UI under
+Server settings; the server will not use more threads than the machine has cores, less one.
+Each thread costs memory of its own while it works and is let go after a minute idle.
+
+`KOMGA_WORKER_THREADS=false` turns them off: the same work then runs on the main thread.
 
 ## The web UI
 

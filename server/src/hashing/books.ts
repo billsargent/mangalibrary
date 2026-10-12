@@ -13,8 +13,9 @@ import type { Kysely } from 'kysely'
 
 import { bookFilePath, findBookRecord } from '../content/files.js'
 import type { DB } from '../db/schema.js'
-import { MEDIA_TYPES, openBook } from '../media/index.js'
-import { HASHED_PAGES_AT_EACH_END, fileHash, koreaderHash, pageHash, pagesToHash } from './hashes.js'
+import { MEDIA_TYPES } from '../media/index.js'
+import { onThread } from '../threads/index.js'
+import { HASHED_PAGES_AT_EACH_END, pagesToHash } from './hashes.js'
 
 /**
  * The media the reference hashes pages of.
@@ -89,7 +90,7 @@ export async function hashBookFile(db: Kysely<DB>, bookId: string): Promise<Hash
   if (!settings.files) return { status: 'SKIPPED', reason: 'DISABLED' }
   if (book.fileHash !== null && book.fileHash !== '') return { status: 'SKIPPED', reason: 'ALREADY_HASHED' }
 
-  const hash = await fileHash(book.path)
+  const hash = await onThread('hashFile', { path: book.path })
   await db.updateTable('books').set({ file_hash: hash }).where('id', '=', bookId).execute()
   return { status: 'HASHED', hash }
 }
@@ -108,7 +109,7 @@ export async function hashBookKoreader(db: Kysely<DB>, bookId: string): Promise<
   if (!settings.koreader) return { status: 'SKIPPED', reason: 'DISABLED' }
   if (book.koreaderHash !== null && book.koreaderHash !== '') return { status: 'SKIPPED', reason: 'ALREADY_HASHED' }
 
-  const hash = await koreaderHash(book.path)
+  const hash = await onThread('hashKoreader', { path: book.path })
   await db.updateTable('books').set({ file_hash_koreader: hash }).where('id', '=', bookId).execute()
   return { status: 'HASHED', hash }
 }
@@ -155,20 +156,16 @@ export async function hashBookPages(db: Kysely<DB>, bookId: string): Promise<Has
     .map((row) => ({ number: row.number, fileName: row.file_name }))
   if (toHash.length === 0) return { status: 'PAGES_HASHED', pages: 0 }
 
-  const bookContents = await openBook(book.path)
-  try {
-    for (const page of toHash) {
-      const bytes = await bookContents.readPage(page.number)
-      const hash = await pageHash(bytes)
-      await db
-        .updateTable('media_page')
-        .set({ file_hash: hash })
-        .where('book_id', '=', bookId)
-        .where('number', '=', page.number)
-        .execute()
-    }
-  } finally {
-    bookContents.close()
+  // The book is read on a thread, all its pages at one opening; what was learned
+  // is written here.
+  const hashes = await onThread('hashPages', { path: book.path, pages: toHash.map((page) => page.number) })
+  for (const { number, hash } of hashes) {
+    await db
+      .updateTable('media_page')
+      .set({ file_hash: hash })
+      .where('book_id', '=', bookId)
+      .where('number', '=', number)
+      .execute()
   }
 
   return { status: 'PAGES_HASHED', pages: toHash.length }

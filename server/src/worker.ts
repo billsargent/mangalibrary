@@ -6,9 +6,10 @@
  * looks after the schedule: a library with a scan interval is scanned on that
  * interval, which is what keeps a watched folder watched.
  *
- * The queue is polled rather than pushed to. A job that finishes may queue more
- * work - a scan queues the books it found - and those are picked up by the next
- * tick, half a second later at the worst.
+ * The queue is polled rather than pushed to: work that is queued while nothing is
+ * running is picked up by the next tick, half a second later at the worst. A job
+ * that finishes does not wait for it - its place is taken straight away, so a
+ * queue of short jobs runs as fast as the jobs do.
  */
 
 import type { Kysely } from 'kysely'
@@ -91,16 +92,37 @@ export async function startJobWorker(options: WorkerOptions): Promise<JobWorker>
     }
   }
 
-  const fill = async (): Promise<void> => {
-    const size = await poolSize()
-    while (!stopped && running < size) {
-      const job = await takeNextJob(db, owner)
-      if (job === null) return
+  // One fill at a time: two looking at the count together would each think there
+  // was room for the same job more. One that is asked for meanwhile runs after.
+  let filling = false
+  let fillAgain = false
 
-      running += 1
-      void runJob(job).finally(() => {
-        running -= 1
-      })
+  const fill = async (): Promise<void> => {
+    if (filling) {
+      fillAgain = true
+      return
+    }
+    filling = true
+    try {
+      do {
+        fillAgain = false
+        const size = await poolSize()
+        while (!stopped && running < size) {
+          const job = await takeNextJob(db, owner)
+          if (job === null) break
+
+          running += 1
+          void runJob(job).finally(() => {
+            running -= 1
+            // The place a job leaves is taken at once. Waiting for the next tick
+            // would cost half a second for every job, and a library is a great
+            // many short jobs.
+            fill().catch((error: unknown) => log.error({ err: String(error) }, 'could not look for work'))
+          })
+        }
+      } while (fillAgain && !stopped)
+    } finally {
+      filling = false
     }
   }
 

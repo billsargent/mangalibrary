@@ -67,4 +67,22 @@ describe('loadConfig', () => {
     const config = loadConfig({ KOMGA_CONFIG_DIR: dir } as NodeJS.ProcessEnv)
     expect(config.corsAllowedOrigins).toEqual(['http://localhost:3000'])
   })
+
+  it('reads books on worker threads unless they are turned off', () => {
+    const dir = tempDir()
+    const load = (value?: string) =>
+      loadConfig({
+        KOMGA_CONFIG_DIR: dir,
+        ...(value === undefined ? {} : { KOMGA_WORKER_THREADS: value }),
+      } as NodeJS.ProcessEnv)
+
+    expect(load().workerThreads).toBe(true)
+    expect(load('true').workerThreads).toBe(true)
+    for (const off of ['false', '0', 'no', 'OFF']) expect(load(off).workerThreads).toBe(false)
+
+    // The file is the fallback; the environment still has the last word.
+    writeFileSync(join(dir, 'config.json'), JSON.stringify({ workerThreads: false }))
+    expect(load().workerThreads).toBe(false)
+    expect(load('true').workerThreads).toBe(true)
+  })
 })

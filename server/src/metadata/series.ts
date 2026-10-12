@@ -17,10 +17,10 @@ import type { Kysely } from 'kysely'
 
 import { bookFilePath, seriesFolderPath, type SeriesFolderRecord } from '../content/files.js'
 import type { DB } from '../db/schema.js'
+import { onThread } from '../threads/index.js'
 import { addSeriesToCollection } from '../organisation/membership.js'
 import { aggregateSeriesMetadata } from './aggregation.js'
 import { comicInfoSeriesPatch } from './comicinfo.js'
-import { readBookDocuments } from './document.js'
 import { epubMetadata } from './epub.js'
 import {
   applySeriesPatches,
@@ -253,7 +253,7 @@ export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): P
     })
     if (path === null) continue
 
-    const read = await readBookDocuments(path)
+    const read = await onThread('documents', { path })
     if (read.status === 'failed') failed = true
     if (read.status !== 'ok') continue
 

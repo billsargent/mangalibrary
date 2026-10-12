@@ -17,9 +17,9 @@ import type { Kysely } from 'kysely'
 import { bookFilePath, findBookRecord } from '../content/files.js'
 import type { DB } from '../db/schema.js'
 import { addBookToReadList } from '../organisation/membership.js'
-import { isbnBarcodePatch } from './barcode.js'
 import { comicInfoBookPatch } from './comicinfo.js'
-import { readBookDocuments, type BookDocuments } from './document.js'
+import { onThread } from '../threads/index.js'
+import type { BookDocuments } from './document.js'
 import { epubMetadata } from './epub.js'
 import {
   BOOK_METADATA_CAPABILITIES,
@@ -203,14 +203,14 @@ export async function refreshBookMetadata(
   // The reference's provider order is whatever Spring hands it, which is not
   // something to copy.
   if (importsBarcode) {
-    const barcode = await isbnBarcodePatch(path)
+    const barcode = await onThread('barcode', { path })
     if (barcode !== null) patches.push(barcode)
   }
 
   let documents: BookDocuments | null = null
   let documentsReason: string | null = null
   if (importsDocuments) {
-    const read = await readBookDocuments(path)
+    const read = await onThread('documents', { path })
     if (read.status === 'failed') return { status: 'failed', changed: [], readLists: [], reason: read.reason }
     if (read.status === 'ok') documents = read.documents
     else documentsReason = read.reason
