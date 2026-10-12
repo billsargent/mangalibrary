@@ -72,8 +72,10 @@ describe('komga-import', () => {
       expect(bookMetadata[1]?.links_lock).toBe(0)
 
       expect((await database.db.selectFrom('media').selectAll().execute()).length).toBe(2)
-      const pages = await database.db.selectFrom('media_page').selectAll().execute()
+      const pages = await database.db.selectFrom('media_page').selectAll().orderBy('book_id').execute()
       expect(pages[0]?.width).toBe(800)
+      // A page's hash travels with the page, which is where the API reads it from.
+      expect(pages.map((page) => page.file_hash)).toEqual(['hash-1', 'hash-1'])
 
       const thumbnails = await database.db
         .selectFrom('thumbnails')
@@ -106,8 +108,10 @@ describe('komga-import', () => {
       const clientSettings = await database.db.selectFrom('client_settings_user').selectAll().execute()
       expect(clientSettings).toEqual([{ user_id: 'U1', key: 'WEBUI_POSTER_STRETCH', value: 'true' }])
 
-      expect((await database.db.selectFrom('page_hash').selectAll().execute()).length).toBe(1)
-      expect((await database.db.selectFrom('page_hash_unknown').selectAll().execute()).length).toBe(1)
+      const hashes = await database.db.selectFrom('page_hash').selectAll().execute()
+      expect(hashes).toHaveLength(1)
+      expect(hashes[0]).toMatchObject({ hash: 'hash-1', size: 512, action: 'DELETE_AUTO', delete_count: 2 })
+      expect((await database.db.selectFrom('page_hash_thumbnail').selectAll().execute()).length).toBe(1)
     } finally {
       await database.close()
     }

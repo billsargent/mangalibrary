@@ -77,7 +77,7 @@ export function createLegacyFixture(file: string): void {
     );
     create table MEDIA_PAGE (
       BOOK_ID text not null, NUMBER integer not null, FILE_NAME text not null, MEDIA_TYPE text not null,
-      WIDTH integer null, HEIGHT integer null, FILE_SIZE integer null
+      WIDTH integer null, HEIGHT integer null, FILE_SIZE integer null, FILE_HASH text not null default ''
     );
     create table THUMBNAIL_BOOK (
       ID text primary key, BOOK_ID text not null, TYPE text not null, PAGE integer not null default 0,
@@ -116,9 +116,13 @@ export function createLegacyFixture(file: string): void {
     create table SERVER_SETTINGS (KEY text primary key, VALUE text not null);
     create table CLIENT_SETTINGS_GLOBAL (KEY text primary key, VALUE text not null);
     create table CLIENT_SETTINGS_USER (USER_ID text not null, KEY text not null, VALUE text not null);
-    create table PAGE_HASH (HASH text not null, BOOK_ID text not null, PAGE_NUMBER integer not null, FILE_SIZE integer not null, DELETE_COUNT integer not null default 0);
-    create table PAGE_HASH_UNKNOWN (HASH text primary key, FILE_SIZE integer not null, DELETE_COUNT integer not null default 0, CREATED_DATE datetime not null default current_timestamp, LAST_MODIFIED_DATE datetime not null default current_timestamp);
-    create table PAGE_HASH_MATCH (HASH text not null, BOOK_ID text not null, PAGE_NUMBER integer not null);
+    create table PAGE_HASH (
+      HASH text not null primary key, SIZE int8 null, ACTION text not null,
+      DELETE_COUNT integer not null default 0,
+      CREATED_DATE datetime not null default current_timestamp,
+      LAST_MODIFIED_DATE datetime not null default current_timestamp
+    );
+    create table PAGE_HASH_THUMBNAIL (HASH text not null primary key, THUMBNAIL blob not null);
   `)
 
   const insert = (sql: string, rows: unknown[][]) => {
@@ -184,10 +188,10 @@ export function createLegacyFixture(file: string): void {
     ['B2', 'application/zip', 'READY', 1],
   ])
   insert(
-    'insert into MEDIA_PAGE (BOOK_ID, NUMBER, FILE_NAME, MEDIA_TYPE, WIDTH, HEIGHT, FILE_SIZE) values (?, ?, ?, ?, ?, ?, ?)',
+    'insert into MEDIA_PAGE (BOOK_ID, NUMBER, FILE_NAME, MEDIA_TYPE, WIDTH, HEIGHT, FILE_SIZE, FILE_HASH) values (?, ?, ?, ?, ?, ?, ?, ?)',
     [
-      ['B1', 1, '001.jpg', 'image/jpeg', 800, 1200, 512],
-      ['B2', 1, '001.jpg', 'image/jpeg', 800, 1200, 512],
+      ['B1', 1, '001.jpg', 'image/jpeg', 800, 1200, 512, 'hash-1'],
+      ['B2', 1, '001.jpg', 'image/jpeg', 800, 1200, 512, 'hash-1'],
     ],
   )
   insert(
@@ -217,9 +221,12 @@ export function createLegacyFixture(file: string): void {
   insert('insert into CLIENT_SETTINGS_USER (USER_ID, KEY, VALUE) values (?, ?, ?)', [
     ['U1', 'WEBUI_POSTER_STRETCH', 'true'],
   ])
-  insert('insert into PAGE_HASH (HASH, BOOK_ID, PAGE_NUMBER, FILE_SIZE) values (?, ?, ?, ?)', [['h1', 'B1', 1, 512]])
-  insert('insert into PAGE_HASH_UNKNOWN (HASH, FILE_SIZE) values (?, ?)', [['h2', 999]])
-  insert('insert into PAGE_HASH_MATCH (HASH, BOOK_ID, PAGE_NUMBER) values (?, ?, ?)', [['h2', 'B2', 1]])
+  insert('insert into PAGE_HASH (HASH, SIZE, ACTION, DELETE_COUNT) values (?, ?, ?, ?)', [
+    ['hash-1', 512, 'DELETE_AUTO', 2],
+  ])
+  insert('insert into PAGE_HASH_THUMBNAIL (HASH, THUMBNAIL) values (?, ?)', [
+    ['hash-1', Buffer.from([0xff, 0xd8, 0xff, 0xd9])],
+  ])
 
   db.close()
 }
