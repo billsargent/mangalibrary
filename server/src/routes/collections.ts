@@ -8,8 +8,9 @@ import { accessibleSeriesIds, contentContext, type ContentContext } from './cont
 import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { toCollectionDto, type CollectionDto, type CollectionRow } from './organisation-dto.js'
-import { applySort, booleanParam, likeAny, paging, parseSort, toArray, type SortSpec } from './query.js'
+import { applySort, booleanParam, paging, parseSort, toArray, type SortSpec } from './query.js'
 import { filtersFrom, seriesPage, SERIES_DEFAULT_SORT, SERIES_SORTS } from './series.js'
+import { INDEXES, matchFilter } from '../search/fullText.js'
 
 /**
  * Collections: named, ordered groups of series.
@@ -112,7 +113,10 @@ export async function registerCollectionRoutes(app: FastifyInstance, opts: Route
 
     let builder = db.selectFrom('collections').select(COLLECTION_COLUMNS)
     if (typeof query.search === 'string' && query.search !== '') {
-      builder = builder.where(likeAny('collections.name', query.search))
+      // A term that cannot match anything matches nothing, rather than dropping the
+      // filter and answering with every collection.
+      const filter = matchFilter(db, INDEXES.COLLECTIONS, query.search)
+      builder = filter === null ? builder.where(sql<boolean>`false`) : builder.where(filter)
     }
     if (scoped.length > 0) {
       builder = builder.where((eb) =>

@@ -12,8 +12,9 @@ import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { applyBookMetadataPatch } from './metadata.js'
 import { toReadListDto, type ReadListRow } from './organisation-dto.js'
-import { applySort, booleanParam, likeAny, paging, parseSort, toArray, type SortSpec } from './query.js'
+import { applySort, booleanParam, paging, parseSort, toArray, type SortSpec } from './query.js'
 import { bookCondition, type ConditionFilter } from '../search/condition.js'
+import { INDEXES, matchFilter, relevanceSort } from '../search/fullText.js'
 
 /**
  * Book browsing, metadata, progression and progress.
@@ -73,14 +74,10 @@ function bookQuery(db: Kysely<DB>, filters: BookQueryFilters) {
   if (filters.condition !== undefined) query = query.where(filters.condition)
 
   if (filters.search !== undefined && filters.search !== '') {
-    const term = filters.search
-    query = query.where((eb) =>
-      eb.or([
-        likeAny('book_metadata.title', term),
-        likeAny('books.name', term),
-        likeAny('series_metadata.title', term),
-      ]),
-    )
+    // A term that cannot match anything - punctuation only - matches nothing, rather
+    // than dropping the filter and answering with the whole library.
+    const filter = matchFilter(db, INDEXES.BOOKS, filters.search)
+    query = filter === null ? query.where(sql<boolean>`false`) : query.where(filter)
   }
 
   if (filters.mediaStatuses !== undefined && filters.mediaStatuses.length > 0) {
@@ -330,14 +327,25 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
     const query = (req.query ?? {}) as Record<string, unknown>
     const { page, size } = paging(query)
     const unpaged = booleanParam(query.unpaged) === true
-    const sorts = parseSort(query.sort, BOOK_SORTS, BOOK_DEFAULT_SORT)
+
+    const term = searchTerm(query, body)
+
+    // A search ranks by how well each book matches, unless the caller asked for an
+    // order of their own - which is what the reference does too. A term with nothing
+    // searchable in it has nothing to rank by.
+    const relevance = term === undefined ? null : relevanceSort(INDEXES.BOOKS, term)
+    const sorts = parseSort(
+      query.sort,
+      relevance === null ? BOOK_SORTS : { ...BOOK_SORTS, relevance },
+      relevance === null ? BOOK_DEFAULT_SORT : [{ column: relevance, direction: 'asc' }],
+    )
 
     const filters: BookQueryFilters = {
       libraryIds: toArray(query.library_id).length > 0 ? toArray(query.library_id) : context.libraryIds,
       mediaStatuses: toArray(query.media_status),
       readStatuses: toArray(query.read_status),
       tags: toArray(query.tag),
-      search: searchTerm(query, body),
+      search: term,
       unpaged: booleanParam(query.unpaged),
       deleted: booleanParam(query.deleted),
     }

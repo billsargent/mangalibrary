@@ -442,13 +442,13 @@ describe('series listing', () => {
     const unread = await app.inject({ method: 'GET', url: '/api/v1/series?read_status=UNREAD', headers: reader })
     expect((unread.json() as { totalElements: number }).totalElements).toBe(0)
 
-    const searched = await app.inject({ method: 'GET', url: '/api/v1/series?search=akir', headers: admin })
+    const searched = await app.inject({ method: 'GET', url: '/api/v1/series?search=akira', headers: admin })
     expect((searched.json() as { content: { id: string }[] }).content.map((s) => s.id)).toEqual(['S1'])
 
-    const regex = await app.inject({ method: 'GET', url: '/api/v1/series?search_regex=%5Eber', headers: admin })
+    const regex = await app.inject({ method: 'GET', url: '/api/v1/series?search_regex=%5Eber,title', headers: admin })
     expect((regex.json() as { content: { id: string }[] }).content.map((s) => s.id)).toEqual(['S2'])
 
-    const badRegex = await app.inject({ method: 'GET', url: '/api/v1/series?search_regex=%5B', headers: admin })
+    const badRegex = await app.inject({ method: 'GET', url: '/api/v1/series?search_regex=%5B,title', headers: admin })
     expect(badRegex.statusCode).toBe(400)
     await app.close()
   })
@@ -790,6 +790,174 @@ describe('search conditions', () => {
     })
     expect(res.statusCode).toBe(200)
     expect(res.json().content.map((entry: { id: string }) => entry.id)).toEqual(['S2'])
+
+    await database.close()
+  })
+})
+
+describe('full text search', () => {
+  it('finds books and series by a word, and orders the books by relevance', async () => {
+    const { app, database } = await setup()
+
+    const books = await app.inject({
+      method: 'POST',
+      url: '/api/v1/books/list',
+      headers: admin,
+      payload: { fullTextSearch: 'akira' },
+    })
+    expect(books.statusCode).toBe(200)
+    expect(
+      books
+        .json()
+        .content.map((entry: { id: string }) => entry.id)
+        .sort(),
+    ).toEqual(['B1', 'B2'])
+    expect(books.json().totalElements).toBe(2)
+
+    // The query parameter means the same thing as the body field.
+    const byQuery = await app.inject({ method: 'GET', url: '/api/v1/books?search=berserk', headers: admin })
+    expect(byQuery.json().content.map((entry: { id: string }) => entry.id)).toEqual(['B3'])
+
+    // Relevance is the default order, and a caller may ask for it by name.
+    const ordered = await app.inject({
+      method: 'POST',
+      url: '/api/v1/books/list',
+      headers: admin,
+      payload: { fullTextSearch: 'akira' },
+    })
+    expect(ordered.json().content.map((entry: { id: string }) => entry.id)).toEqual(
+      books.json().content.map((entry: { id: string }) => entry.id),
+    )
+
+    const byName = await app.inject({ method: 'GET', url: '/api/v1/series?search=akira', headers: admin })
+    expect(byName.json().content.map((entry: { id: string }) => entry.id)).toEqual(['S1'])
+
+    await database.close()
+  })
+
+  it('stems, and asks for every word', async () => {
+    const { app, database } = await setup()
+
+    // The stored titles all say "Volume": the plural finds every one of them, which is
+    // the stemming the reference's analyser does too.
+    const plural = await app.inject({ method: 'GET', url: '/api/v1/books?search=volumes', headers: admin })
+    expect(
+      plural
+        .json()
+        .content.map((entry: { id: string }) => entry.id)
+        .sort(),
+    ).toEqual(['B1', 'B2', 'B3'])
+
+    // A trailing star is a prefix, as it is in the search language the reference parses.
+    const prefix = await app.inject({ method: 'GET', url: '/api/v1/books?search=akir*', headers: admin })
+    expect(
+      prefix
+        .json()
+        .content.map((entry: { id: string }) => entry.id)
+        .sort(),
+    ).toEqual(['B1', 'B2'])
+
+    const both = await app.inject({
+      method: 'POST',
+      url: '/api/v1/books/list',
+      headers: admin,
+      payload: { fullTextSearch: 'akira two' },
+    })
+    expect(both.json().content.map((entry: { id: string }) => entry.id)).toEqual(['B2'])
+
+    await database.close()
+  })
+
+  it('answers with nothing, rather than with everything, for a term it cannot use', async () => {
+    const { app, database } = await setup()
+
+    // A search box can produce any of these, and none of them may be an error or an
+    // unfiltered list.
+    for (const term of ['"', '!!!', '-', 'NEAR(']) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/v1/books?search=${encodeURIComponent(term)}`,
+        headers: admin,
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().content).toEqual([])
+    }
+
+    const missing = await app.inject({ method: 'GET', url: '/api/v1/books?search=nothingatall', headers: admin })
+    expect(missing.json().content).toEqual([])
+
+    await database.close()
+  })
+
+  it('finds collections and read lists by name', async () => {
+    const { app, database } = await setup()
+
+    const collections = await app.inject({ method: 'GET', url: '/api/v1/collections?search=classics', headers: admin })
+    expect(collections.json().content.map((entry: { id: string }) => entry.id)).toEqual(['C1'])
+
+    const none = await app.inject({ method: 'GET', url: '/api/v1/collections?search=akira', headers: admin })
+    expect(none.json().content).toEqual([])
+    expect(none.json().totalElements).toBe(0)
+
+    const readLists = await app.inject({ method: 'GET', url: '/api/v1/readlists?search=favourites', headers: admin })
+    expect(readLists.json().content.map((entry: { id: string }) => entry.id)).toEqual(['RL1'])
+
+    await database.close()
+  })
+
+  it('searches a series by regular expression in the field it names', async () => {
+    const { app, database } = await setup()
+
+    const byTitle = await app.inject({
+      method: 'GET',
+      url: `/api/v1/series?search_regex=${encodeURIComponent('^Ak,title')}`,
+      headers: admin,
+    })
+    expect(byTitle.statusCode).toBe(200)
+    expect(byTitle.json().content.map((entry: { id: string }) => entry.id)).toEqual(['S1'])
+
+    const byTitleSort = await app.inject({
+      method: 'GET',
+      url: `/api/v1/series?search_regex=${encodeURIComponent('^Berserk,title_sort')}`,
+      headers: admin,
+    })
+    expect(byTitleSort.json().content.map((entry: { id: string }) => entry.id)).toEqual(['S2'])
+
+    const caseInsensitiveField = await app.inject({
+      method: 'GET',
+      url: `/api/v1/series?search_regex=${encodeURIComponent('^Ak,TITLE')}`,
+      headers: admin,
+    })
+    expect(caseInsensitiveField.json().content.map((entry: { id: string }) => entry.id)).toEqual(['S1'])
+
+    // A value without a field at all is read as a pattern for the title, which is how
+    // this server read it before it read fields.
+    const withoutField = await app.inject({
+      method: 'GET',
+      url: `/api/v1/series?search_regex=${encodeURIComponent('^Ak')}`,
+      headers: admin,
+    })
+    expect(withoutField.json().content.map((entry: { id: string }) => entry.id)).toEqual(['S1'])
+
+    // A value naming a field that is not one is dropped rather than refused, which is
+    // what the reference does with it.
+    for (const value of ['^Ak,author', '^Ak,']) {
+      const ignored = await app.inject({
+        method: 'GET',
+        url: `/api/v1/series?search_regex=${encodeURIComponent(value)}`,
+        headers: admin,
+      })
+      expect(ignored.statusCode).toBe(200)
+      expect(ignored.json().content.length).toBe(3)
+    }
+
+    // A pattern that is not a regular expression is a 400, as before.
+    const invalid = await app.inject({
+      method: 'GET',
+      url: `/api/v1/series?search_regex=${encodeURIComponent('[,title')}`,
+      headers: admin,
+    })
+    expect(invalid.statusCode).toBe(400)
 
     await database.close()
   })
