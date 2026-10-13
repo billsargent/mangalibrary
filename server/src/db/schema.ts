@@ -69,6 +69,7 @@ export interface DB {
   historical_events: HistoricalEventsTable
   content_version: ContentVersionTable
   jobs: JobsTable
+  sidecars: SidecarsTable
   client_settings_global: ClientSettingsGlobalTable
   client_settings_user: ClientSettingsUserTable
   sync_points: SyncPointsTable
@@ -503,6 +504,17 @@ export interface HistoricalEventsTable {
 export interface ContentVersionTable {
   id: number
   version: number
+}
+
+/** A file beside a book or in a series' folder, and when a scan last saw it change. */
+export interface SidecarsTable {
+  url: string
+  library_id: string
+  /** The book's file or the series' folder it speaks for. */
+  parent_url: string
+  source: 'SERIES' | 'BOOK'
+  type: 'ARTWORK' | 'METADATA'
+  last_modified: string
 }
 
 export interface JobsTable {

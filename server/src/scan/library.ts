@@ -3,6 +3,8 @@ import { basename, join } from 'node:path'
 
 import { updatedTime } from '../content/files.js'
 import { naturalCompare } from '../media/kinds.js'
+import { ARTWORK_EXTENSIONS, SERIES_ARTWORK_NAMES } from '../metadata/localArtwork.js'
+import { MYLAR_SIDECAR } from '../metadata/series.js'
 import { insideRoot } from '../media/scan.js'
 
 /** A book file the walk found, before anything is known about its contents. */
@@ -15,6 +17,19 @@ export interface ScannedBook {
   fileLastModified: Date
 }
 
+/**
+ * A file that says something about a book or a series without being one: a cover
+ * named after the book, a cover in the series' folder, a `series.json`.
+ */
+export interface ScannedSidecar {
+  path: string
+  /** The book's file or the series' folder it speaks for. */
+  parent: string
+  source: 'SERIES' | 'BOOK'
+  type: 'ARTWORK' | 'METADATA'
+  lastModified: Date
+}
+
 /** A directory that holds books directly, with the books it holds. */
 export interface ScannedSeries {
   /** The directory name, or the full path when that is blank, as for a root. */
@@ -24,6 +39,7 @@ export interface ScannedSeries {
   oneshot: boolean
   fileLastModified: Date
   books: ScannedBook[]
+  sidecars: ScannedSidecar[]
 }
 
 /** The parts of a library's settings that decide what a walk finds. */
@@ -91,6 +107,55 @@ function isExcluded(path: string, exclusions: readonly string[]): boolean {
  * refuses the whole scan rather than reporting an empty folder, which would
  * otherwise look like every book having been deleted.
  */
+function isArtwork(extension: string): boolean {
+  return (ARTWORK_EXTENSIONS as readonly string[]).includes(extension)
+}
+
+/** A file's name without its extension, in lower case. */
+function baseName(name: string): string {
+  const dot = name.lastIndexOf('.')
+  return (dot === -1 ? name : name.slice(0, dot)).toLowerCase()
+}
+
+/** The files in a series' folder that speak for the series: its cover, its `series.json`. */
+function seriesSidecars(
+  directory: string,
+  others: readonly { name: string; path: string; lastModified: Date }[],
+): ScannedSidecar[] {
+  const found: ScannedSidecar[] = []
+  for (const file of others) {
+    const metadata = file.name.toLowerCase() === MYLAR_SIDECAR
+    if (!metadata && !(SERIES_ARTWORK_NAMES as readonly string[]).includes(baseName(file.name))) continue
+    found.push({
+      path: file.path,
+      parent: directory,
+      source: 'SERIES',
+      type: metadata ? 'METADATA' : 'ARTWORK',
+      lastModified: file.lastModified,
+    })
+  }
+  return found
+}
+
+/** The artwork named after a book: `Volume 1.jpg`, `Volume 1-2.jpg` for `Volume 1.cbz`. */
+function bookSidecars(
+  books: readonly ScannedBook[],
+  others: readonly { name: string; path: string; lastModified: Date }[],
+): ScannedSidecar[] {
+  if (others.length === 0) return []
+  const byName = new Map(books.map((book) => [book.name.toLowerCase(), book]))
+
+  const found: ScannedSidecar[] = []
+  for (const file of others) {
+    if (file.name.toLowerCase() === MYLAR_SIDECAR) continue
+    const base = baseName(file.name)
+    const book = byName.get(base) ?? byName.get(base.replace(/-\d+$/, ''))
+    if (!book) continue
+    found.push({ path: file.path, parent: book.path, source: 'BOOK', type: 'ARTWORK', lastModified: file.lastModified })
+  }
+  return found
+}
+
 export async function walkLibrary(root: string, settings: ScanSettings): Promise<ScannedSeries[]> {
   const resolvedRoot = await realpath(root).catch(() => null)
   const rootInfo = resolvedRoot === null ? undefined : await stat(resolvedRoot).catch(() => undefined)
@@ -115,6 +180,9 @@ export async function walkLibrary(root: string, settings: ScanSettings): Promise
       naturalCompare(left.name, right.name),
     )
     const books: ScannedBook[] = []
+    // Files that may speak for a book or for the series; which, if either, is only
+    // known once the folder's books are.
+    const others: { name: string; path: string; lastModified: Date }[] = []
 
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue
@@ -133,6 +201,10 @@ export async function walkLibrary(root: string, settings: ScanSettings): Promise
       if (!info.isFile()) continue
 
       const extension = entry.name.split('.').pop()?.toLowerCase() ?? ''
+      if (isArtwork(extension) || entry.name.toLowerCase() === MYLAR_SIDECAR) {
+        others.push({ name: entry.name, path: target, lastModified: updatedTime(info) })
+        continue
+      }
       if (!extensions.includes(extension)) continue
 
       books.push({
@@ -150,6 +222,7 @@ export async function walkLibrary(root: string, settings: ScanSettings): Promise
 
     if (oneshots !== '' && directory.toLowerCase().includes(oneshots.toLowerCase())) {
       // A oneshots folder becomes one series per file, each named after it.
+      const beside = bookSidecars(books, others)
       for (const book of books) {
         series.push({
           name: book.name,
@@ -157,6 +230,7 @@ export async function walkLibrary(root: string, settings: ScanSettings): Promise
           oneshot: true,
           fileLastModified: book.fileLastModified,
           books: [book],
+          sidecars: beside.filter((sidecar) => sidecar.parent === book.path),
         })
       }
       return
@@ -176,6 +250,7 @@ export async function walkLibrary(root: string, settings: ScanSettings): Promise
           )
         : directoryTime,
       books,
+      sidecars: [...seriesSidecars(directory, others), ...bookSidecars(books, others)],
     })
   }
 
