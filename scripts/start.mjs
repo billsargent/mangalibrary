@@ -81,9 +81,21 @@ if (!process.argv.includes('--no-build')) {
 }
 if (!existsSync(builtServer)) stop('the server is not built. Run "npm run build" first.')
 
-// Where it will answer, said in plain words before the server's own log begins.
-const port = process.env.SERVER_PORT ?? process.env.PORT ?? '25600'
-const host = process.env.SERVER_HOST ?? '0.0.0.0'
+// Where it will answer and where it keeps things, said in plain words before the
+// server's own log begins. Asked of the server's own configuration, so that what is
+// printed here is what the server will do.
+const { pathToFileURL } = await import('node:url')
+const { ConfigError, loadConfig, programConfigFile } = await import(
+  pathToFileURL(join(server, 'dist', 'config.js')).href
+)
+let config
+try {
+  config = loadConfig(process.env, programConfigFile())
+} catch (error) {
+  if (error instanceof ConfigError) stop(error.message)
+  throw error
+}
+const { port, host } = config
 const addresses =
   host === '0.0.0.0'
     ? Object.values(networkInterfaces())
@@ -91,7 +103,15 @@ const addresses =
         .filter((address) => address && address.family === 'IPv4' && !address.internal)
         .map((address) => address.address)
     : [host]
-console.log('\nManga Library is starting. Unless a config file says otherwise, it will be at:')
+console.log('\nManga Library is starting.')
+console.log(`  Data folder:  ${config.configDir}`)
+console.log(`  Database:     ${config.databaseFile}`)
+console.log(
+  config.configFile === null
+    ? '  Config file:  none (copy mangalibrary.example.json to mangalibrary.json to have one)'
+    : `  Config file:  ${config.configFile}`,
+)
+console.log('It will be at:')
 console.log(`  http://localhost:${port}   (this machine)`)
 for (const address of addresses) console.log(`  http://${address}:${port}   (other machines on the network)`)
 console.log('Press Ctrl+C to stop.\n')

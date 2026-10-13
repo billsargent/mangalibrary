@@ -1,6 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { accessSync, constants, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { defaultDataDir } from './data-dir.js'
 
@@ -8,6 +9,8 @@ import { defaultDataDir } from './data-dir.js'
 export interface Config {
   /** Directory holding the database, logs and optional config file. */
   configDir: string
+  /** The config file beside the program that was read, or null when there was none. */
+  configFile: string | null
   /** Absolute path to the SQLite database file. */
   databaseFile: string
   host: string
@@ -64,8 +67,14 @@ export const DEFAULT_HOST = '0.0.0.0'
 export const DEFAULT_LOG_LEVEL = 'info'
 export const DEFAULT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
-/** Optional config file (`config.json`) inside the config directory. */
+/**
+ * What a config file may say. There are two: `mangalibrary.json` beside the
+ * program, and `config.json` inside the data directory. Only the first can say
+ * where the data directory is, since the second is in it.
+ */
 interface FileConfig {
+  /** Where the data is kept. Read from the file beside the program only. */
+  dataDir?: string
   databaseFile?: string
   host?: string
   port?: number
@@ -132,20 +141,78 @@ function setting(env: NodeJS.ProcessEnv, name: string): string | undefined {
   return env[`MANGALIBRARY_${name}`] ?? env[`KOMGA_${name}`]
 }
 
-/** Whether the environment names the data directory, under either name. */
-export function namesDataDir(env: NodeJS.ProcessEnv = process.env): boolean {
-  return setting(env, 'CONFIG_DIR') !== undefined
+/** The name of the config file that is looked for beside the program. */
+export const PROGRAM_CONFIG_NAME = 'mangalibrary.json'
+
+/**
+ * Where the config file beside the program would be: the folder holding
+ * `server/`, which is the folder that was cloned. Seen from this file in `src/`
+ * or in `dist/`.
+ */
+export function programConfigFile(): string {
+  return fileURLToPath(new URL(`../../${PROGRAM_CONFIG_NAME}`, import.meta.url))
 }
 
 /**
- * Resolve configuration from environment variables, falling back to
- * `config.json` in the config directory, then to defaults.
- *
- * Precedence: environment > config file > defaults.
+ * A problem with the configuration that the person starting the server can fix.
+ * Shown as a sentence, where anything else is shown with where it came from.
  */
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const configDir = resolve(setting(env, 'CONFIG_DIR') ?? defaultDataDir(homedir()))
-  const fileConfig = readFileConfig(join(configDir, 'config.json'))
+export class ConfigError extends Error {}
+
+/**
+ * The config file beside the program: the one `MANGALIBRARY_CONFIG_FILE` names,
+ * or the one at `programFile` when the caller gives a place to look. A file that
+ * is named and is not there is a mistake worth stopping for; the default one
+ * simply may not exist.
+ *
+ * A path in it is relative to the file, not to wherever the server was started
+ * from, so the same file means the same thing however it is started.
+ */
+function readProgramConfig(
+  env: NodeJS.ProcessEnv,
+  programFile: string | null,
+): { file: string | null; config: FileConfig } {
+  const named = setting(env, 'CONFIG_FILE')
+  const file = named !== undefined && named.trim() !== '' ? resolve(named.trim()) : programFile
+  if (file === null) return { file: null, config: {} }
+  if (!existsSync(file)) {
+    if (named !== undefined && named.trim() !== '') throw new ConfigError(`The config file ${file} does not exist.`)
+    return { file: null, config: {} }
+  }
+
+  let config: FileConfig
+  try {
+    config = readFileConfig(file)
+  } catch (error) {
+    throw new ConfigError(`The config file ${file} is not valid JSON: ${((error as Error).cause as Error).message}`)
+  }
+  const folder = dirname(file)
+  for (const key of ['dataDir', 'databaseFile', 'fontsDir', 'uiDir'] as const) {
+    const value = config[key]
+    if (typeof value === 'string' && value.trim() !== '') config[key] = resolve(folder, value.trim())
+  }
+  return { file, config }
+}
+
+/** Whether the data directory is named, by the environment or by the config file beside the program. */
+export function namesDataDir(env: NodeJS.ProcessEnv = process.env, programFile: string | null = null): boolean {
+  return setting(env, 'CONFIG_DIR') !== undefined || readProgramConfig(env, programFile).config.dataDir !== undefined
+}
+
+/**
+ * Resolve configuration from environment variables, then the config file beside
+ * the program, then `config.json` in the data directory, then defaults.
+ *
+ * `programFile` is where to look for the file beside the program. It is not
+ * looked for unless a place is given - the entrypoint gives one, and a test gets
+ * a configuration that does not depend on what happens to be in the repository -
+ * except that `MANGALIBRARY_CONFIG_FILE` always names one.
+ */
+export function loadConfig(env: NodeJS.ProcessEnv = process.env, programFile: string | null = null): Config {
+  const program = readProgramConfig(env, programFile)
+  const configDir = resolve(setting(env, 'CONFIG_DIR') ?? program.config.dataDir ?? defaultDataDir(homedir()))
+  // The file beside the program wins over the one in the data directory.
+  const fileConfig: FileConfig = { ...readFileConfig(join(configDir, 'config.json')), ...program.config }
 
   const configuredPort = env.SERVER_PORT ?? env.PORT ?? fileConfig.port?.toString()
   const port = toNumber(configuredPort, DEFAULT_PORT, 'port')
@@ -158,6 +225,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   return {
     configDir,
+    configFile: program.file,
     databaseFile,
     host,
     port,
@@ -170,5 +238,23 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     fontsDir: resolve(setting(env, 'FONTS_DIR') ?? fileConfig.fontsDir ?? join(configDir, 'fonts')),
     uiDir: toDirectory(setting(env, 'UI_DIR') ?? fileConfig.uiDir),
     workerThreads: toSwitch(setting(env, 'WORKER_THREADS'), fileConfig.workerThreads ?? true),
+  }
+}
+
+/**
+ * Make sure the database can be put where the configuration says, or say why not
+ * in words somebody can act on. Creates the folder, as opening the database would.
+ */
+export function ensureWritable(config: Pick<Config, 'databaseFile'>): void {
+  const folder = dirname(config.databaseFile)
+  try {
+    mkdirSync(folder, { recursive: true })
+    accessSync(folder, constants.W_OK)
+    if (existsSync(config.databaseFile)) accessSync(config.databaseFile, constants.R_OK | constants.W_OK)
+  } catch (error) {
+    throw new ConfigError(
+      `The database cannot be kept at ${config.databaseFile}: ${(error as Error).message}. ` +
+        'Check that the folder exists and that the user running the server may write to it.',
+    )
   }
 }

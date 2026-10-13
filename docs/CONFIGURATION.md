@@ -1,26 +1,72 @@
 # Configuration
 
-The server reads configuration from environment variables, falling back to
-`config.json` in the config directory, then to defaults.
+The server reads its settings from three places. The first that names a setting wins:
 
-**Precedence:** environment > `config.json` > defaults.
+1. **Environment variables**, for one start or for a service definition.
+2. **`mangalibrary.json`, beside the program** - in the folder you cloned. This is the
+   file to edit. `git pull` never touches it.
+3. **`config.json` inside the data folder**, as before. It cannot say where the data
+   folder is, being in it.
+
+## The config file
+
+Copy the example and edit it:
+
+```bash
+cp mangalibrary.example.json mangalibrary.json
+```
+
+```json
+{
+  "dataDir": "/srv/mangalibrary",
+  "databaseFile": "/srv/mangalibrary/database.sqlite",
+  "port": 25600,
+  "host": "0.0.0.0",
+  "logLevel": "info"
+}
+```
+
+Every key is optional; leave out what you do not want to change. `dataDir` is where
+everything is kept. `databaseFile` moves the database alone and is only needed when it
+should not be in `dataDir`. A path that is not absolute is taken from the folder the
+file is in. The other keys are the ones in the table below.
+
+To keep the file somewhere else, name it: `MANGALIBRARY_CONFIG_FILE=/etc/mangalibrary.json`.
+
+When it starts, the server says which data folder, database and config file it is
+using. A place it cannot write to stops it with a sentence saying so.
+
+### Moving a database that already exists
+
+Stop the server. Move `database.sqlite` together with `database.sqlite-wal` and
+`database.sqlite-shm` if they are there - they are part of it. Set `databaseFile` (or
+`dataDir`, having moved the whole folder) and start again.
+
+### Keep the database on a local disk
+
+Your books can be on a network share. The database should not be: SQLite relies on file
+locking that NFS and SMB shares do not provide reliably, and a database kept on one can
+be corrupted. Put it on a disk of the machine the server runs on.
 
 ## Settings
 
-| Setting              | Environment variable                | `config.json` key    | Default                       |
-| -------------------- | ----------------------------------- | -------------------- | ----------------------------- |
-| Config directory     | `MANGALIBRARY_CONFIG_DIR`           | —                    | `~/.mangalibrary`             |
-| Database file        | `MANGALIBRARY_DATABASE_FILE`        | `databaseFile`       | `<configDir>/database.sqlite` |
-| HTTP port            | `SERVER_PORT` (or `PORT`)           | `port`               | `25600`                       |
-| Bind address         | `SERVER_HOST`                       | `host`               | `0.0.0.0`                     |
-| Log level            | `LOG_LEVEL`                         | `logLevel`           | `info`                        |
-| Session lifetime     | `MANGALIBRARY_SESSION_TTL_MS`       | —                    | `604800000` (7 days)          |
-| Announcements feed   | `MANGALIBRARY_ANNOUNCEMENTS_URL`    | `announcementsUrl`   | unset                         |
-| Release notes        | `MANGALIBRARY_RELEASES_URL`         | `releasesUrl`        | unset                         |
-| Fonts directory      | `MANGALIBRARY_FONTS_DIR`            | `fontsDir`           | `<configDir>/fonts`           |
-| Cross-origin callers | `MANGALIBRARY_CORS_ALLOWED_ORIGINS` | `corsAllowedOrigins` | none                          |
-| Web UI bundle        | `MANGALIBRARY_UI_DIR`               | `uiDir`              | `ui/dist` beside the server   |
-| Worker threads       | `MANGALIBRARY_WORKER_THREADS`       | `workerThreads`      | on                            |
+The key is the same in `mangalibrary.json` and in `config.json`.
+
+| Setting              | Environment variable                | Config file key                      | Default                                |
+| -------------------- | ----------------------------------- | ------------------------------------ | -------------------------------------- |
+| Config file          | `MANGALIBRARY_CONFIG_FILE`          | —                                    | `mangalibrary.json` beside the program |
+| Data folder          | `MANGALIBRARY_CONFIG_DIR`           | `dataDir` (`mangalibrary.json` only) | `~/.mangalibrary`                      |
+| Database file        | `MANGALIBRARY_DATABASE_FILE`        | `databaseFile`                       | `<configDir>/database.sqlite`          |
+| HTTP port            | `SERVER_PORT` (or `PORT`)           | `port`                               | `25600`                                |
+| Bind address         | `SERVER_HOST`                       | `host`                               | `0.0.0.0`                              |
+| Log level            | `LOG_LEVEL`                         | `logLevel`                           | `info`                                 |
+| Session lifetime     | `MANGALIBRARY_SESSION_TTL_MS`       | —                                    | `604800000` (7 days)                   |
+| Announcements feed   | `MANGALIBRARY_ANNOUNCEMENTS_URL`    | `announcementsUrl`                   | unset                                  |
+| Release notes        | `MANGALIBRARY_RELEASES_URL`         | `releasesUrl`                        | unset                                  |
+| Fonts directory      | `MANGALIBRARY_FONTS_DIR`            | `fontsDir`                           | `<configDir>/fonts`                    |
+| Cross-origin callers | `MANGALIBRARY_CORS_ALLOWED_ORIGINS` | `corsAllowedOrigins`                 | none                                   |
+| Web UI bundle        | `MANGALIBRARY_UI_DIR`               | `uiDir`                              | `ui/dist` beside the server            |
+| Worker threads       | `MANGALIBRARY_WORKER_THREADS`       | `workerThreads`                      | on                                     |
 
 ## Where the data is kept
 
