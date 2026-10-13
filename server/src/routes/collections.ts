@@ -9,7 +9,7 @@ import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { toCollectionDto, type CollectionDto, type CollectionRow } from './organisation-dto.js'
 import { applySort, booleanParam, paging, parseSort, toArray, type SortSpec } from './query.js'
-import { filtersFrom, seriesPage, SERIES_DEFAULT_SORT, SERIES_SORTS } from './series.js'
+import { filtersFrom, seriesPage, SERIES_DEFAULT_SORT, seriesSorts } from './series.js'
 import { INDEXES, matchFilter } from '../search/fullText.js'
 
 /**
@@ -272,7 +272,7 @@ export async function registerCollectionRoutes(app: FastifyInstance, opts: Route
         db,
         context,
         filters,
-        parseSort(query.sort, SERIES_SORTS, SERIES_DEFAULT_SORT),
+        parseSort(query.sort, seriesSorts(context.user.id), SERIES_DEFAULT_SORT),
         page,
         size,
         unpaged,

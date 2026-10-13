@@ -14,7 +14,7 @@ import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { applySeriesMetadataPatch } from './metadata.js'
 import { toCollectionDto, type CollectionDto, type CollectionRow } from './organisation-dto.js'
-import { applySort, booleanParam, isRegex, paging, parseSort, toArray, type SortSpec } from './query.js'
+import { applySort, booleanParam, isRegex, paging, parseSort, toArray, type SortKey, type SortSpec } from './query.js'
 import { seriesCondition, type ConditionFilter } from '../search/condition.js'
 import { INDEXES, matchFilter, relevanceSort } from '../search/fullText.js'
 import { zipStream } from '../zip.js'
@@ -30,15 +30,33 @@ import { zipStream } from '../zip.js'
  * case - the whole thing stays in SQL and only the requested page is read.
  */
 
-export const SERIES_SORTS: Record<string, string> = {
-  name: 'series.name',
-  url: 'series.url',
-  created: 'series.created_date',
-  lastModified: 'series.last_modified_date',
-  'metadata.title': 'series_metadata.title',
-  'metadata.titleSort': 'series_metadata.title_sort',
-  'metadata.lastModified': 'series_metadata.last_modified_date',
-  'booksMetadata.releaseDate': 'book_metadata_aggregation.release_date',
+/**
+ * What a series listing can be sorted by, under the names the reference gives them.
+ *
+ * As with books, a name that is missing is not refused but quietly ignored, so
+ * this is the reference's whole list.
+ */
+export function seriesSorts(userId: string): Record<string, SortKey> {
+  return {
+    name: 'series.name',
+    url: 'series.url',
+    created: 'series.created_date',
+    createdDate: 'series.created_date',
+    lastModified: 'series.last_modified_date',
+    lastModifiedDate: 'series.last_modified_date',
+    booksCount: 'series.book_count',
+    'metadata.title': 'series_metadata.title',
+    'metadata.titleSort': 'series_metadata.title_sort',
+    'metadata.lastModified': 'series_metadata.last_modified_date',
+    'booksMetadata.releaseDate': 'book_metadata_aggregation.release_date',
+    // When the caller last read any book of the series.
+    readDate: sql<string>`(
+      select max(rp_sort.read_date) from read_progress rp_sort
+      join books rp_sort_book on rp_sort_book.id = rp_sort.book_id
+      where rp_sort_book.series_id = series.id and rp_sort.user_id = ${userId}
+    )`,
+    random: sql<number>`random()`,
+  }
 }
 
 export const SERIES_DEFAULT_SORT: SortSpec[] = [
@@ -56,7 +74,10 @@ const SERIES_BOOK_SORTS: Record<string, string> = {
   name: 'books.name',
   number: 'books.number',
   created: 'books.created_date',
+  createdDate: 'books.created_date',
   lastModified: 'books.last_modified_date',
+  lastModifiedDate: 'books.last_modified_date',
+  fileSize: 'books.file_size',
   'metadata.title': 'book_metadata.title',
   'metadata.numberSort': 'book_metadata.number_sort',
   'metadata.releaseDate': 'book_metadata.release_date',
@@ -447,9 +468,10 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
     // order of their own - which is what the reference does too. A term with nothing
     // searchable in it has nothing to rank by.
     const relevance = filters.search === undefined ? null : relevanceSort(INDEXES.SERIES, filters.search)
+    const allowed = seriesSorts(context.user.id)
     const sorts = parseSort(
       query.sort,
-      relevance === null ? SERIES_SORTS : { ...SERIES_SORTS, relevance },
+      relevance === null ? allowed : { ...allowed, relevance },
       relevance === null ? SERIES_DEFAULT_SORT : [{ column: relevance, direction: 'asc' }],
     )
 

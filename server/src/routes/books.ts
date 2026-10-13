@@ -20,7 +20,7 @@ import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { applyBookMetadataPatch } from './metadata.js'
 import { toReadListDto, type ReadListRow } from './organisation-dto.js'
-import { applySort, booleanParam, paging, parseSort, toArray, type SortSpec } from './query.js'
+import { applySort, booleanParam, paging, parseSort, toArray, type SortKey, type SortSpec } from './query.js'
 import { bookCondition, type ConditionFilter } from '../search/condition.js'
 import { INDEXES, matchFilter, relevanceSort } from '../search/fullText.js'
 
@@ -32,15 +32,43 @@ import { INDEXES, matchFilter, relevanceSort } from '../search/fullText.js'
  * reported as forbidden rather than missing.
  */
 
-const BOOK_SORTS: Record<string, string> = {
-  name: 'books.name',
-  number: 'books.number',
-  url: 'books.url',
-  created: 'books.created_date',
-  lastModified: 'books.last_modified_date',
-  'metadata.title': 'book_metadata.title',
-  'metadata.numberSort': 'book_metadata.number_sort',
-  'metadata.releaseDate': 'book_metadata.release_date',
+/**
+ * What a book listing can be sorted by, under the names the reference gives them.
+ *
+ * Several names mean the same thing - `created` and `createdDate` - because the
+ * reference accepts both and its clients use both. A name that is missing here is
+ * not refused: the listing comes back in its default order, which looks like the
+ * sort was ignored, so the list is the reference's whole list.
+ */
+export function bookSorts(userId: string): Record<string, SortKey> {
+  // Progress belongs to whoever is asking, so sorting by it is theirs too.
+  const progress = (column: 'read_date' | 'last_modified_date') => sql<string>`(
+    select rp_sort.${sql.ref(column)} from read_progress rp_sort
+    where rp_sort.book_id = books.id and rp_sort.user_id = ${userId}
+  )`
+
+  return {
+    name: 'books.name',
+    number: 'books.number',
+    series: 'series_metadata.title_sort',
+    url: 'books.url',
+    created: 'books.created_date',
+    createdDate: 'books.created_date',
+    lastModified: 'books.last_modified_date',
+    lastModifiedDate: 'books.last_modified_date',
+    fileSize: 'books.file_size',
+    size: 'books.file_size',
+    fileHash: 'books.file_hash',
+    'media.status': 'media.status',
+    'media.comment': 'media.comment',
+    'media.mediaType': 'media.media_type',
+    'media.pagesCount': 'media.page_count',
+    'metadata.title': 'book_metadata.title',
+    'metadata.numberSort': 'book_metadata.number_sort',
+    'metadata.releaseDate': 'book_metadata.release_date',
+    'readProgress.readDate': progress('read_date'),
+    'readProgress.lastModified': progress('last_modified_date'),
+  }
 }
 
 const BOOK_DEFAULT_SORT: SortSpec[] = [
@@ -335,9 +363,10 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
     // order of their own - which is what the reference does too. A term with nothing
     // searchable in it has nothing to rank by.
     const relevance = term === undefined ? null : relevanceSort(INDEXES.BOOKS, term)
+    const allowed = bookSorts(context.user.id)
     const sorts = parseSort(
       query.sort,
-      relevance === null ? BOOK_SORTS : { ...BOOK_SORTS, relevance },
+      relevance === null ? allowed : { ...allowed, relevance },
       relevance === null ? BOOK_DEFAULT_SORT : [{ column: relevance, direction: 'asc' }],
     )
 
