@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { requireAdmin, requireAuth, requireRole } from '../auth/session.js'
 import { announceReadList, readListRef } from '../content-events.js'
 import type { DB } from '../db/schema.js'
+import { setNamed } from '../organisation/membership.js'
 import { nextTsid } from '../tsid.js'
 import { zipStream } from '../zip.js'
 import { archiveEntries } from '../content/files.js'
@@ -104,6 +105,19 @@ interface ComicRackReadList {
   books: RequestedBook[]
 }
 
+/**
+ * Why a ComicRack list cannot be used, as the reference's codes: the web UI has a
+ * sentence for each.
+ */
+export const COMIC_RACK_ERRORS = {
+  unreadable: 'ERR_1015',
+  noBooks: 'ERR_1029',
+  noName: 'ERR_1030',
+  incompleteBook: 'ERR_1031',
+  /** Not a refusal: the list can be matched, but a read list of that name is there already. */
+  nameTaken: 'ERR_1009',
+} as const
+
 const ENTITIES: Record<string, string> = {
   amp: '&',
   lt: '<',
@@ -137,22 +151,29 @@ function attributes(source: string): Record<string, string> {
  * Read a ComicRack reading list.
  *
  * A `.cbl` is a fixed, tiny subset of XML - a title and a flat list of books -
- * so it is parsed directly rather than by taking on an XML dependency. Anything
- * that is not a reading list at all is rejected.
+ * so it is parsed directly rather than by taking on an XML dependency. A file
+ * that cannot be used is refused with the reference's code for why, in the order
+ * the reference checks: not a reading list, no name, no books, a book that does
+ * not say which series it is of or which number it is.
  */
-function parseComicRackReadList(xml: string): ComicRackReadList | null {
-  const nameMatch = /<Name>([\s\S]*?)<\/Name>/i.exec(xml)
-  if (!nameMatch) return null
+export function parseComicRackReadList(xml: string): ComicRackReadList | { error: string } {
+  if (!/<ReadingList\b[^>]*>[\s\S]*<\/ReadingList\s*>/i.test(xml)) return { error: COMIC_RACK_ERRORS.unreadable }
+
+  const name = decodeEntities(/<Name>([\s\S]*?)<\/Name>/i.exec(xml)?.[1] ?? '').trim()
+  if (name === '') return { error: COMIC_RACK_ERRORS.noName }
+
+  const elements = [...xml.matchAll(/<Book\b([^>]*)>/gi)]
+  if (elements.length === 0) return { error: COMIC_RACK_ERRORS.noBooks }
 
   const books: RequestedBook[] = []
-  for (const match of xml.matchAll(/<Book\b([^>]*)>/gi)) {
+  for (const match of elements) {
     const attrs = attributes(match[1] ?? '')
     const series = (attrs.series ?? '').trim()
-    if (series === '') continue
-    books.push({ series, number: (attrs.number ?? '').trim() })
+    if (series === '' || attrs.number === undefined) return { error: COMIC_RACK_ERRORS.incompleteBook }
+    books.push({ series, number: attrs.number.trim() })
   }
 
-  return { name: decodeEntities(nameMatch[1]!).trim(), books }
+  return { name, books }
 }
 
 /** Series whose title matches a reading list entry, ignoring case. */
@@ -286,6 +307,10 @@ export async function registerReadListRoutes(app: FastifyInstance, opts: RouteOp
     const name = typeof body.name === 'string' ? body.name.trim() : ''
     if (name === '') return reply.code(400).send({ validationErrors: { name: 'must not be blank' } })
 
+    if (await setNamed(db, 'readlists', name)) {
+      return reply.code(400).send({ message: 'Read list name already exists' })
+    }
+
     const bookIds = readMembers(body) ?? []
     const missing = await unknownBooks(db, bookIds)
     if (missing.length > 0) {
@@ -323,7 +348,7 @@ export async function registerReadListRoutes(app: FastifyInstance, opts: RouteOp
     if (!upload) return reply.code(400).send({ message: 'A ComicRack file upload is required' })
 
     const parsed = parseComicRackReadList((await upload.toBuffer()).toString('utf8'))
-    if (!parsed) return reply.code(400).send({ message: 'Not a ComicRack reading list' })
+    if ('error' in parsed) return reply.code(400).send({ message: parsed.error })
 
     const context = await contentContext(db, req)
     const allowed = await accessibleSeriesIds(db, context)
@@ -338,7 +363,12 @@ export async function registerReadListRoutes(app: FastifyInstance, opts: RouteOp
 
     return {
       errorCode: '',
-      readListMatch: { name: parsed.name, errorCode: '' },
+      // A name that is taken does not stop the match; it is said, so that whoever
+      // is importing can choose another before creating the list.
+      readListMatch: {
+        name: parsed.name,
+        errorCode: (await setNamed(db, 'readlists', parsed.name)) ? COMIC_RACK_ERRORS.nameTaken : '',
+      },
       requests,
     }
   })
@@ -362,6 +392,9 @@ export async function registerReadListRoutes(app: FastifyInstance, opts: RouteOp
     if ('name' in body) {
       const name = typeof body.name === 'string' ? body.name.trim() : ''
       if (name === '') return reply.code(400).send({ validationErrors: { name: 'must not be blank' } })
+      if (await setNamed(db, 'readlists', name, req.params.id)) {
+        return reply.code(400).send({ message: 'Read list name already exists' })
+      }
       values.name = name
     }
     if ('summary' in body) {

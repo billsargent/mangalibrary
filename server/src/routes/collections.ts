@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { requireAdmin, requireAuth } from '../auth/session.js'
 import { announceCollection, collectionRef } from '../content-events.js'
 import type { DB } from '../db/schema.js'
+import { setNamed } from '../organisation/membership.js'
 import { nextTsid } from '../tsid.js'
 import { accessibleSeriesIds, contentContext, scopedLibraryIds, type ContentContext } from './context.js'
 import { springPage } from './dto.js'
@@ -155,6 +156,10 @@ export async function registerCollectionRoutes(app: FastifyInstance, opts: Route
     const name = typeof body.name === 'string' ? body.name.trim() : ''
     if (name === '') return reply.code(400).send({ validationErrors: { name: 'must not be blank' } })
 
+    if (await setNamed(db, 'collections', name)) {
+      return reply.code(400).send({ message: 'Collection name already exists' })
+    }
+
     const seriesIds = readMembers(body) ?? []
     const missing = await unknownSeries(db, seriesIds)
     if (missing.length > 0) {
@@ -203,6 +208,10 @@ export async function registerCollectionRoutes(app: FastifyInstance, opts: Route
     if ('name' in body) {
       const name = typeof body.name === 'string' ? body.name.trim() : ''
       if (name === '') return reply.code(400).send({ validationErrors: { name: 'must not be blank' } })
+      // Its own name in other capitals is a rename; somebody else's is a collision.
+      if (await setNamed(db, 'collections', name, req.params.id)) {
+        return reply.code(400).send({ message: 'Collection name already exists' })
+      }
       values.name = name
     }
     if ('ordered' in body) {
