@@ -27,11 +27,10 @@ Each row says how it was checked, because the three are not worth the same:
 description (`server/spec/komga-openapi.json`) and fails if one that should be served is
 not, or one listed as missing starts being served.
 
-Of 174 operations, **167 reach a route and 7 do not**:
+Of 174 operations, **168 reach a route and 6 do not**:
 
 | Operation                                                   | State                              | Issue |
 | ----------------------------------------------------------- | ---------------------------------- | ----- |
-| `POST /api/v1/books/import`                                 | Missing. The Import page calls it  | #163  |
 | `PUT /api/v1/libraries/{id}`                                | Not served: deprecated, `PATCH` is | -     |
 | `GET /api/v1/oauth2/providers`                              | Missing: no OAuth2 login           | #167  |
 | `GET`, `PUT /api/v1/readlists/{id}/read-progress/tachiyomi` | Missing: Mihon                     | #167  |
@@ -40,7 +39,7 @@ Of 174 operations, **167 reach a route and 7 do not**:
 Outside that description, and so outside the test: OPDS v1 and v2, Kobo sync and
 KOReader sync. None is implemented (#167).
 
-**Not examined:** whether each of the 167 served operations takes the same parameters and
+**Not examined:** whether each of the 168 served operations takes the same parameters and
 answers the same codes and shapes as Komga's. The departures found so far are in #113
 and `COMPATIBILITY.md`. `ui-contract.test.ts` covers the subset the web UI calls, by
 name only.
@@ -63,7 +62,7 @@ name only.
 | `EmptyTrash`                                                 | same name                            | Present                                                                                                                                                                                                                               |
 | `DeleteBook`, `DeleteSeries`                                 | `DeleteBookFile`, `DeleteSeriesFile` | **Differs** - see section 3                                                                                                                                                                                                           |
 | `FindBookThumbnailsToRegenerate`                             | `RegenerateBookThumbnails`           | Present                                                                                                                                                                                                                               |
-| `ImportBook`                                                 | -                                    | **Missing** (#163)                                                                                                                                                                                                                    |
+| `ImportBook`                                                 | same name                            | Present since #171 (`media/import.test.ts`). An upgrade keeps the book's id, where Komga makes a new book                                                                                                                             |
 | `RepairExtension`                                            | -                                    | **Missing** (#164)                                                                                                                                                                                                                    |
 | `RebuildIndex`, `UpgradeIndex`                               | -                                    | Not needed: these rebuild a separate Lucene index when its format changes. Here the index is a table of the database, kept by triggers and rebuilt by a migration when it changes (0016). The reference has no endpoint for it either |
 
@@ -186,7 +185,7 @@ shortcuts, announcements and updates, authentication activity, live updates.
 
 **Not examined:** each dialog and menu of the old UI opened beside the new one. Known
 gaps are tracked: search filters (#134), EPUB reader (#137), removing from the selection
-bar (noted on #103). The Import > Books page cannot finish (#163).
+bar (noted on #103). The Import > Books page works since #171.
 
 Not present and not planned: installing the UI as an app (a service worker).
 

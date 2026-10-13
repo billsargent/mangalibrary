@@ -11,7 +11,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { requireAdmin, requireAuth } from '../auth/session.js'
 import { announceBook, announceSeries, bookRef, seriesRef } from '../content-events.js'
 import type { DB } from '../db/schema.js'
-import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
+import { JOB_PRIORITY, enqueueJob, enqueueJobs } from '../jobs.js'
+import { COPY_MODES } from '../media/import.js'
 import { aggregateSeriesMetadata } from '../metadata/aggregation.js'
 import { buildBookDtos } from './content-data.js'
 import type { BookRow } from './content-dto.js'
@@ -369,6 +370,39 @@ async function aggregateSeriesOfBook(db: Kysely<DB>, bookId: string): Promise<st
 
 export async function registerBookRoutes(app: FastifyInstance, opts: RouteOptions): Promise<void> {
   const { db } = opts
+
+  /**
+   * Import files that are somewhere on the server into series.
+   *
+   * Accepted and queued, one job a file, as the reference does: each file is
+   * answered for by a `BookImported` event when its turn has come, which is what
+   * the Import page waits for. A row that cannot be a job is passed over.
+   */
+  app.post('/api/v1/books/import', { preHandler: requireAdmin }, async (req, reply) => {
+    const body = (req.body ?? {}) as { books?: unknown; copyMode?: unknown }
+    const copyMode = COPY_MODES.find((mode) => mode === body.copyMode)
+    if (copyMode === undefined) {
+      return reply.code(400).send({ validationErrors: { copyMode: `must be one of ${COPY_MODES.join(', ')}` } })
+    }
+
+    const books = Array.isArray(body.books) ? (body.books as Record<string, unknown>[]) : []
+    const jobs = books
+      .filter((book) => typeof book?.sourceFile === 'string' && typeof book.seriesId === 'string')
+      .map((book) => ({
+        type: 'ImportBook',
+        uniqueKey: `IMPORT_BOOK_${String(book.sourceFile)}`,
+        priority: JOB_PRIORITY.HIGHEST,
+        payload: {
+          sourceFile: book.sourceFile,
+          seriesId: book.seriesId,
+          copyMode,
+          destinationName: typeof book.destinationName === 'string' ? book.destinationName : null,
+          upgradeBookId: typeof book.upgradeBookId === 'string' ? book.upgradeBookId : null,
+        },
+      }))
+    await enqueueJobs(db, jobs)
+    return reply.code(202).send()
+  })
 
   const list = async (req: FastifyRequest, body: Record<string, unknown>, reply: FastifyReply) => {
     const context = await contentContext(db, req)
