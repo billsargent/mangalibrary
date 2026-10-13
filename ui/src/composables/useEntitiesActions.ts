@@ -24,6 +24,9 @@ import {
 import type { BookDto, CollectionDto, ReadListDto, SeriesDto } from '@/generated/openapi'
 import { useAddToReadListDialog } from '@/composables/book/useAddToReadListDialog'
 import { useAddToCollectionDialog } from '@/composables/series/useAddToCollectionDialog'
+import { useEditBookMetadataDialog } from '@/composables/book/useEditBookMetadataDialog'
+import { useEditSeriesMetadataDialog } from '@/composables/series/useEditSeriesMetadataDialog'
+import { useBulkEditMetadataDialog } from '@/composables/useBulkEditMetadataDialog'
 
 export function useEntitiesActions(
   entities: MaybeRefOrGetter<(BookDto | SeriesDto | CollectionDto | ReadListDto)[]>,
@@ -37,7 +40,6 @@ export function useEntitiesActions(
   const entityKinds = computed(() => Array.from(new Set(toValue(entities).map(resolveEntityKind))))
   const commonActions = computed(() => getCommonActions(entityKinds.value))
 
-  //TODO: implement remaining actions
   const actionsSpecifics: Partial<Record<ActionName, object>> = {
     [ActionName.AddToCollection]: {
       onMouseenter: (event: Event) =>
@@ -54,10 +56,12 @@ export function useEntitiesActions(
       },
     },
     [ActionName.EditBook]: {
-      disabled: true,
+      onMouseenter: (event: Event) => (editActivator.value = event.currentTarget as Element),
+      onClick: () => editBooks(),
     },
     [ActionName.EditSeries]: {
-      disabled: true,
+      onMouseenter: (event: Event) => (editActivator.value = event.currentTarget as Element),
+      onClick: () => editSeries(),
     },
     [ActionName.MarkRead]: {
       onClick: () => markRead(),
@@ -92,13 +96,30 @@ export function useEntitiesActions(
       .filter((action) => (isAdmin.value ? true : nonAdmin.includes(action.action))),
   )
 
-  //region Update Series metadata
-  // const { prepareDialog: showEditBookMetadataDialog, activator: editMetadataActivator } =
-  //   useEditBookMetadataDialog()
-  //
-  // function updateBookMetadata() {
-  //   showEditBookMetadataDialog(toValue(book))
-  // }
+  //region Edit metadata
+  // One item gets the full dialog, with everything it has filled in. Several get
+  // the form that starts empty and changes only what is filled in.
+  const { prepareDialog: showEditBookDialog } = useEditBookMetadataDialog()
+  const { prepareDialog: showEditSeriesDialog } = useEditSeriesMetadataDialog()
+  const {
+    prepareBooks: showBulkEditBooks,
+    prepareSeries: showBulkEditSeries,
+    activator: editActivator,
+  } = useBulkEditMetadataDialog()
+
+  function editBooks() {
+    const books = toValue(entities).filter(isBook)
+    const done = () => callback(ActionName.EditBook)
+    if (books.length === 1) showEditBookDialog(books[0]!, done)
+    else if (books.length > 1) showBulkEditBooks(books, done)
+  }
+
+  function editSeries() {
+    const series = toValue(entities).filter(isSeries)
+    const done = () => callback(ActionName.EditSeries)
+    if (series.length === 1) showEditSeriesDialog(series[0]!, done)
+    else if (series.length > 1) showBulkEditSeries(series, done)
+  }
   //endregion
 
   //region Refresh Metadata
