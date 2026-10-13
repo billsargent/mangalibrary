@@ -613,7 +613,8 @@ const chosenDirection = computed({
     store.readingDirection = value
 
     const seriesId = series.value?.id
-    if (seriesId === undefined) return
+    // With series not followed the preference is all there is to remember.
+    if (seriesId === undefined || !store.followSeriesDirection) return
     const { direction: withoutChoice } = readingDirectionFor({
       fromSeries: series.value?.metadata.readingDirection,
       preference: value,
@@ -629,6 +630,7 @@ function applySeriesDirection() {
     chosenForSeries: series.value ? store.seriesDirections[series.value.id] : undefined,
     fromSeries: series.value?.metadata.readingDirection,
     preference: store.readingDirection,
+    followSeries: store.followSeriesDirection,
   })
   direction.value = resolved.direction
 
@@ -744,6 +746,12 @@ async function setPoster(target: 'book' | 'series') {
     notify(intl.formatMessage(commonMessages.somethingWentWrongTitle))
   }
 }
+
+// Turning the following of series on or off changes how this book is read at once.
+watch(
+  () => store.followSeriesDirection,
+  () => applySeriesDirection(),
+)
 
 //endregion
 

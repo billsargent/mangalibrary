@@ -49,6 +49,27 @@
           hide-details
         />
         <v-switch
+          v-model="store.followSeriesDirection"
+          :label="
+            $formatMessage({
+              description: 'Reader settings: let a series decide the reading mode of its books',
+              defaultMessage: 'Use the reading mode a series names',
+              id: 'ipL8XX',
+            })
+          "
+          :hint="
+            $formatMessage({
+              description: 'Reader settings: hint for letting a series decide the reading mode',
+              defaultMessage:
+                'When off, the reading mode above is used for every book. When on, a series whose metadata names a mode is read in it.',
+              id: 'TkshJ1',
+            })
+          "
+          color="primary"
+          persistent-hint
+          class="mb-2"
+        />
+        <v-switch
           v-model="store.animations"
           :label="
             $formatMessage({
@@ -206,8 +227,8 @@ import {
  * The reader's settings, in a sheet over the book.
  *
  * Everything here is the reader store's, which keeps it, except the reading
- * direction: a series can name its own, and that one must apply to the book on
- * screen without being saved as the reader's preference. The page that owns the
+ * direction: when series are followed a series can name its own, and that one
+ * must apply to the book on screen without being saved as the reader's preference. The page that owns the
  * book decides which it is, so the direction is a model of its own.
  */
 defineProps<{ fullscreenSupported: boolean }>()

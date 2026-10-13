@@ -637,6 +637,15 @@ does. Which characters make a letter of the navigation, and that everything else
 - The web UI keeps the chosen letter in the address as `?nav=`, as the legacy interface
   did.
 
+## Reading mode
+
+The reader uses the reading mode its user last picked for every book. The reference
+lets a series whose metadata names a reading direction decide it for its books; here
+that is a switch in the reader settings ("Use the reading mode a series names"), off
+unless turned on. A `ComicInfo.xml` names a direction whenever it says whether the book
+is a manga, so in a library of such files the reference behaviour undoes the pick at
+every series.
+
 ## Interface settings
 
 The web UI keeps its settings in the client-settings API under the keys the legacy

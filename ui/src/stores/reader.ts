@@ -13,6 +13,11 @@ export const useReaderStore = defineStore(
   'reader',
   () => {
     const readingDirection = ref<ReadingDirection>('LEFT_TO_RIGHT')
+    // Whether a series that names a reading direction decides it for its books.
+    // Off unless asked for: a library whose files all name one - which a
+    // `ComicInfo.xml` does by saying whether the book is a manga - would otherwise
+    // undo the reader's choice at every series.
+    const followSeriesDirection = ref(false)
     // What the reader picked for a series whose metadata names another direction,
     // by series id, so the metadata does not undo the choice at every book.
     const seriesDirections = ref<Record<string, ReadingDirection>>({})
@@ -30,6 +35,7 @@ export const useReaderStore = defineStore(
 
     return {
       readingDirection,
+      followSeriesDirection,
       seriesDirections,
       animations,
       swipe,
