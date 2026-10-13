@@ -115,13 +115,17 @@ describe('putting a series in a collection', () => {
     expect(await members(database, collections[0]!.id)).toHaveLength(1)
   })
 
-  it('matches a collection by name, so a name in a different case is another one', async () => {
+  it('matches a collection by name whatever its capitals, as the reference does', async () => {
     const database = await setup()
     await addSeriesToCollection(database.db, 'Otomo', 'S1')
-    await addSeriesToCollection(database.db, 'otomo', 'S2')
+    expect(await addSeriesToCollection(database.db, 'otomo', 'S2')).toBe('added')
 
     const collections = await database.db.selectFrom('collections').selectAll().orderBy('name').execute()
-    expect(collections.map((row) => row.name)).toEqual(['Otomo', 'otomo'])
+    expect(collections.map((row) => row.name)).toEqual(['Otomo'])
+    expect(await database.db.selectFrom('collection_series').select('series_id').orderBy('number').execute()).toEqual([
+      { series_id: 'S1' },
+      { series_id: 'S2' },
+    ])
   })
 })
 
