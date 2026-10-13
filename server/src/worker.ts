@@ -181,7 +181,7 @@ export async function startJobWorker(options: WorkerOptions): Promise<JobWorker>
       await enqueueJob(db, {
         type: 'ScanLibrary',
         uniqueKey: scanKey(library.id),
-        priority: JOB_PRIORITY.HIGH,
+        priority: JOB_PRIORITY.HIGHEST,
         payload: { libraryId: library.id, scanDeep: false },
       })
     }
@@ -209,7 +209,7 @@ export async function startJobWorker(options: WorkerOptions): Promise<JobWorker>
     await enqueueJob(db, {
       type: 'ScanLibrary',
       uniqueKey: scanKey(library.id),
-      priority: JOB_PRIORITY.HIGH,
+      priority: JOB_PRIORITY.HIGHEST,
       payload: { libraryId: library.id, scanDeep: false },
     })
   }

@@ -102,7 +102,7 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
     enqueueJob(db, {
       type: 'ScanLibrary',
       uniqueKey: `SCANLIBRARY_${libraryId}`,
-      priority: JOB_PRIORITY.HIGH,
+      priority: JOB_PRIORITY.HIGHEST,
       payload: { libraryId, scanDeep },
     })
 
@@ -221,7 +221,7 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
 
   // `deep` is a query parameter in the contract. It was read from the body, which
   // no client sends, so a deep scan never happened.
-  action('/api/v1/libraries/:libraryId/scan', 'ScanLibrary', JOB_PRIORITY.HIGH, (libraryId, query) => ({
+  action('/api/v1/libraries/:libraryId/scan', 'ScanLibrary', JOB_PRIORITY.HIGHEST, (libraryId, query) => ({
     libraryId,
     scanDeep: booleanParam(query.deep) === true,
   }))

@@ -385,6 +385,24 @@ describe('the worker', () => {
     expect(await database.db.selectFrom('jobs').selectAll().execute()).toEqual([])
   })
 
+  it('moves a waiting job up when it is asked for again with more urgency', async () => {
+    const { database } = await setupLibrary()
+    await enqueueJob(database.db, { type: 'AnalyzeBook', uniqueKey: 'ANALYZE_1', priority: JOB_PRIORITY.HIGH })
+    await settle()
+    const scan = { type: 'ScanLibrary', uniqueKey: scanKey('L1'), payload: { libraryId: 'L1' } }
+    await enqueueJob(database.db, { ...scan, priority: JOB_PRIORITY.DEFAULT })
+
+    // Asked for by hand, the scan goes ahead of the backlog it was waiting behind.
+    await enqueueJob(database.db, { ...scan, priority: JOB_PRIORITY.HIGHEST })
+    expect((await takeNextJob(database.db, 'w1'))?.type).toBe('ScanLibrary')
+
+    // Asked for again with less urgency, a job does not lose its place.
+    await enqueueJobs(database.db, [{ type: 'AnalyzeBook', uniqueKey: 'ANALYZE_1', priority: JOB_PRIORITY.LOWEST }])
+    expect(
+      (await database.db.selectFrom('jobs').select('priority').where('unique_key', '=', 'ANALYZE_1').execute())[0],
+    ).toEqual({ priority: JOB_PRIORITY.HIGH })
+  })
+
   it('does not mark a job that was only waiting', async () => {
     const { database } = await setupLibrary()
     const job = { type: 'ScanLibrary', uniqueKey: scanKey('L1'), payload: { libraryId: 'L1' } }
@@ -412,7 +430,7 @@ describe('the worker', () => {
     expect((await takeNextJob(database.db, 'w1'))?.attempts).toBe(1)
   })
 
-  it('queues many jobs together or not at all', async () => {
+  it('queues a statement of jobs whole or not at all', async () => {
     const { database } = await setupLibrary()
     const job = (key: string, type: string | null) => ({ type: type as string, uniqueKey: key, payload: {} })
 
