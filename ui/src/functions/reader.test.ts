@@ -104,6 +104,17 @@ describe('readingDirectionFor', () => {
     ).toEqual({ direction: 'WEBTOON', decidedBySeries: false })
   })
 
+  test('is the preference whatever the series says, when series are not followed', () => {
+    expect(
+      readingDirectionFor({
+        chosenForSeries: 'VERTICAL',
+        fromSeries: 'LEFT_TO_RIGHT',
+        preference: 'WEBTOON',
+        followSeries: false,
+      }),
+    ).toEqual({ direction: 'WEBTOON', decidedBySeries: false })
+  })
+
   test('ignores a direction this reader does not know', () => {
     expect(readingDirectionFor({ fromSeries: 'DIAGONAL', preference: 'LEFT_TO_RIGHT' })).toEqual({
       direction: 'LEFT_TO_RIGHT',

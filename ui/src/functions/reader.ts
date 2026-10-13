@@ -49,8 +49,10 @@ export function clampPage(page: unknown, pageCount: number): number | undefined 
 /**
  * The direction a book is read in, and whether its series is what decided it.
  *
- * What the reader picked while reading this series comes first, then what the
- * series' metadata names, then the reader's general preference. A series names a
+ * Unless the reader asked for series to be followed, it is the reader's
+ * preference and nothing else. When they are followed, what the reader picked
+ * while reading this series comes first, then what the series' metadata names,
+ * then the preference. A series names a
  * direction more often than anybody meant it to - a `ComicInfo.xml` saying the
  * book is not a manga makes it left-to-right - so it must not undo, book after
  * book, a choice the reader has already made.
@@ -59,7 +61,13 @@ export function readingDirectionFor(sources: {
   chosenForSeries?: ReadingDirection
   fromSeries?: string | null
   preference: ReadingDirection
+  /** Whether a series may decide. Taken as yes when not said. */
+  followSeries?: boolean
 }): { direction: ReadingDirection; decidedBySeries: boolean } {
+  if (sources.followSeries === false) {
+    return { direction: sources.preference, decidedBySeries: false }
+  }
+
   if (sources.chosenForSeries !== undefined) {
     return { direction: sources.chosenForSeries, decidedBySeries: false }
   }

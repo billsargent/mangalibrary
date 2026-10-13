@@ -1683,6 +1683,10 @@
     "defaultMessage": "Unknown dimensions",
     "description": "Poster card: unknown file dimensions"
   },
+  "TkshJ1": {
+    "defaultMessage": "When off, the reading mode above is used for every book. When on, a series whose metadata names a mode is read in it.",
+    "description": "Reader settings: hint for letting a series decide the reading mode"
+  },
   "ToD0+o": {
     "defaultMessage": "Email",
     "description": "User creation dialog: Email field"
@@ -3038,6 +3042,10 @@
   "iin6d2": {
     "defaultMessage": "API Keys can be used to authenticate through the Kobo Sync protocol or the REST API.",
     "description": "Generate API key dialog: description"
+  },
+  "ipL8XX": {
+    "defaultMessage": "Use the reading mode a series names",
+    "description": "Reader settings: let a series decide the reading mode of its books"
   },
   "iq1PzT": {
     "defaultMessage": "Manage",
