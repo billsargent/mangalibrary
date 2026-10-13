@@ -32,12 +32,7 @@ const SPEC_FILE = join(HERE, '..', '..', 'spec', 'komga-openapi.json')
 const NOT_SERVED: Record<string, string> = {
   'POST /api/v1/books/import':
     'Importing a file from a folder on the server into a series is not implemented. The Import page reaches this.',
-  'GET /api/v1/books/{bookId}/pages/{pageNumber}/raw':
-    'One page of a PDF as a PDF of its own. Nothing here writes a PDF.',
   'GET /api/v1/oauth2/providers': 'There is no OAuth2 or OIDC login.',
-  'GET /api/v1/login/set-cookie':
-    'Turns a session sent as a header into a cookie, for a client that signed in with one and now needs the other.',
-  'GET /api/logout': 'Signing out is answered on POST only.',
   'PUT /api/v1/libraries/{libraryId}': 'Deprecated in the reference in favour of PATCH, which is served.',
   'GET /api/v1/readlists/{id}/read-progress/tachiyomi': 'The Mihon (Tachiyomi) progress endpoints are not implemented.',
   'PUT /api/v1/readlists/{id}/read-progress/tachiyomi': 'The Mihon (Tachiyomi) progress endpoints are not implemented.',

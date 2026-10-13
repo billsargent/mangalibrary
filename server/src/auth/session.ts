@@ -334,17 +334,28 @@ export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions
     return { user: { id: user.id, email: user.email, roles: user.roles } }
   })
 
-  app.post('/api/v1/login/set-cookie', async (req, reply) => {
-    if (!req.sessionId) return reply.code(401).send({ message: 'Unauthorized' })
-    reply.setCookie(SESSION_COOKIE, req.sessionId, cookieOptions(ttl))
-    return reply.code(204).send()
+  // The reference answers this on GET. POST is kept: it is what this server
+  // answered first, and something may be calling it.
+  app.route({
+    method: ['GET', 'POST'],
+    url: '/api/v1/login/set-cookie',
+    handler: async (req, reply) => {
+      if (!req.sessionId) return reply.code(401).send({ message: 'Unauthorized' })
+      reply.setCookie(SESSION_COOKIE, req.sessionId, cookieOptions(ttl))
+      return reply.code(204).send()
+    },
   })
 
-  app.post('/api/logout', async (req, reply) => {
-    if (req.sessionId) await store.destroy(req.sessionId)
-    reply.clearCookie(SESSION_COOKIE, { path: '/' })
-    reply.clearCookie(REMEMBER_ME_COOKIE, { path: '/' })
-    return reply.code(204).send()
+  // On either verb, as the reference signs out on either.
+  app.route({
+    method: ['GET', 'POST'],
+    url: '/api/logout',
+    handler: async (req, reply) => {
+      if (req.sessionId) await store.destroy(req.sessionId)
+      reply.clearCookie(SESSION_COOKIE, { path: '/' })
+      reply.clearCookie(REMEMBER_ME_COOKIE, { path: '/' })
+      return reply.code(204).send()
+    },
   })
 
   app.get('/api/v1/me', async (req, reply) => {

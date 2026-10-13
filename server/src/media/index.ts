@@ -62,6 +62,7 @@ export async function openBook(path: string, stated?: ContainerKind): Promise<Bo
         if (pageNumber < 1 || pageNumber > pdf.pageCount) throw new Error(`page ${pageNumber} is out of range`)
         return pdf.readPage(pageNumber)
       },
+      readPageRaw: async (pageNumber) => pdf.readPageAsPdf(pageNumber),
       readResource: async (name) => {
         throw new Error(`a PDF has no ${name} inside it`)
       },

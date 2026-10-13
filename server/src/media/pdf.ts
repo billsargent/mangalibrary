@@ -5,6 +5,8 @@ export interface PdfDocument {
   pageCount: number
   pages(): PageEntry[]
   readPage(pageNumber: number): Promise<Buffer>
+  /** One page as a PDF of that page alone. */
+  readPageAsPdf(pageNumber: number): Promise<Buffer>
   close(): void
 }
 
@@ -48,6 +50,11 @@ export async function openPdf(buffer: Buffer): Promise<PdfDocument> {
   // The bindings are untyped; keep the casts in one place.
   const mupdf = (await import('mupdf')) as unknown as {
     Document: { openDocument(data: Buffer, magic: string): unknown }
+    PDFDocument: new () => {
+      graftPage(to: number, source: unknown, page: number): void
+      saveToBuffer(options: string): { asUint8Array(): Uint8Array }
+      destroy?(): void
+    }
     Matrix: { scale(x: number, y: number): unknown }
     ColorSpace: { DeviceRGB: unknown }
   }
@@ -67,6 +74,7 @@ export async function openPdf(buffer: Buffer): Promise<PdfDocument> {
         getHeight(): number
       }
     }
+    asPDF(): unknown
     destroy?(): void
   }
 
@@ -91,6 +99,22 @@ export async function openPdf(buffer: Buffer): Promise<PdfDocument> {
       // A JPEG, as the reference sends: a drawn page is most often a scan, which a
       // PNG makes several times larger and several times slower to encode.
       return Buffer.from(pixmap.asJPEG(PDF_JPEG_QUALITY))
+    },
+    readPageAsPdf: async (pageNumber) => {
+      const index = pageNumber - 1
+      if (index < 0 || index >= pageCount) throw new Error(`page ${pageNumber} is out of range`)
+
+      const source = document.asPDF()
+      if (source === null) throw new Error('not a PDF')
+      // The page is carried into a new document with everything it draws with -
+      // fonts, images - and nothing of the pages around it.
+      const single = new mupdf.PDFDocument()
+      try {
+        single.graftPage(-1, source, index)
+        return Buffer.from(single.saveToBuffer('compress').asUint8Array())
+      } finally {
+        single.destroy?.()
+      }
     },
     close: () => document.destroy?.(),
   }

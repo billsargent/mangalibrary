@@ -661,7 +661,9 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
       return {
         device: { id: progress?.device_id ?? '', name: progress?.device_name ?? '' },
         locator: stored ?? defaultLocator(found.row),
-        modified: progress?.last_modified_date ?? found.row.created_date,
+        // When the reader was there, which is what the next progression is compared
+        // with - not when the row was last written.
+        modified: progress?.read_date ?? progress?.last_modified_date ?? found.row.created_date,
       }
     },
   )
@@ -676,8 +678,25 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
         return reply.code(found.status).send({ message: found.status === 404 ? 'Book not found' : 'Forbidden' })
       }
 
-      const body = (req.body ?? {}) as { device?: unknown; locator?: unknown }
+      const body = (req.body ?? {}) as { device?: unknown; locator?: unknown; modified?: unknown }
       const device = (body.device ?? {}) as { id?: unknown; name?: unknown }
+
+      // A progression says when the reader was there. Two devices reading one book
+      // each send theirs, and the one that was read on last is the one to keep: a
+      // device coming back online with yesterday's place must not undo today's.
+      const modified = typeof body.modified === 'string' ? new Date(body.modified) : null
+      const readAt = modified !== null && !Number.isNaN(modified.getTime()) ? modified : null
+      if (readAt !== null) {
+        const stored = await db
+          .selectFrom('read_progress')
+          .select('read_date')
+          .where('book_id', '=', req.params.bookId)
+          .where('user_id', '=', context.user.id)
+          .executeTakeFirst()
+        if (stored?.read_date && readAt.getTime() <= new Date(stored.read_date).getTime()) {
+          return reply.code(409).send({ message: 'Progression is older than existing' })
+        }
+      }
 
       // Where the reader is says how far through the book they are, once the book
       // has been analysed and there is something to measure against. Until then
@@ -717,7 +736,7 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
               : JSON.stringify(body.locator),
         deviceId: typeof device.id === 'string' ? device.id : null,
         deviceName: typeof device.name === 'string' ? device.name : null,
-        readDate: new Date().toISOString(),
+        readDate: (readAt ?? new Date()).toISOString(),
       })
       // Progress is private to the reader, but it also moves the series' read
       // counts, which everyone the event reaches may be looking at.

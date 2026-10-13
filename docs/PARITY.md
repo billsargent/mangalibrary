@@ -27,14 +27,11 @@ Each row says how it was checked, because the three are not worth the same:
 description (`server/spec/komga-openapi.json`) and fails if one that should be served is
 not, or one listed as missing starts being served.
 
-Of 174 operations, **164 reach a route and 10 do not**:
+Of 174 operations, **167 reach a route and 7 do not**:
 
 | Operation                                                   | State                              | Issue |
 | ----------------------------------------------------------- | ---------------------------------- | ----- |
 | `POST /api/v1/books/import`                                 | Missing. The Import page calls it  | #163  |
-| `GET /api/v1/books/{id}/pages/{n}/raw`                      | Missing: one PDF page as a PDF     | #113  |
-| `GET /api/v1/login/set-cookie`                              | Missing                            | #113  |
-| `GET /api/logout`                                           | Missing (`POST` is served)         | #113  |
 | `PUT /api/v1/libraries/{id}`                                | Not served: deprecated, `PATCH` is | -     |
 | `GET /api/v1/oauth2/providers`                              | Missing: no OAuth2 login           | #167  |
 | `GET`, `PUT /api/v1/readlists/{id}/read-progress/tachiyomi` | Missing: Mihon                     | #167  |
@@ -43,7 +40,7 @@ Of 174 operations, **164 reach a route and 10 do not**:
 Outside that description, and so outside the test: OPDS v1 and v2, Kobo sync and
 KOReader sync. None is implemented (#167).
 
-**Not examined:** whether each of the 164 served operations takes the same parameters and
+**Not examined:** whether each of the 167 served operations takes the same parameters and
 answers the same codes and shapes as Komga's. The departures found so far are in #113
 and `COMPATIBILITY.md`. `ui-contract.test.ts` covers the subset the web UI calls, by
 name only.
@@ -52,23 +49,23 @@ name only.
 
 **Read:** `application/tasks/Task.kt` and `TaskHandler.kt` beside `server/src/handlers.ts`.
 
-| Komga task                                                   | Here                                 | State                                                                                            |
-| ------------------------------------------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `ScanLibrary`                                                | `ScanLibrary`                        | Present. See section 4 for what follows a scan                                                   |
-| `AnalyzeBook`, `GenerateBookThumbnail`                       | same names                           | Present                                                                                          |
-| `RefreshBookMetadata`, `RefreshSeriesMetadata`               | same names                           | Present. Analysis reads a book's metadata itself here, where Komga queues a refresh              |
-| `AggregateSeriesMetadata`                                    | part of `RefreshSeriesMetadata`      | Present, not a job of its own                                                                    |
-| `RefreshBookLocalArtwork`, `RefreshSeriesLocalArtwork`       | same names                           | Present                                                                                          |
-| `HashBook`, `HashBookPages`, `HashBookKoreader`              | same names                           | Present                                                                                          |
-| `FindBooksWithMissingPageHash`, `FindDuplicatePagesToDelete` | done inline after a scan             | Present, not jobs of their own                                                                   |
-| `RemoveHashedPages`                                          | same name                            | Present                                                                                          |
-| `FindBooksToConvert`, `ConvertBook`                          | `ConvertBook`, queued after a scan   | Present since #161                                                                               |
-| `EmptyTrash`                                                 | same name                            | Present                                                                                          |
-| `DeleteBook`, `DeleteSeries`                                 | `DeleteBookFile`, `DeleteSeriesFile` | **Differs** - see section 3                                                                      |
-| `FindBookThumbnailsToRegenerate`                             | `RegenerateBookThumbnails`           | Present                                                                                          |
-| `ImportBook`                                                 | -                                    | **Missing** (#163)                                                                               |
-| `RepairExtension`                                            | -                                    | **Missing** (#164)                                                                               |
-| `RebuildIndex`, `UpgradeIndex`                               | -                                    | **Missing.** The search index is kept by database triggers; nothing rebuilds it on demand (#113) |
+| Komga task                                                   | Here                                 | State                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ScanLibrary`                                                | `ScanLibrary`                        | Present. See section 4 for what follows a scan                                                                                                                                                                                        |
+| `AnalyzeBook`, `GenerateBookThumbnail`                       | same names                           | Present                                                                                                                                                                                                                               |
+| `RefreshBookMetadata`, `RefreshSeriesMetadata`               | same names                           | Present. Analysis reads a book's metadata itself here, where Komga queues a refresh                                                                                                                                                   |
+| `AggregateSeriesMetadata`                                    | part of `RefreshSeriesMetadata`      | Present, not a job of its own                                                                                                                                                                                                         |
+| `RefreshBookLocalArtwork`, `RefreshSeriesLocalArtwork`       | same names                           | Present                                                                                                                                                                                                                               |
+| `HashBook`, `HashBookPages`, `HashBookKoreader`              | same names                           | Present                                                                                                                                                                                                                               |
+| `FindBooksWithMissingPageHash`, `FindDuplicatePagesToDelete` | done inline after a scan             | Present, not jobs of their own                                                                                                                                                                                                        |
+| `RemoveHashedPages`                                          | same name                            | Present                                                                                                                                                                                                                               |
+| `FindBooksToConvert`, `ConvertBook`                          | `ConvertBook`, queued after a scan   | Present since #161                                                                                                                                                                                                                    |
+| `EmptyTrash`                                                 | same name                            | Present                                                                                                                                                                                                                               |
+| `DeleteBook`, `DeleteSeries`                                 | `DeleteBookFile`, `DeleteSeriesFile` | **Differs** - see section 3                                                                                                                                                                                                           |
+| `FindBookThumbnailsToRegenerate`                             | `RegenerateBookThumbnails`           | Present                                                                                                                                                                                                                               |
+| `ImportBook`                                                 | -                                    | **Missing** (#163)                                                                                                                                                                                                                    |
+| `RepairExtension`                                            | -                                    | **Missing** (#164)                                                                                                                                                                                                                    |
+| `RebuildIndex`, `UpgradeIndex`                               | -                                    | Not needed: these rebuild a separate Lucene index when its format changes. Here the index is a table of the database, kept by triggers and rebuilt by a migration when it changes (0016). The reference has no endpoint for it either |
 
 ## 3. What the services do
 
@@ -101,11 +98,11 @@ name only.
 
 ### Reading progress - `BookLifecycle.markReadProgress`, `markProgression`
 
-| Komga                                                                | Here                            | Issue |
-| -------------------------------------------------------------------- | ------------------------------- | ----- |
-| A page outside the book is refused; the last page completes the book | Present (`progression.test.ts`) | -     |
-| EPUB progression matched to a position, exact or the one before      | Present (`progression.ts`)      | -     |
-| A progression older than the one stored is refused                   | **Missing**                     | #113  |
+| Komga                                                                | Here                                   | Issue |
+| -------------------------------------------------------------------- | -------------------------------------- | ----- |
+| A page outside the book is refused; the last page completes the book | Present (`progression.test.ts`)        | -     |
+| EPUB progression matched to a position, exact or the one before      | Present (`progression.ts`)             | -     |
+| A progression older than the one stored is refused                   | Present since #170 (`content.test.ts`) | -     |
 
 ### Users - `KomgaUserLifecycle`
 
@@ -113,7 +110,7 @@ name only.
 | -------------------------------------------------------------------------- | ----------------------------------- | ----- |
 | Changing roles, restrictions or shared libraries ends the user's sessions  | Present (`routes/users.ts`)         | -     |
 | Deleting a user removes their progress, settings, activity and sync points | Present, by the database's cascades | -     |
-| Two API keys of one user cannot have the same comment (`ERR_1034`)         | **Missing**                         | #113  |
+| Two API keys of one user cannot have the same comment (`ERR_1034`)         | Present since #170 (`api.test.ts`)  | -     |
 | API keys are stored hashed                                                 | **Differs**: stored as they are     | #114  |
 | A first user is created at startup when configured                         | Different by design: the claim flow | -     |
 
@@ -151,13 +148,13 @@ exist and have tests (`organisation.test.ts`). Manual order was not honoured unt
 
 **Read:** `interfaces/scheduler/*`.
 
-| Komga                                      | Here                                        | Issue |
-| ------------------------------------------ | ------------------------------------------- | ----- |
-| Scan on startup; scan on each interval     | Present                                     | -     |
-| Daily clean-up of authentication activity  | **Missing**: the table only grows           | #113  |
-| Create the search index when there is none | Not needed: the index is part of the schema | -     |
-| Publish metrics                            | Present, computed on request (#145)         | -     |
-| Create an initial user                     | Different by design: the claim flow         | -     |
+| Komga                                                   | Here                                         | Issue |
+| ------------------------------------------------------- | -------------------------------------------- | ----- |
+| Scan on startup; scan on each interval                  | Present                                      | -     |
+| Daily clean-up of authentication activity, kept a month | Present since #170 (`auth/activity.test.ts`) | -     |
+| Create the search index when there is none              | Not needed: the index is part of the schema  | -     |
+| Publish metrics                                         | Present, computed on request (#145)          | -     |
+| Create an initial user                                  | Different by design: the claim flow          | -     |
 
 ## 5. Security and sessions
 
@@ -168,14 +165,14 @@ Hardening this server needs regardless of Komga is #114.
 
 ## 6. Reading and serving files
 
-| Komga                                           | Here                                      | Issue |
-| ----------------------------------------------- | ----------------------------------------- | ----- |
-| CBZ, CBR, PDF and EPUB pages                    | Present. CBR could not be read until #158 | -     |
-| Download a book; a series or read list as a zip | Present                                   | -     |
-| A download can be resumed (HTTP range requests) | **Not found**                             | #113  |
-| EPUB resources, manifests and positions         | Present (#138)                            | -     |
-| PDF page as a PDF (`/raw`)                      | **Missing**                               | #113  |
-| Kepub conversion for Kobo                       | **Missing**; part of Kobo sync            | #167  |
+| Komga                                           | Here                                                                                                              | Issue |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ----- |
+| CBZ, CBR, PDF and EPUB pages                    | Present. CBR could not be read until #158                                                                         | -     |
+| Download a book; a series or read list as a zip | Present                                                                                                           | -     |
+| A download can be resumed (HTTP range requests) | Present since #170 for a book file (`pages.test.ts`). A series or read list is zipped as it is sent and cannot be | -     |
+| EPUB resources, manifests and positions         | Present (#138)                                                                                                    | -     |
+| PDF page as a PDF (`/raw`)                      | Present since #170 (`pages.test.ts`)                                                                              | -     |
+| Kepub conversion for Kobo                       | **Missing**; part of Kobo sync                                                                                    | #167  |
 
 ## 7. The web UI
 

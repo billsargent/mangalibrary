@@ -199,6 +199,8 @@ describe('login and sessions', () => {
     const logout = await app.inject({ method: 'POST', url: '/api/logout', headers: { [AUTH_TOKEN_HEADER]: token } })
     expect(logout.statusCode).toBe(204)
     expect(await database.db.selectFrom('sessions').selectAll().execute()).toHaveLength(0)
+    // Signing out is answered on GET as well, as the reference answers it.
+    expect((await app.inject({ method: 'GET', url: '/api/logout' })).statusCode).toBe(204)
 
     const me = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { [AUTH_TOKEN_HEADER]: token } })
     expect(me.statusCode).toBe(401)
@@ -223,6 +225,16 @@ describe('login and sessions', () => {
     })
     expect(setCookie.statusCode).toBe(204)
     expect(String(setCookie.headers['set-cookie'])).toContain(`${SESSION_COOKIE}=`)
+
+    // The reference's verb for this is GET.
+    const byGet = await app.inject({
+      method: 'GET',
+      url: '/api/v1/login/set-cookie',
+      headers: { [AUTH_TOKEN_HEADER]: token },
+    })
+    expect(byGet.statusCode).toBe(204)
+    expect(String(byGet.headers['set-cookie'])).toContain(`${SESSION_COOKIE}=`)
+    expect((await app.inject({ method: 'GET', url: '/api/v1/login/set-cookie' })).statusCode).toBe(401)
 
     await app.close()
   })

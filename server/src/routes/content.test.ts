@@ -1323,6 +1323,41 @@ describe('books', () => {
     await app.close()
   })
 
+  it('keeps the place that was read last, whichever arrives last', async () => {
+    const { app } = await setup()
+    const at = (page: number, modified: string) =>
+      app.inject({
+        method: 'PUT',
+        url: '/api/v1/books/B2/progression',
+        headers: reader,
+        payload: {
+          modified,
+          device: { id: 'device-1', name: 'Phone' },
+          locator: { href: `/B2#page=${page}`, type: 'image/png', locations: { position: page } },
+        },
+      })
+    const position = async () =>
+      (await app.inject({ method: 'GET', url: '/api/v1/books/B2/progression', headers: reader })).json() as {
+        locator: { locations: { position: number } }
+        modified: string
+      }
+
+    expect((await at(7, '2030-01-02T10:00:00.000Z')).statusCode).toBe(204)
+    // When it was read is what is kept, not when the server heard of it.
+    expect(new Date((await position()).modified).toISOString()).toBe('2030-01-02T10:00:00.000Z')
+
+    // A device coming back with an older place does not undo a newer one.
+    const older = await at(3, '2030-01-01T10:00:00.000Z')
+    expect(older.statusCode).toBe(409)
+    expect(older.json()).toEqual({ message: 'Progression is older than existing' })
+    expect((await at(3, '2030-01-02T10:00:00.000Z')).statusCode).toBe(409)
+    expect((await position()).locator.locations.position).toBe(7)
+
+    expect((await at(9, '2030-01-03T10:00:00.000Z')).statusCode).toBe(204)
+    expect((await position()).locator.locations.position).toBe(9)
+    await app.close()
+  })
+
   // B1 has 200 pages, and the administrator has not opened it.
   const progressOf = async (database: Database) =>
     database.db

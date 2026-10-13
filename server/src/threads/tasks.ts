@@ -151,6 +151,25 @@ export async function convertToZip(input: {
   }
 }
 
+/** One page of a PDF as a PDF of its own, from the book kept open on this thread. */
+export async function readPageRaw(input: {
+  path: string
+  pageNumber: number
+}): Promise<{ bytes: Uint8Array } | { failed: 'OPEN' | 'PAGE' | 'UNSUPPORTED' }> {
+  let book
+  try {
+    book = await keptOpen(input.path)
+  } catch {
+    return { failed: 'OPEN' }
+  }
+  if (book.readPageRaw === undefined) return { failed: 'UNSUPPORTED' }
+  try {
+    return { bytes: await book.readPageRaw(input.pageNumber) }
+  } catch {
+    return { failed: 'PAGE' }
+  }
+}
+
 /** Which thread a task runs on, for telling whether the threads are really there. */
 export async function whichThread(_input: Record<string, never> = {}): Promise<{ id: number; main: boolean }> {
   return { id: threadId, main: isMainThread }
