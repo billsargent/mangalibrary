@@ -183,6 +183,10 @@
     "defaultMessage": "Duplicate book",
     "description": "Import reading list table: tooltip for status - duplicate book"
   },
+  "1T59g0": {
+    "defaultMessage": "Missing posters",
+    "description": "Missing posters page: title"
+  },
   "1VkZao": {
     "defaultMessage": "More",
     "description": "Button to show extra actions: tooltip"
@@ -279,6 +283,10 @@
     "defaultMessage": "Delete API Key",
     "description": "Delete API Key dialog title"
   },
+  "3crE5G": {
+    "defaultMessage": "Analysis queued: {book}",
+    "description": "Media analysis page: notification after asking for a book to be analysed again"
+  },
   "3gimvl": {
     "defaultMessage": "library menu",
     "description": "Library menu button: aria label"
@@ -334,6 +342,10 @@
   "4U6L0S": {
     "defaultMessage": "Links",
     "description": "Form edit series: Links"
+  },
+  "4V691v": {
+    "defaultMessage": "Name",
+    "description": "Media analysis page: column header, book name"
   },
   "4X3RAp": {
     "defaultMessage": "{count, plural, one {# book} other {# books} }",
@@ -450,6 +462,10 @@
   "700A3r": {
     "defaultMessage": "Book",
     "description": "Import reading list table header: Book"
+  },
+  "77lbuR": {
+    "defaultMessage": "Duplicate files",
+    "description": "Duplicate files page: title"
   },
   "7IpTnQ": {
     "defaultMessage": "Cycle side padding",
@@ -591,6 +607,10 @@
     "defaultMessage": "User uploaded",
     "description": "Poster card: type - user uploaded"
   },
+  "9jP+g7": {
+    "defaultMessage": "File",
+    "description": "Media management pages: column header, where the file is"
+  },
   "9mujmD": {
     "defaultMessage": "No release date",
     "description": "Card subtitle: no release date"
@@ -622,6 +642,10 @@
   "ALGXT9": {
     "defaultMessage": "Duplicate",
     "description": "Import reading list table filter: duplicate"
+  },
+  "AQJIPR": {
+    "defaultMessage": "Delete book file",
+    "description": "Duplicate files page: delete dialog title"
   },
   "AXB/RI": {
     "defaultMessage": "Series",
@@ -706,6 +730,10 @@
   "CGRz8d": {
     "defaultMessage": "The book file has changed and will need to be analyzed again",
     "description": "Book view: media outdated"
+  },
+  "CHLGA8": {
+    "defaultMessage": "Comment",
+    "description": "Media analysis page: column header, what the analysis said"
   },
   "CJaS7j": {
     "defaultMessage": "Library root directory",
@@ -806,6 +834,10 @@
   "DbrNAW": {
     "defaultMessage": "Search or create",
     "description": "Collection add to: search field label"
+  },
+  "DcSoqa": {
+    "defaultMessage": "File deleted: {file}",
+    "description": "Duplicate files page: notification after a file was deleted"
   },
   "DfakWW": {
     "defaultMessage": "Delete files",
@@ -910,6 +942,14 @@
   "Fdinos": {
     "defaultMessage": "Poster",
     "description": "Form edit series: Poster"
+  },
+  "FkCmZk": {
+    "defaultMessage": "Add a poster",
+    "description": "Missing posters page: button that opens the book dialog to add a poster"
+  },
+  "FmHb6a": {
+    "defaultMessage": "Book",
+    "description": "Missing posters page: column header, book"
   },
   "FpwJlU": {
     "defaultMessage": "Save changes",
@@ -1079,6 +1119,10 @@
     "defaultMessage": "Translations",
     "description": "Translations pop-up menu header"
   },
+  "IoIHQt": {
+    "defaultMessage": "Status",
+    "description": "Media analysis page: column header, media status"
+  },
   "IpvWiZ": {
     "defaultMessage": "Server",
     "description": "Drawer menu for Server"
@@ -1086,6 +1130,10 @@
   "J+H9cC": {
     "defaultMessage": "Delete files",
     "description": "Series menu: manage > delete file"
+  },
+  "J2W78X": {
+    "defaultMessage": "No book with this status",
+    "description": "Media analysis page: shown when no book matches"
   },
   "J44THG": {
     "defaultMessage": "Status",
@@ -1135,6 +1183,10 @@
     "defaultMessage": "Show or hide the page explorer",
     "description": "Reader: page explorer button and shortcut"
   },
+  "KfkPnJ": {
+    "defaultMessage": "Media analysis",
+    "description": "Media analysis page: title"
+  },
   "Kie8HQ": {
     "defaultMessage": "Book",
     "description": "Import books table header: book"
@@ -1178,6 +1230,10 @@
   "Lto2Lg": {
     "defaultMessage": "Must start with '/', not end with '/-_', and contain only '/-_a-z0-9'",
     "description": "Server settings: error message when server context path is invalid"
+  },
+  "M1kkFr": {
+    "defaultMessage": "Refresh",
+    "description": "Media management pages: button that reloads the table"
   },
   "MC2JtF": {
     "defaultMessage": "All",
@@ -1375,6 +1431,10 @@
     "defaultMessage": "Title",
     "description": "Form edit book: General - book title"
   },
+  "QFOnnV": {
+    "defaultMessage": "Series",
+    "description": "Missing posters page: column header, series"
+  },
   "QIr0z7": {
     "defaultMessage": "Email",
     "description": "Login screen: email field label"
@@ -1467,6 +1527,10 @@
     "defaultMessage": "Allow only labels",
     "description": "User creation/edit dialog: Allow only labels field label"
   },
+  "Sjb+Pm": {
+    "defaultMessage": "Libraries",
+    "description": "Media analysis page: library filter label"
+  },
   "SqZoei": {
     "defaultMessage": "Select series",
     "description": "Import books table: bottom bar: select series button"
@@ -1550,6 +1614,10 @@
   "UPOAPc": {
     "defaultMessage": "Clear search",
     "description": "Search empty state: button"
+  },
+  "UQfGKE": {
+    "defaultMessage": "Analyze again",
+    "description": "Media analysis page: button that analyses a book again"
   },
   "URZj/U": {
     "defaultMessage": "The API key will be deleted from this server.<ul><li>Any application or scripts using this API key will no longer be able to access the API.</li><li>Authentication activity for this API key will be permanently deleted.</li></ul><b>This action cannot be undone.</b>",
@@ -1846,6 +1914,10 @@
   "Yf4DJ2": {
     "defaultMessage": "User Interface",
     "description": "Drawer menu for Server > User Interface"
+  },
+  "Ykpjyj": {
+    "defaultMessage": "Library",
+    "description": "Media analysis page: column header, library"
   },
   "Ym48fa": {
     "defaultMessage": "No recent events",
@@ -2242,6 +2314,10 @@
   "ccDES8": {
     "defaultMessage": "Book files deleted: {book}",
     "description": "Snackbar notification shown upon successful book files deletion"
+  },
+  "ccXoky": {
+    "defaultMessage": "Unavailable",
+    "description": "Media management pages: chip shown for a book whose file is gone"
   },
   "cfWux+": {
     "defaultMessage": "Collection name",
@@ -2811,6 +2887,10 @@
     "defaultMessage": "Page margin",
     "description": "Reader settings: gap between two pages of the webtoon reader"
   },
+  "iIdF6Q": {
+    "defaultMessage": "Media type",
+    "description": "Media management pages: column header, media type"
+  },
   "iNBto3": {
     "defaultMessage": "Proxy unhandled requests to Kobo Store",
     "description": "Server settings: checkbox to enable Kobo Store proxying for Kobo Sync "
@@ -3031,6 +3111,10 @@
     "defaultMessage": "Creation date",
     "description": "API Key table header: key creation date"
   },
+  "mPZAa4": {
+    "defaultMessage": "Every book has a poster",
+    "description": "Missing posters page: shown when every book has a poster"
+  },
   "mtUacw": {
     "defaultMessage": "Edit book metadata",
     "description": "Edit book metadata dialog title"
@@ -3215,6 +3299,10 @@
     "defaultMessage": "Number",
     "description": "Sort label: metadata.numberSort"
   },
+  "r5Jb1E": {
+    "defaultMessage": "File hash",
+    "description": "Duplicate files page: column header, file hash"
+  },
   "r5O+/d": {
     "defaultMessage": "Genre",
     "description": "Series view table: genre header"
@@ -3371,6 +3459,14 @@
     "defaultMessage": "{count, plural, one {# selected} other {# selected} }",
     "description": "Selection bar: count of items"
   },
+  "tDIWUd": {
+    "defaultMessage": "Size",
+    "description": "Media management pages: column header, file size"
+  },
+  "tL8sb/": {
+    "defaultMessage": "Delete this file",
+    "description": "Duplicate files page: button that deletes a book file"
+  },
   "tLFumw": {
     "defaultMessage": "Age rating",
     "description": "Form edit series: General - series age rating"
@@ -3423,6 +3519,10 @@
     "defaultMessage": "Options",
     "description": "Form add/edit library: Options"
   },
+  "uMlTLv": {
+    "defaultMessage": "Delete file",
+    "description": "Duplicate files page: delete dialog confirm button"
+  },
   "uNhlA4": {
     "defaultMessage": "Search your libraries",
     "description": "Search page: title shown before anything has been searched for"
@@ -3430,6 +3530,10 @@
   "uOPuSH": {
     "defaultMessage": "Genre",
     "description": "Book view table: genre header"
+  },
+  "uOW19s": {
+    "defaultMessage": "No duplicate files",
+    "description": "Duplicate files page: shown when no two books are the same file"
   },
   "uTuk/9": {
     "defaultMessage": "File size",

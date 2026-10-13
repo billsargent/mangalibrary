@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
@@ -415,6 +415,58 @@ describe('the worker', () => {
       await until(async () => {
         const rows = await database.db.selectFrom('thumbnails').selectAll().where('type', '=', 'SIDECAR').execute()
         return rows.length === 0
+      })
+    } finally {
+      await worker.stop()
+    }
+  })
+
+  it('deletes a book file, and says the book is gone', async () => {
+    const { database, root, libraryId } = await setupLibrary()
+    const log = logger()
+    const events = new EventBus()
+    const announced: { name: string; data: unknown }[] = []
+    events.subscribe((event) => announced.push({ name: event.name, data: event.data }))
+
+    const worker = await startJobWorker({ db: database.db, log, schedule: false, events })
+    try {
+      await enqueueJob(database.db, {
+        type: 'ScanLibrary',
+        uniqueKey: scanKey(libraryId),
+        priority: JOB_PRIORITY.HIGH,
+        payload: { libraryId },
+      })
+      const book = await until(async () =>
+        database.db.selectFrom('books').select(['id', 'series_id']).executeTakeFirst(),
+      )
+      await until(async () => (await database.db.selectFrom('jobs').selectAll().execute()).length === 0)
+
+      await enqueueJob(database.db, {
+        type: 'DeleteBookFile',
+        uniqueKey: `DELETE_BOOK_${book.id}`,
+        payload: { bookId: book.id },
+      })
+      await until(async () => announced.some((event) => event.name === 'BookDeleted'))
+
+      expect(existsSync(join(root, 'Akira', 'Volume 1.cbz'))).toBe(false)
+      expect(announced.find((event) => event.name === 'BookDeleted')?.data).toEqual({
+        bookId: book.id,
+        seriesId: book.series_id,
+        libraryId,
+      })
+      const row = await database.db.selectFrom('books').select('deleted_date').executeTakeFirst()
+      expect(row?.deleted_date).not.toBeNull()
+
+      // The series goes the same way.
+      await enqueueJob(database.db, {
+        type: 'DeleteSeriesFile',
+        uniqueKey: `DELETE_SERIES_${book.series_id}`,
+        payload: { seriesId: book.series_id },
+      })
+      await until(async () => announced.some((event) => event.name === 'SeriesDeleted'))
+      expect(announced.find((event) => event.name === 'SeriesDeleted')?.data).toEqual({
+        seriesId: book.series_id,
+        libraryId,
       })
     } finally {
       await worker.stop()
