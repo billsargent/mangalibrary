@@ -14,6 +14,7 @@
 
 import type { Kysely } from 'kysely'
 
+import { refreshStatistics } from './db/index.js'
 import type { DB } from './db/schema.js'
 import { EventBus } from './events.js'
 import { handleJob, type JobContext, type JobLogger } from './handlers.js'
@@ -197,6 +198,9 @@ export async function startJobWorker(options: WorkerOptions): Promise<JobWorker>
     nextCleanupAt = Date.now() + 24 * 60 * 60 * 1000
     const removed = await removeOldAuthenticationActivity(db)
     if (removed > 0) log.info({ removed }, 'removed authentication activity older than a month')
+    // And the database is told again what it holds, which analysis and reading
+    // change slowly and constantly.
+    await refreshStatistics(db)
   }
 
   const tick = async (): Promise<void> => {

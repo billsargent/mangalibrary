@@ -16,6 +16,7 @@ import type { Kysely } from 'kysely'
 import { deleteBookFiles, deleteSeriesFiles, type Deleted } from './content/delete.js'
 import { bookFilePath, findBookRecord } from './content/files.js'
 import { announceBook, announceSeries, bookRef, seriesRef } from './content-events.js'
+import { refreshStatistics } from './db/index.js'
 import type { DB } from './db/schema.js'
 import type { EventBus } from './events.js'
 import {
@@ -426,6 +427,12 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
         { libraryId, ...summary, seconds: Math.round((Date.now() - scanStarted) / 100) / 10 },
         'scanned a library',
       )
+      // A scan is when a library goes from empty to full, or gains a shelf: the
+      // database is told what it now holds before anything is listed from it.
+      if (summary.booksCreated + summary.booksDeleted + summary.seriesCreated + summary.seriesDeleted > 0) {
+        await refreshStatistics(db)
+      }
+
       const queued = await analyzeMissingBooks(context, libraryId)
       if (queued > 0) log.info({ libraryId, queued }, 'queued books to analyse')
 

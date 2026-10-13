@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
-import { Kysely, SqliteDialect } from 'kysely'
+import { Kysely, SqliteDialect, sql } from 'kysely'
 import { LongListPlugin, TakeTurnsPlugin } from './plugins.js'
 import type { DB } from './schema.js'
 
@@ -82,4 +82,18 @@ export function createDatabase(file: string): Database {
       await db.destroy()
     },
   }
+}
+
+/**
+ * Tell the database what is in its tables, so that it plans by what is there.
+ *
+ * SQLite chooses how to run a query from statistics it only gathers when asked.
+ * With none it guesses, and on a large library the guesses are wrong in ways that
+ * cost a hundred times over - see migration 0023. A sample of each index is
+ * enough, and takes milliseconds, so this is cheap to do whenever the library has
+ * changed much: after a scan, when the server starts, and once a day.
+ */
+export async function refreshStatistics(db: Kysely<DB>): Promise<void> {
+  await sql`pragma analysis_limit = 1000`.execute(db)
+  await sql`analyze`.execute(db)
 }
