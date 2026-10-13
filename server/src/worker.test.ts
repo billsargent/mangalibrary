@@ -560,12 +560,8 @@ describe('the worker', () => {
       const row = await database.db.selectFrom('books').select('deleted_date').executeTakeFirst()
       expect(row?.deleted_date).not.toBeNull()
 
-      // The series goes the same way.
-      await enqueueJob(database.db, {
-        type: 'DeleteSeriesFile',
-        uniqueKey: `DELETE_SERIES_${book.series_id}`,
-        payload: { seriesId: book.series_id },
-      })
+      // It was the series' only book, and the folder went with it: so did the series.
+      expect(existsSync(join(root, 'Akira'))).toBe(false)
       await until(async () => announced.some((event) => event.name === 'SeriesDeleted'))
       expect(announced.find((event) => event.name === 'SeriesDeleted')?.data).toEqual({
         seriesId: book.series_id,
