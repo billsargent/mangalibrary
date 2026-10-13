@@ -203,6 +203,12 @@ export const commonMessages = {
     defaultMessage: 'Must be a valid BCP 47 language code',
     id: 'v3beFf',
   }),
+  bulkEditHint: defineMessage({
+    description: 'Bulk edit metadata forms: explanation shown at the top',
+    defaultMessage:
+      'Only the fields you fill in are changed. Anything left empty keeps what each item already has.',
+    id: 'Wft0lT',
+  }),
   libraryPinned: defineMessage({
     description: 'Library tab navigation: library selection: pinned',
     defaultMessage: 'Pinned',

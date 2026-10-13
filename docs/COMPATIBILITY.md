@@ -606,6 +606,23 @@ exclusions match, what a oneshots folder does, and what happens to files that
 disappear - is specified in [SCANNING.md](SCANNING.md). It records Komga's
 behaviour rule by rule, and the two places we are deliberately stricter.
 
+## Editing several items at once
+
+The web UI edits the metadata of several series, or several books, from the selection
+bar, as the legacy interface does. It differs in how:
+
+- The form starts empty and only what is filled in is applied to every selected item.
+  The legacy form starts with the values the items share. Nothing can therefore be
+  emptied for several items at once; that is done one item at a time.
+- A list that is filled in - genres, tags, sharing labels, authors - replaces each
+  item's list, as it does in the legacy form.
+- Every field that is filled in is locked on each item, so a metadata refresh does not
+  undo it.
+- Several books can have their tags and authors edited. The legacy table for changing
+  the number and title of each book in one dialog is not here.
+- Books are sent in one request (`PATCH /api/v1/books/metadata`); series have no such
+  endpoint and are updated one after another.
+
 ## Not in scope (yet)
 
 OPDS v1/v2, Kobo sync, KOReader sync, Mihon/Tachiyomi shims, OAuth2/OIDC login,

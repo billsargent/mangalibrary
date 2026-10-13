@@ -203,6 +203,10 @@
     "defaultMessage": "Sharing labels",
     "description": "Book view table: sharing labels  header"
   },
+  "1zneF6": {
+    "defaultMessage": "Edit book metadata",
+    "description": "Bulk edit book metadata dialog title"
+  },
   "2Bh8F2": {
     "defaultMessage": "Latest",
     "description": "Updates view: badge showing next to the latest release number"
@@ -1699,6 +1703,10 @@
     "defaultMessage": "Space saved",
     "description": "Known Duplicate Page Table header: space saved"
   },
+  "Wft0lT": {
+    "defaultMessage": "Only the fields you fill in are changed. Anything left empty keeps what each item already has.",
+    "description": "Bulk edit metadata forms: explanation shown at the top"
+  },
   "WhasCZ": {
     "defaultMessage": "New password",
     "description": "User password change dialog: New Password field label"
@@ -1914,6 +1922,10 @@
   "Zozcfh": {
     "defaultMessage": "Source",
     "description": "Authentication Activity table header: Source"
+  },
+  "ZwnGaE": {
+    "defaultMessage": "Edit series metadata",
+    "description": "Bulk edit series metadata dialog title"
   },
   "a5MYiP": {
     "defaultMessage": "Posters",
@@ -2847,6 +2859,10 @@
     "defaultMessage": "confirm",
     "description": "Confirmation dialog: default validation text"
   },
+  "jBHrge": {
+    "defaultMessage": "{count, plural, one {# item} other {# items}} updated",
+    "description": "Snackbar notification shown after several items were edited at once"
+  },
   "jD87k9": {
     "defaultMessage": "The collection will be deleted<ul><li>Series and books will not be deleted.</li></ul><b>This action cannot be undone.</b>",
     "description": "Collection deletion warning notice"
@@ -2882,6 +2898,10 @@
   "k6BCzW": {
     "defaultMessage": "Delete collection",
     "description": "Collection delete dialog: title"
+  },
+  "k7AMko": {
+    "defaultMessage": "Publishing status",
+    "description": "Form bulk edit series: publishing status"
   },
   "k9X/05": {
     "defaultMessage": "Poster",
@@ -3138,6 +3158,10 @@
   "pHycdf": {
     "defaultMessage": "The book file is yet to be analyzed",
     "description": "Book view: media unknown"
+  },
+  "pNNU6x": {
+    "defaultMessage": "{count, plural, one {# item} other {# items}}",
+    "description": "Bulk edit metadata dialog: subtitle, how many items are being edited"
   },
   "pR3VdQ": {
     "defaultMessage": "Series",
