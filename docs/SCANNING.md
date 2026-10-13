@@ -134,3 +134,24 @@ list) rather than a table of its own; the semantics are the ones above.
   libraries. Komga seeds them only for libraries that existed when it added the
   feature, so a new Komga library starts with no exclusions. Matching that is the
   compatible choice, and it is what we do today.
+
+## Files beside the books
+
+A cover named after a book, a cover in a series' folder and a `series.json` say something
+about a book or a series without being one. Changing one changes no book, and editing one
+where it lies need not change the date of the folder it is in, so a scan that looked only
+at books and folders would not notice.
+
+The walk reports each of these files with its date, and the `sidecars` table remembers
+them - as the reference's does. When a file is new, has a new date or has gone:
+
+- a series' `series.json`: the series' metadata is read again;
+- a series' cover: the series' artwork is looked at again, and nothing else;
+- a book's cover: a `RefreshBookLocalArtwork` job is queued, if the book has been
+  analysed. One that has not will look for its cover when it is.
+
+The dates come from the look at each file the walk already takes, so a scan over a
+library where nothing changed still opens no file.
+
+The first scan after this was added sees every such file as new. That costs a look at
+each series' covers, and a re-read of each series that has a `series.json`.

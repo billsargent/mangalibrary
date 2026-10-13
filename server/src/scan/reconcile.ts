@@ -10,7 +10,7 @@ import { refreshSeriesLocalArtwork } from '../metadata/localArtwork.js'
 import { refreshSeriesMetadata } from '../metadata/series.js'
 import { cleanupEmptySets } from '../organisation/cleanup.js'
 import { nextTsid } from '../tsid.js'
-import { LibraryScanError, walkLibrary, type ScannedBook, type ScanSettings } from './library.js'
+import { LibraryScanError, walkLibrary, type ScannedBook, type ScannedSeries, type ScanSettings } from './library.js'
 import { deletedBookFor, deletedBookSizes, restoreBook, type DeletedBook } from './restore.js'
 
 /** What a scan did, so a caller can report it. */
@@ -225,6 +225,136 @@ async function returningSeries(db: Kysely<DB>, matches: readonly (DeletedBook | 
 
   const books = await db.selectFrom('books').select('id').where('series_id', '=', first.seriesId).execute()
   return books.length === matches.length ? first.seriesId : null
+}
+
+/**
+ * Notice the covers and metadata files that changed while their books did not.
+ *
+ * A cover put beside a book, or a `series.json` edited where it lies, changes no
+ * book, and need not change the date of the folder it is in. The reference keeps
+ * each such file's date and reads its book or series again when the date moves;
+ * this does the same. Returns the series whose metadata file changed, to be read
+ * again, and those whose cover did, which need only their artwork looked at - a new
+ * cover is no reason to open every book of a series. A book's artwork is its own
+ * job, queued here for a book that has already been analysed - one that has not
+ * will have its artwork looked for when it is.
+ *
+ * A file that has gone is treated as a change too, so that a poster is not left
+ * pointing at a cover that is no longer there.
+ */
+interface SidecarRow {
+  url: string
+  parent_url: string
+  source: 'SERIES' | 'BOOK'
+  type: 'ARTWORK' | 'METADATA'
+  last_modified: string
+}
+
+async function changedSidecars(
+  db: Kysely<DB>,
+  libraryId: string,
+  found: readonly ScannedSeries[],
+): Promise<{ metadata: string[]; artwork: string[] }> {
+  const known = new Map(
+    (
+      await db
+        .selectFrom('sidecars')
+        .select(['url', 'parent_url', 'source', 'type', 'last_modified'])
+        .where('library_id', '=', libraryId)
+        .execute()
+    ).map((row) => [row.url, row]),
+  )
+
+  const seen = new Set<string>()
+  const changed: SidecarRow[] = []
+  for (const series of found) {
+    for (const sidecar of series.sidecars) {
+      const url = pathToFileURL(sidecar.path).href
+      seen.add(url)
+      const lastModified = sidecar.lastModified.toISOString()
+      if (known.get(url)?.last_modified === lastModified) continue
+      changed.push({
+        url,
+        parent_url: pathToFileURL(sidecar.parent).href,
+        source: sidecar.source,
+        type: sidecar.type,
+        last_modified: lastModified,
+      })
+    }
+  }
+  const gone = [...known.values()].filter((row) => !seen.has(row.url))
+  if (changed.length === 0 && gone.length === 0) return { metadata: [], artwork: [] }
+
+  const affected = [...changed, ...gone]
+  const seriesUrls = [...new Set(affected.filter((row) => row.source === 'SERIES').map((row) => row.parent_url))]
+  const bookUrls = [...new Set(affected.filter((row) => row.source === 'BOOK').map((row) => row.parent_url))]
+
+  const series =
+    seriesUrls.length === 0
+      ? []
+      : await db
+          .selectFrom('series')
+          .select(['id', 'url'])
+          .where('library_id', '=', libraryId)
+          .where('deleted_date', 'is', null)
+          .where('url', 'in', seriesUrls)
+          .execute()
+  const books =
+    bookUrls.length === 0
+      ? []
+      : await db
+          .selectFrom('books')
+          .innerJoin('media', 'media.book_id', 'books.id')
+          .select('books.id')
+          .where('books.library_id', '=', libraryId)
+          .where('books.deleted_date', 'is', null)
+          .where('books.url', 'in', bookUrls)
+          .where('media.status', '=', 'READY')
+          .execute()
+
+  await enqueueJobs(
+    db,
+    books.map((book) => ({
+      type: 'RefreshBookLocalArtwork',
+      uniqueKey: `REFRESH_BOOK_LOCAL_ARTWORK_${book.id}`,
+      payload: { bookId: book.id },
+    })),
+  )
+
+  const WRITE = 200
+  for (let start = 0; start < changed.length; start += WRITE) {
+    await db
+      .insertInto('sidecars')
+      .values(changed.slice(start, start + WRITE).map((row) => ({ ...row, library_id: libraryId })))
+      .onConflict((oc) =>
+        oc.columns(['library_id', 'url']).doUpdateSet((eb) => ({
+          parent_url: eb.ref('excluded.parent_url'),
+          source: eb.ref('excluded.source'),
+          type: eb.ref('excluded.type'),
+          last_modified: eb.ref('excluded.last_modified'),
+        })),
+      )
+      .execute()
+  }
+  if (gone.length > 0) {
+    await db
+      .deleteFrom('sidecars')
+      .where('library_id', '=', libraryId)
+      .where(
+        'url',
+        'in',
+        gone.map((row) => row.url),
+      )
+      .execute()
+  }
+
+  const withMetadata = new Set(
+    affected.filter((row) => row.source === 'SERIES' && row.type === 'METADATA').map((row) => row.parent_url),
+  )
+  return {
+    metadata: series.filter((row) => withMetadata.has(row.url)).map((row) => row.id),
+    artwork: series.filter((row) => !withMetadata.has(row.url)).map((row) => row.id),
+  }
 }
 
 /**
@@ -575,9 +705,15 @@ export async function scanLibrary(
   // series that did not change is not read, so a scan over an unchanged library
   // still touches no book file at all. The cover that may sit in its folder is
   // picked up the same way, which is cheap when there is none.
+  const sidecars = await changedSidecars(db, libraryId, found)
+  for (const seriesId of sidecars.metadata) touched.add(seriesId)
+
   for (const seriesId of touched) {
     await refreshSeriesMetadata(db, seriesId)
     await refreshSeriesLocalArtwork(db, seriesId)
+  }
+  for (const seriesId of sidecars.artwork) {
+    if (!touched.has(seriesId)) await refreshSeriesLocalArtwork(db, seriesId)
   }
 
   if (library.empty_trash_after_scan === 1) {

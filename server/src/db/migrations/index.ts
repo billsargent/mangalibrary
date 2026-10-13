@@ -18,6 +18,7 @@ import { migration0016SearchSeriesTitleSort } from './0016_search_series_title_s
 import { migration0017JobRequeued } from './0017_job_requeued.js'
 import { migration0018ContentVersion } from './0018_content_version.js'
 import { migration0019PdfPageSize } from './0019_pdf_page_size.js'
+import { migration0020Sidecars } from './0020_sidecars.js'
 
 /**
  * Ordered migration registry, applied in id order by the runner.
@@ -46,4 +47,5 @@ export const migrations: Migration[] = [
   migration0017JobRequeued,
   migration0018ContentVersion,
   migration0019PdfPageSize,
+  migration0020Sidecars,
 ]

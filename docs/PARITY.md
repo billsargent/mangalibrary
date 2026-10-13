@@ -126,7 +126,7 @@ Convert to CBZ: present since #161 (`media/convert.test.ts`). Repair extensions:
 
 Read rule by rule when the scanner was written; see `SCANNING.md`. Restoring deleted
 books and series by hash: present (#143). Komga's sidecar table - a scan noticing that a
-cover or a metadata file changed without its book changing - is **missing** (#174).
+cover or a metadata file changed without its book changing - is present since #174.
 
 ### Collections and read lists - `SeriesCollectionLifecycle`, `ReadListLifecycle`, `ReadListMatcher`
 
@@ -166,8 +166,10 @@ scan, an analysis and the refreshes that follow.
 | Local artwork (`localArtwork.ts`)  | Same names, extensions and choice of which is selected                                                                                                                                                                                                              |
 | Language tags                      | **On purpose**: checked for shape, not against a list of languages                                                                                                                                                                                                  |
 
-**Missing:** Komga's sidecar table (`infrastructure/sidecar`), with which a scan notices
-that a cover or a `series.json` changed without its book or folder changing (#174).
+Komga's sidecar table (`infrastructure/sidecar`), with which a scan notices that a cover
+or a `series.json` changed without its book or folder changing: present since #174
+(`scan/sidecars.test.ts`). **On purpose**: a changed cover has the series' artwork looked
+at again, not its books read again.
 
 ### Not examined at all
 
