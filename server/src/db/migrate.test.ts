@@ -79,6 +79,7 @@ describe('migrate', () => {
       '0016_search_series_title_sort',
       '0017_job_requeued',
       '0018_content_version',
+      '0019_pdf_page_size',
     ])
 
     // One row per hash, keeping the largest size and the highest delete count, and

@@ -70,7 +70,7 @@ export async function openBook(path: string, stated?: ContainerKind): Promise<Bo
   }
 
   if (kind === 'RAR') {
-    const container = await openRar(await readFile(path))
+    const container = await openRar(path)
     const pages = imagePages(container)
     return {
       kind,

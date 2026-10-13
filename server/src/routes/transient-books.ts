@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 
 import { requireAdmin } from '../auth/session.js'
 import { inspectBook } from '../media/analyze.js'
-import { openBook } from '../media/index.js'
+import { readBookPage } from '../media/pages.js'
 import { SCAN_ERRORS, ScanError, insideRoot, insideRootOnDisk, scanFolder } from '../media/scan.js'
 import { TransientBookStore, type TransientBook } from '../media/transient.js'
 import { nextTsid } from '../tsid.js'
@@ -158,24 +158,16 @@ export async function registerTransientBookRoutes(app: FastifyInstance, opts: Ro
         return reply.headers(headers).code(304).send()
       }
 
-      let contents
-      try {
-        contents = await openBook(book.path)
-      } catch {
-        return reply.code(404).send({ message: 'File not found, it may have moved' })
+      const read = await readBookPage(book.path, pageNumber)
+      if ('failed' in read) {
+        return read.failed === 'OPEN'
+          ? reply.code(404).send({ message: 'File not found, it may have moved' })
+          : reply.code(400).send({ message: 'Page number does not exist' })
       }
-
-      try {
-        const bytes = await contents.readPage(pageNumber)
-        return reply
-          .headers(headers)
-          .type(page.mediaType || 'application/octet-stream')
-          .send(bytes)
-      } catch {
-        return reply.code(400).send({ message: 'Page number does not exist' })
-      } finally {
-        contents.close()
-      }
+      return reply
+        .headers(headers)
+        .type(page.mediaType || 'application/octet-stream')
+        .send(read.bytes)
     },
   )
 }

@@ -16,7 +16,7 @@ import { sql, type RawBuilder } from 'kysely'
 
 import { requireAdmin } from '../auth/session.js'
 import { bookFilePath, findBookRecord } from '../content/files.js'
-import { openBook } from '../media/index.js'
+import { readBookPage } from '../media/pages.js'
 import { queuePageRemoval, type PageToRemove } from '../media/removePages.js'
 import { resizedImage } from '../thumbnails/image.js'
 import type { RouteOptions } from './libraries.js'
@@ -133,16 +133,8 @@ export async function registerPageHashRoutes(app: FastifyInstance, opts: RouteOp
     const path = await bookFilePath(record)
     if (path === null) return null
 
-    const book = await openBook(path)
-    try {
-      const page = book.pages[pageNumber - 1]
-      if (page === undefined) return null
-      return { bytes: await book.readPage(pageNumber), mediaType: page.mediaType }
-    } catch {
-      return null
-    } finally {
-      book.close()
-    }
+    const read = await readBookPage(path, pageNumber)
+    return 'bytes' in read ? read : null
   }
 
   app.get('/api/v1/page-hashes', { preHandler: requireAdmin }, async (req, reply) => {

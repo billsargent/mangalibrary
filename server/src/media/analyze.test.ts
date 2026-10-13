@@ -235,13 +235,15 @@ describe('pdf books', () => {
 
     const pages = await db.db.selectFrom('media_page').selectAll().execute()
     expect(pages).toHaveLength(1)
-    expect(pages[0]?.media_type).toBe('image/png')
+    expect(pages[0]?.media_type).toBe('image/jpeg')
+    // Its size is known from the page's size on paper, without being asked for.
+    expect(Math.max(pages[0]?.width ?? 0, pages[0]?.height ?? 0)).toBe(1600)
 
-    // The page is rendered lazily, and what comes back is a real PNG.
+    // The page is drawn when it is read, and what comes back is a real JPEG.
     const { openBook } = await import('./index.js')
     const book = await openBook(path)
     const bytes = await book.readPage(1)
-    expect(bytes.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    expect(bytes.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]))
     await expect(book.readPage(2)).rejects.toThrow('out of range')
     book.close()
 
