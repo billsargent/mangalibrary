@@ -76,14 +76,18 @@ name only.
 
 ### Libraries - `LibraryLifecycle`
 
-| Komga                                                                        | Here                                       | Issue |
-| ---------------------------------------------------------------------------- | ------------------------------------------ | ----- |
-| Refuses a root that does not exist or is not a folder                        | **Missing**: only blank values are refused | #165  |
-| Refuses a name already in use                                                | **Missing**                                | #165  |
-| Refuses a root inside, or containing, another library's                      | **Missing**                                | #165  |
-| Scans a new library at once                                                  | Present                                    | -     |
-| On update: rescans, and queues hashing or conversion when one is switched on | **Not found**; to confirm                  | #165  |
-| Scan on startup, and on each library's interval                              | Present (`worker.ts`)                      | -     |
+**Read**, and present since #165 with tests (`routes/api.test.ts`).
+
+| Komga                                                                    | Here                                                                                                      |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| Refuses a root that does not exist or is not a folder                    | Present                                                                                                   |
+| Refuses a name already in use                                            | Present                                                                                                   |
+| Refuses a root inside, or containing, another library's                  | Present, compared as the disk spells the paths                                                            |
+| Checks all of that again on every update                                 | **Differs on purpose**: only what is being changed, so a library whose folder is gone can still be edited |
+| Scans a new library at once                                              | Present                                                                                                   |
+| On update: rescans when what is scanned for changed                      | Present                                                                                                   |
+| On update: queues hashing or conversion when one is switched on          | Present, by asking for a scan, which queues that work for the books that need it                          |
+| Scan on startup, and on each library's interval, rescheduled on a change | Present (`worker.ts`)                                                                                     |
 
 ### Deleting files - `BookLifecycle.deleteBookFiles`, `SeriesLifecycle.deleteSeriesFiles`
 

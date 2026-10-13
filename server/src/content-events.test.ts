@@ -120,7 +120,7 @@ describe('announcing a change', () => {
       method: 'POST',
       url: '/api/v1/libraries',
       headers: admin,
-      payload: { name: 'Other', root: '/other' },
+      payload: { name: 'Other', root: mkdtempSync(join(tmpdir(), 'ml-events-library-')) },
     })
     expect(created.statusCode).toBe(200)
     const libraryId = (created.json() as { id: string }).id
