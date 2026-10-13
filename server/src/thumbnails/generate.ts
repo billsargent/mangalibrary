@@ -274,7 +274,20 @@ export async function seriesCoverThumbnail(
           ? (firstUnread ?? first)
           : first
 
-  return chosenThumbnail(db, 'BOOK', chosen.id)
+  const poster = await chosenThumbnail(db, 'BOOK', chosen.id)
+  if (poster !== null) return poster
+
+  // The book the setting names may have no poster: a file that could not be read,
+  // or one not analysed yet. A series with a readable book in it should not look
+  // empty for that, so another book stands in: the nearest to the one that was
+  // wanted, which from the last book is the one before it. The reference shows
+  // nothing here.
+  for (const book of chosen === last ? [...books].reverse() : books) {
+    if (book.id === chosen.id) continue
+    const other = await chosenThumbnail(db, 'BOOK', book.id)
+    if (other !== null) return other
+  }
+  return null
 }
 
 /**

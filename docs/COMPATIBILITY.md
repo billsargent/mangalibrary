@@ -637,6 +637,15 @@ does. Which characters make a letter of the navigation, and that everything else
 - The web UI keeps the chosen letter in the address as `?nav=`, as the legacy interface
   did.
 
+## Posters and feeds
+
+- **A series whose cover book has no poster shows another book's.** The reference shows
+  nothing when the book its cover setting names has no poster - a file that could not
+  be read, say. Here the nearest book that has one stands in.
+- **A server with no announcements feed or releases source answers an empty list**, not
+  a 404. The web UI asks for both on every page, and a 404 there is an error in the
+  browser's console on every page. A source that is set and cannot be read is still a 404.
+
 ## What analysis reports
 
 A book that cannot be analysed is recorded with the reference's code for why, which the

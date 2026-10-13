@@ -124,6 +124,9 @@ export async function registerSystemRoutes(app: FastifyInstance, opts: RouteOpti
     },
   )
 
+  /** What a server with no announcements feed answers: a feed with nothing in it. */
+  const EMPTY_FEED = { version: 'https://jsonfeed.org/version/1', title: 'Announcements', items: [] }
+
   /** Read the announcements feed, or report that there is none to read. */
   const loadFeed = async (): Promise<Feed | undefined> => {
     const url = opts.announcementsUrl
@@ -155,6 +158,11 @@ export async function registerSystemRoutes(app: FastifyInstance, opts: RouteOpti
   }
 
   app.get('/api/v1/announcements', { preHandler: requireAdmin }, async (req, reply) => {
+    // A server with no feed set has no announcements, which is an answer, not a
+    // failure: the web UI asks on every page, and a 404 there is an error in the
+    // browser's console on every page. A feed that is set and cannot be read is
+    // still a failure.
+    if (opts.announcementsUrl === null) return EMPTY_FEED
     const feed = await loadFeed()
     if (feed === undefined) return reply.code(404).send({ message: 'No announcements are available' })
 
@@ -192,6 +200,7 @@ export async function registerSystemRoutes(app: FastifyInstance, opts: RouteOpti
   })
 
   app.get('/api/v1/releases', { preHandler: requireAdmin }, async (_req, reply) => {
+    if (opts.releasesUrl === null) return []
     const source = await loadReleases()
     if (source === undefined) return reply.code(404).send({ message: 'No releases are available' })
 

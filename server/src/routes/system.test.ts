@@ -155,8 +155,10 @@ describe('releases', () => {
   })
 
   it('answers nothing to show when there is no source or the source is down', async () => {
+    // No source set: there are no releases to list, and that is not a failure.
     const unset = await setup()
-    expect((await unset.app.inject({ method: 'GET', url: '/api/v1/releases', headers: admin })).statusCode).toBe(404)
+    const none = await unset.app.inject({ method: 'GET', url: '/api/v1/releases', headers: admin })
+    expect([none.statusCode, none.json()]).toEqual([200, []])
     await unset.app.close()
 
     const broken = await setup({ releases: RELEASES_URL }, {}, true)
@@ -229,9 +231,9 @@ describe('announcements', () => {
 
   it('answers nothing to show when there is no source or the source is down', async () => {
     const unset = await setup()
-    expect((await unset.app.inject({ method: 'GET', url: '/api/v1/announcements', headers: admin })).statusCode).toBe(
-      404,
-    )
+    const none = await unset.app.inject({ method: 'GET', url: '/api/v1/announcements', headers: admin })
+    expect(none.statusCode).toBe(200)
+    expect(none.json()).toMatchObject({ title: 'Announcements', items: [] })
     await unset.app.close()
 
     const broken = await setup({ feed: FEED_URL }, {}, true)

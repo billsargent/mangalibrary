@@ -19,6 +19,7 @@
       v-if="hasExtra"
       :id="id"
       v-ktooltip:bottom="$formatMessage(commonMessages.buttonMore)"
+      :aria-label="$formatMessage(commonMessages.buttonMore)"
       icon="i-mdi:dots-horizontal"
       @click="bottomSheet = true"
     />

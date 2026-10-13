@@ -429,8 +429,13 @@ describe('artwork', () => {
       .execute()
     expect((await withCover('FIRST_UNREAD_OR_FIRST', reader)).headers.etag).toBe('"T3-"')
 
-    // LAST picks the last book, which has no poster of its own: the reference
-    // returns nothing rather than falling back to another book.
+    // LAST picks the last book, which has no poster of its own. The reference
+    // shows nothing then; here the nearest book that has one stands in, so a series
+    // with a book that cannot be read does not look empty.
+    expect((await withCover('LAST', admin)).headers.etag).toBe('"T3-"')
+
+    // A series none of whose books has a poster still has none.
+    await db.deleteFrom('thumbnails').where('owner_type', '=', 'BOOK').execute()
     expect((await withCover('LAST', admin)).statusCode).toBe(404)
     await app.close()
   })
