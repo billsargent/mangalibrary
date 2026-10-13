@@ -189,6 +189,7 @@ declare module 'vue' {
     SelectionBar: typeof import('./components/selection/Bar.vue')['default']
     SelectionBarActions: typeof import('./components/selection/BarActions.vue')['default']
     SelectionFooter: typeof import('./components/selection/Footer.vue')['default']
+    SeriesAlphabeticalNavigation: typeof import('./components/series/AlphabeticalNavigation.vue')['default']
     SeriesCard: typeof import('./components/series/card/SeriesCard.vue')['default']
     SeriesCardWide: typeof import('./components/series/CardWide/SeriesCardWide.vue')['default']
     SeriesDeletionWarning: typeof import('./components/series/DeletionWarning.vue')['default']

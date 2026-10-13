@@ -623,6 +623,20 @@ bar, as the legacy interface does. It differs in how:
 - Books are sent in one request (`PATCH /api/v1/books/metadata`); series have no such
   endpoint and are updated one after another.
 
+## Series by first character
+
+`GET /api/v1/series/alphabetical-groups` and `POST /api/v1/series/list/alphabetical-groups`
+answer one group per first character of the sort title, in lower case, as the reference
+does. Which characters make a letter of the navigation, and that everything else is
+`#`, is the client's decision, because it depends on the grouping in use (see
+`webui.series_groups` below).
+
+- The character is also stripped of its accent, so `Élan` is counted under `e`. The
+  title filter the letter then applies (`titleSort` `beginsWith`) ignores accents too,
+  so the count beside a letter is the number of series choosing it lists.
+- The web UI keeps the chosen letter in the address as `?nav=`, as the legacy interface
+  did.
+
 ## Interface settings
 
 The web UI keeps its settings in the client-settings API under the keys the legacy
