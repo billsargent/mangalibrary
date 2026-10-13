@@ -13,10 +13,29 @@
  * place is taken goes to the end rather than displacing what is there.
  */
 
-import type { Kysely } from 'kysely'
+import { sql, type Kysely } from 'kysely'
 
 import type { DB } from '../db/schema.js'
 import { nextTsid } from '../tsid.js'
+
+/**
+ * The collection or read list that has a name, whatever its capitals - which is how
+ * the reference looks one up, and what makes "Batman" and "batman" one list - or
+ * undefined. `exceptId` leaves one out, for asking whether a rename would collide.
+ */
+export async function setNamed(
+  db: Kysely<DB>,
+  table: 'collections' | 'readlists',
+  name: string,
+  exceptId?: string,
+): Promise<{ id: string } | undefined> {
+  let query = db
+    .selectFrom(table)
+    .select('id')
+    .where(sql<boolean>`lower(name) = lower(${name})`)
+  if (exceptId !== undefined) query = query.where('id', '!=', exceptId)
+  return query.orderBy('id').executeTakeFirst()
+}
 
 /** What putting something in the organisation did. */
 export type MembershipOutcome = 'created' | 'added' | 'present'
@@ -41,14 +60,16 @@ export async function addSeriesToCollection(
   name: string,
   seriesId: string,
 ): Promise<MembershipOutcome> {
-  const collection = await db.selectFrom('collections').select('id').where('name', '=', name).executeTakeFirst()
+  const collection = await setNamed(db, 'collections', name)
   const now = new Date().toISOString()
 
   if (collection === undefined) {
     const id = nextTsid()
     await db
       .insertInto('collections')
-      .values({ id, name, ordered: 1, created_date: now, last_modified_date: now })
+      // Not ordered by hand: nobody arranged it, so it lists by title, as the
+      // reference's does.
+      .values({ id, name, ordered: 0, created_date: now, last_modified_date: now })
       .execute()
     await db.insertInto('collection_series').values({ collection_id: id, series_id: seriesId, number: 0 }).execute()
     return 'created'
@@ -88,7 +109,7 @@ export async function addBookToReadList(
   bookId: string,
   number: number | null,
 ): Promise<MembershipOutcome> {
-  const readList = await db.selectFrom('readlists').select('id').where('name', '=', name).executeTakeFirst()
+  const readList = await setNamed(db, 'readlists', name)
   const now = new Date().toISOString()
 
   if (readList === undefined) {

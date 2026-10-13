@@ -132,16 +132,16 @@ cover or a metadata file changed without its book changing - is present since #1
 
 **Read** on 2026-10-13 beside `organisation/membership.ts` and the two route files.
 
-| Komga                                                                                                | Here                                    | Issue |
-| ---------------------------------------------------------------------------------------------------- | --------------------------------------- | ----- |
-| A series joins a collection, and a book a read list, by name; either is created when it is not there | Same (`organisation.test.ts`)           | -     |
-| A book goes where its document says, or to the end when that place is taken                          | Same                                    | -     |
-| Empty ones are removed when the trash is emptied, if the server is set to                            | Same                                    | -     |
-| A poster made of four members' posters when none was uploaded                                        | Present                                 | -     |
-| A name already in use is refused, on create and on update                                            | **Missing**: two can share a name       | #177  |
-| Matching a ComicRack list says when its name is taken (`ERR_1009`)                                   | **Missing**                             | #177  |
-| A ComicRack list that cannot be used is refused with a code (`ERR_1015`, `ERR_1029` to `ERR_1031`)   | **Differs**: a sentence, no code        | #177  |
-| A collection made from ComicInfo is unordered                                                        | **Differs**: marked as manually ordered | #177  |
+| Komga                                                                                                | Here                                        | Issue |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------- | ----- |
+| A series joins a collection, and a book a read list, by name; either is created when it is not there | Same (`organisation.test.ts`)               | -     |
+| A book goes where its document says, or to the end when that place is taken                          | Same                                        | -     |
+| Empty ones are removed when the trash is emptied, if the server is set to                            | Same                                        | -     |
+| A poster made of four members' posters when none was uploaded                                        | Present                                     | -     |
+| A name already in use is refused, on create and on update, whatever its capitals                     | Present since #177 (`organisation.test.ts`) | -     |
+| Matching a ComicRack list says when its name is taken (`ERR_1009`)                                   | Present since #177                          | -     |
+| A ComicRack list that cannot be used is refused with a code (`ERR_1015`, `ERR_1029` to `ERR_1031`)   | Present since #177                          | -     |
+| A collection made from ComicInfo is unordered, and one is found by name whatever its capitals        | Present since #177                          | -     |
 
 ### What analysis reports - `BookAnalyzer`
 

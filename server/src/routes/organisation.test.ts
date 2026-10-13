@@ -9,6 +9,7 @@ import { loadConfig } from '../config.js'
 import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
+import { addBookToReadList, addSeriesToCollection } from '../organisation/membership.js'
 import { requiredValue } from './query.js'
 
 const ADMIN_KEY = 'admin-key'
@@ -595,5 +596,157 @@ describe('the order somebody gave', () => {
     expect(requiredValue(named, 'readListId')).toBeUndefined()
     expect(requiredValue(undefined, 'collectionId')).toBeUndefined()
     expect(requiredValue('nonsense', 'collectionId')).toBeUndefined()
+  })
+})
+
+describe('a name belongs to one collection, and to one read list', () => {
+  const json = { ...admin, 'content-type': 'application/json' }
+
+  it('refuses a collection named as another is, whatever the capitals', async () => {
+    const { app, database } = await setup()
+
+    const taken = await app.inject({
+      method: 'POST',
+      url: '/api/v1/collections',
+      headers: json,
+      payload: { name: 'classics', ordered: false, seriesIds: ['S1'] },
+    })
+    expect(taken.statusCode).toBe(400)
+    expect(taken.json()).toEqual({ message: 'Collection name already exists' })
+    expect(await database.db.selectFrom('collections').select('id').execute()).toHaveLength(1)
+
+    // Its own name in other capitals is a rename, not a collision.
+    const recased = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/collections/C1',
+      headers: json,
+      payload: { name: 'CLASSICS' },
+    })
+    expect(recased.statusCode).toBe(204)
+
+    const other = await app.inject({
+      method: 'POST',
+      url: '/api/v1/collections',
+      headers: json,
+      payload: { name: 'Moderns', ordered: false, seriesIds: ['S1'] },
+    })
+    expect(other.statusCode).toBe(200)
+    const renamed = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/collections/${(other.json() as { id: string }).id}`,
+      headers: json,
+      payload: { name: 'Classics' },
+    })
+    expect(renamed.statusCode).toBe(400)
+    expect(renamed.json()).toEqual({ message: 'Collection name already exists' })
+    await app.close()
+  })
+
+  it('refuses a read list named as another is, whatever the capitals', async () => {
+    const { app, database } = await setup()
+
+    const taken = await app.inject({
+      method: 'POST',
+      url: '/api/v1/readlists',
+      headers: json,
+      payload: { name: 'FAVOURITES', bookIds: ['B1'] },
+    })
+    expect(taken.statusCode).toBe(400)
+    expect(taken.json()).toEqual({ message: 'Read list name already exists' })
+    expect(await database.db.selectFrom('readlists').select('id').execute()).toHaveLength(1)
+
+    expect(
+      (
+        await app.inject({
+          method: 'PATCH',
+          url: '/api/v1/readlists/RL1',
+          headers: json,
+          payload: { name: 'favourites' },
+        })
+      ).statusCode,
+    ).toBe(204)
+
+    const other = await app.inject({
+      method: 'POST',
+      url: '/api/v1/readlists',
+      headers: json,
+      payload: { name: 'Later', bookIds: ['B1'] },
+    })
+    const renamed = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/readlists/${(other.json() as { id: string }).id}`,
+      headers: json,
+      payload: { name: 'Favourites' },
+    })
+    expect(renamed.statusCode).toBe(400)
+    await app.close()
+  })
+
+  it('finds the one a document names in other capitals, instead of making a second', async () => {
+    const { app, database } = await setup()
+
+    expect(await addSeriesToCollection(database.db, 'classics', 'S1')).toBe('present')
+    expect(await addBookToReadList(database.db, 'FAVOURITES', 'B1', null)).toBe('present')
+    expect(await database.db.selectFrom('collections').select('id').execute()).toHaveLength(1)
+    expect(await database.db.selectFrom('readlists').select('id').execute()).toHaveLength(1)
+
+    // One a document creates was arranged by nobody, so it is not ordered by hand.
+    expect(await addSeriesToCollection(database.db, 'Cyberpunk', 'S1')).toBe('created')
+    expect(
+      await database.db.selectFrom('collections').select('ordered').where('name', '=', 'Cyberpunk').execute(),
+    ).toEqual([{ ordered: 0 }])
+    await app.close()
+  })
+})
+
+describe('a ComicRack list that cannot be used, or whose name is taken', () => {
+  const upload = (app: FastifyInstance, cbl: string) => {
+    const boundary = '----mlboundary'
+    return app.inject({
+      method: 'POST',
+      url: '/api/v1/readlists/match/comicrack',
+      headers: { ...admin, 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload:
+        `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="file"; filename="list.cbl"\r\n' +
+        'Content-Type: application/xml\r\n\r\n' +
+        `${cbl}\r\n` +
+        `--${boundary}--\r\n`,
+    })
+  }
+  const list = (inner: string) => `<ReadingList>${inner}</ReadingList>`
+
+  it('says why with the code the web UI has a sentence for', async () => {
+    const { app } = await setup()
+
+    const refusals: [string, string][] = [
+      ['<NotAReadingList />', 'ERR_1015'],
+      ['<ReadingList><Name>Cut off', 'ERR_1015'],
+      [list('<Books><Book Series="Akira" Number="1" /></Books>'), 'ERR_1030'],
+      [list('<Name>  </Name><Books><Book Series="Akira" Number="1" /></Books>'), 'ERR_1030'],
+      [list('<Name>Mine</Name><Books></Books>'), 'ERR_1029'],
+      [list('<Name>Mine</Name><Books><Book Number="1" /></Books>'), 'ERR_1031'],
+      [list('<Name>Mine</Name><Books><Book Series="Akira" /></Books>'), 'ERR_1031'],
+    ]
+    for (const [cbl, code] of refusals) {
+      const res = await upload(app, cbl)
+      expect([cbl, res.statusCode, res.json()]).toEqual([cbl, 400, { message: code }])
+    }
+    await app.close()
+  })
+
+  it('matches a list whose name is taken, and says the name is taken', async () => {
+    const { app } = await setup()
+    const books = '<Books><Book Series="Akira" Number="2" /></Books>'
+
+    const taken = await upload(app, list(`<Name>favourites</Name>${books}`))
+    expect(taken.statusCode).toBe(200)
+    const match = taken.json() as { readListMatch: { name: string; errorCode: string }; requests: unknown[] }
+    expect(match.readListMatch).toEqual({ name: 'favourites', errorCode: 'ERR_1009' })
+    expect(match.requests).toHaveLength(1)
+
+    const free = await upload(app, list(`<Name>Something new</Name>${books}`))
+    expect((free.json() as { readListMatch: unknown }).readListMatch).toEqual({ name: 'Something new', errorCode: '' })
+    await app.close()
   })
 })
