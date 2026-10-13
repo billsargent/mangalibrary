@@ -21,6 +21,7 @@ import { migration0019PdfPageSize } from './0019_pdf_page_size.js'
 import { migration0020Sidecars } from './0020_sidecars.js'
 import { migration0021PagelessBooks } from './0021_pageless_books.js'
 import { migration0022JobQueueIndexes } from './0022_job_queue_indexes.js'
+import { migration0023ListingIndexes } from './0023_listing_indexes.js'
 
 /**
  * Ordered migration registry, applied in id order by the runner.
@@ -52,4 +53,5 @@ export const migrations: Migration[] = [
   migration0020Sidecars,
   migration0021PagelessBooks,
   migration0022JobQueueIndexes,
+  migration0023ListingIndexes,
 ]

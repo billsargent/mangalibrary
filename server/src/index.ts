@@ -2,7 +2,7 @@ import { buildServer } from './app.js'
 import { homedir } from 'node:os'
 import { ConfigError, ensureWritable, loadConfig, namesDataDir, programConfigFile } from './config.js'
 import { adoptLegacyDataDir } from './data-dir.js'
-import { createDatabase } from './db/index.js'
+import { createDatabase, refreshStatistics } from './db/index.js'
 import { migrate } from './db/migrate.js'
 import { migrations } from './db/migrations/index.js'
 import { bundledUiDir, hasUiBundle } from './routes/ui.js'
@@ -23,6 +23,7 @@ async function main(): Promise<void> {
   const database = createDatabase(config.databaseFile)
 
   const { applied } = await migrate(database.db, migrations)
+  await refreshStatistics(database.db)
 
   const app = await buildServer({ config, database })
   if (applied.length > 0) app.log.info({ applied }, 'applied migrations')

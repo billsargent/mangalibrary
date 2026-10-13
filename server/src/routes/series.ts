@@ -527,23 +527,37 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
   const groups = async (req: FastifyRequest, body: Record<string, unknown>) => {
     const context = await contentContext(db, req)
     const filters = filtersFrom(context, (req.query ?? {}) as Record<string, unknown>, body)
-    const { rows } = await findSeries(db, context, filters, SERIES_DEFAULT_SORT, 0, 0, true)
-    if (rows.length === 0) return []
-
-    const metadata = await db
-      .selectFrom('series_metadata')
-      .select(['series_id', 'title_sort'])
-      .where(
-        'series_id',
-        'in',
-        rows.map((row) => row.id),
-      )
-      .execute()
-    const titleSort = new Map(metadata.map((row) => [row.series_id, row.title_sort]))
+    // What a letter is - a kana row, a digit, a letter without its accent - is
+    // decided in `groupOf`, so the counting stays here; but all it needs of a series
+    // is the title it is sorted by. A filter by read status is the one that cannot
+    // be asked of the database in one query, and takes the long way round.
+    let titles: string[]
+    if (filters.readStatuses.length > 0) {
+      const { rows } = await findSeries(db, context, filters, SERIES_DEFAULT_SORT, 0, 0, true)
+      if (rows.length === 0) return []
+      const metadata = await db
+        .selectFrom('series_metadata')
+        .select(['series_id', 'title_sort'])
+        .where(
+          'series_id',
+          'in',
+          rows.map((row) => row.id),
+        )
+        .execute()
+      const titleSort = new Map(metadata.map((row) => [row.series_id, row.title_sort]))
+      titles = rows.map((row) => titleSort.get(row.id) ?? row.name)
+    } else {
+      if (filters.libraryIds.length === 0) return []
+      const rows = await seriesQuery(db, filters, context.restrictedSeriesIds)
+        .select(['series_metadata.title_sort'])
+        .execute()
+      titles = rows.map((row) => row.title_sort)
+    }
+    if (titles.length === 0) return []
 
     const counts = new Map<string, number>()
-    for (const row of rows) {
-      const group = groupOf(titleSort.get(row.id) ?? row.name)
+    for (const title of titles) {
+      const group = groupOf(title)
       counts.set(group, (counts.get(group) ?? 0) + 1)
     }
     return [...counts.entries()]

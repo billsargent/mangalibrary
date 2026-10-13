@@ -402,8 +402,11 @@ function bookReadStatus(node: unknown, context: ConditionContext): ConditionResu
   }
 
   const completed = value === 'READ' ? 1 : 0
-  const exists = sql<boolean>`exists (select 1 from read_progress where read_progress.user_id = ${context.userId} and read_progress.book_id = books.id and read_progress.completed = ${completed})`
-  const anyRow = sql<boolean>`exists (select 1 from read_progress where read_progress.user_id = ${context.userId} and read_progress.book_id = books.id)`
+  // Lists of ids rather than a question asked of each book: the database can then
+  // start from the reader's progress, which is a handful of rows, where "exists"
+  // made it look at every book in the library to find the five being read.
+  const exists = sql<boolean>`books.id in (select book_id from read_progress where user_id = ${context.userId} and completed = ${completed})`
+  const anyRow = sql<boolean>`books.id in (select book_id from read_progress where user_id = ${context.userId})`
 
   if (read.operator === 'is') {
     if (value === 'UNREAD') return { filter: sql<boolean>`not (${anyRow})` }

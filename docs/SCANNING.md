@@ -183,3 +183,19 @@ ComicInfo each), on one task thread, on Windows, with the built server:
 At that rate the whole library is readable in about two hours. Before the order above was
 arranged (#184) the same library analysed one book a second, after forty minutes in
 which it analysed none.
+
+## Listing a large library
+
+What a page of a listing costs must not depend on how large the library is. Three things
+keep it so (#162):
+
+- The database is told what its tables hold (`refreshStatistics`: at start, after a scan
+  that changed anything, once a day). SQLite plans by statistics and gathers none unless
+  asked; without them it read a whole library to find the books of one series.
+- A listing joins only the tables its filters and its sort name.
+- A listing narrowed by nothing but its library is read off the index of what it is
+  sorted by, in order, and stops after a page. The orders with such an index are series
+  title, number, date added and release date.
+
+On 200,000 books a page of any of these is under 50 ms; before, the lists of books were
+about half a second.
