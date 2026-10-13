@@ -30,6 +30,7 @@ import {
 } from './hashing/books.js'
 import { JOB_PRIORITY, enqueueJob, enqueueJobs, type JobRecord } from './jobs.js'
 import { analyzeBook } from './media/analyze.js'
+import { booksToConvert, convertBookToCbz } from './media/convert.js'
 import { insideRootOnDisk } from './media/scan.js'
 import {
   pagesToRemoveAutomatically,
@@ -453,6 +454,22 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       // asks, and the worker does the rewriting.
       const removals = await queueAutomaticRemovals(context, libraryId)
       if (removals > 0) log.info({ libraryId, removals }, 'queued duplicate pages to remove')
+
+      // A library that asks for its CBRs as CBZs gets them one book at a time, at
+      // the lowest priority: nothing a reader does waits on it. Only analysed books
+      // are asked for, so one added by this scan is converted after the next.
+      const conversions = await booksToConvert(db, libraryId)
+      await enqueueJobs(
+        db,
+        conversions.map((bookId) => ({
+          type: 'ConvertBook',
+          uniqueKey: `CONVERT_BOOK_${bookId}`,
+          priority: JOB_PRIORITY.LOWEST,
+          payload: { bookId },
+        })),
+      )
+      if (conversions.length > 0)
+        log.info({ libraryId, conversions: conversions.length }, 'queued books to convert to CBZ')
       return
     }
 
@@ -647,6 +664,19 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
 
     case 'RemoveHashedPages':
       return removePages(context, job)
+
+    case 'ConvertBook': {
+      const bookId = text((job.payload as { bookId?: unknown }).bookId)
+      if (bookId === null) return log.warn({ job: job.id }, 'ConvertBook without a book')
+
+      const result = await convertBookToCbz(db, bookId)
+      if (result.status !== 'CONVERTED') return log.info({ bookId, ...result }, 'did not convert a book to CBZ')
+
+      // The book is another file now, which a client showing it has to hear of.
+      const ref = await bookRef(db, bookId)
+      if (ref) announceBook(context.events, 'BookChanged', ref)
+      return log.info({ bookId, from: result.from, to: result.to }, 'converted a book to CBZ')
+    }
 
     case 'RegenerateBookThumbnails':
       return regenerateThumbnails(context, job.payload as ThumbnailPayload, job.priority)

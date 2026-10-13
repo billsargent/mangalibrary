@@ -10,6 +10,8 @@
  * are no threads, so the two cannot drift apart.
  */
 
+import { createWriteStream } from 'node:fs'
+import { pipeline } from 'node:stream/promises'
 import { isMainThread, threadId } from 'node:worker_threads'
 
 import { fileHash, koreaderHash, pageHash } from '../hashing/hashes.js'
@@ -19,6 +21,7 @@ import { inspectBook, type BookInspection } from '../media/inspect.js'
 import { isbnBarcodePatch } from '../metadata/barcode.js'
 import { readBookDocuments, type BookDocumentsRead } from '../metadata/document.js'
 import { posterOf } from '../thumbnails/poster.js'
+import { zipStream } from '../zip.js'
 
 /** Describe what is inside a book. Never throws for a bad file. */
 export async function inspect(input: {
@@ -99,6 +102,52 @@ export async function readPage(input: {
     return { bytes: await book.readPage(input.pageNumber), mediaType: page.mediaType }
   } catch {
     return { failed: 'PAGE' }
+  }
+}
+
+/**
+ * Write the named entries of a book into a new ZIP, and say whether the ZIP then
+ * holds every one of them.
+ *
+ * Entries go across one at a time, so a book of any size costs the memory of its
+ * largest page. The answer comes from opening what was written, not from having
+ * written it without an error: the file about to replace a book has to be shown
+ * to be one. Throws nothing; a failure is `ok: false`, and the caller removes
+ * whatever was left behind.
+ */
+export async function convertToZip(input: {
+  source: string
+  target: string
+  names: string[]
+}): Promise<{ ok: boolean }> {
+  try {
+    const book = await openBook(input.source)
+    try {
+      const pageNumbers = new Map(book.pages.map((page, index) => [page.fileName, index + 1]))
+      const entries = input.names.map((name) => ({
+        name,
+        read: () => {
+          const pageNumber = pageNumbers.get(name)
+          return pageNumber === undefined ? book.readResource(name) : book.readPage(pageNumber)
+        },
+      }))
+      await pipeline(zipStream(entries), createWriteStream(input.target))
+    } finally {
+      book.close()
+    }
+
+    const written = await openBook(input.target, 'ZIP')
+    try {
+      const holds = new Set([
+        ...written.pages.map((page) => page.fileName),
+        ...written.files.map((file) => file.fileName),
+      ])
+      return { ok: input.names.every((name) => holds.has(name)) }
+    } finally {
+      written.close()
+    }
+  } catch {
+    return { ok: false }
   }
 }
 

@@ -122,7 +122,8 @@ describe('history', () => {
     // A null series or book is left out rather than sent as null.
     expect(page.content[1]).toEqual({
       id: 'E3',
-      type: 'SERIES_FOLDER_DELETED',
+      // Stored in capitals, and sent under the name the reference gives it.
+      type: 'SeriesFolderDeleted',
       timestamp: '2024-02-01T00:00:00Z',
       properties: {},
     })

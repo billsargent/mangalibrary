@@ -23,6 +23,12 @@ export interface ZipEntry {
   path?: string
   /** The bytes themselves, when the entry comes from inside another archive. */
   bytes?: Buffer
+  /**
+   * Where to get the bytes when it is this entry's turn to be written. An archive
+   * rewritten from another holds one entry in memory at a time this way, not all
+   * of them.
+   */
+  read?: () => Promise<Buffer>
 }
 
 const LOCAL_HEADER = 0x04034b50
@@ -187,7 +193,7 @@ async function* write(entries: ZipEntry[]): AsyncGenerator<Buffer> {
     const crc = new Crc32()
     let size = 0
     if (entry.path === undefined) {
-      const buffer = entry.bytes ?? Buffer.alloc(0)
+      const buffer = entry.bytes ?? (await entry.read?.()) ?? Buffer.alloc(0)
       crc.update(buffer)
       size = buffer.length
       yield buffer

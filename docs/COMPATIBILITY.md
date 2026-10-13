@@ -637,6 +637,22 @@ does. Which characters make a letter of the navigation, and that everything else
 - The web UI keeps the chosen letter in the address as `?nav=`, as the legacy interface
   did.
 
+## Converting CBR to CBZ
+
+A library's "Automatically convert CBR to CBZ" is carried out as the reference carries
+it out: after a scan, each analysed RAR book of the library is written as a CBZ beside
+it (stored, not compressed), the CBZ is opened and checked to hold every page and file,
+and only then is the CBR removed and the book pointed at the new file. The book keeps
+its id, and with it read progress, metadata and the hashes of its pages. The history
+records `BookFileDeleted` and `BookConverted`.
+
+- A CBZ of that name already beside the CBR is never written over.
+- A conversion that fails leaves the CBR untouched and is not tried again until the
+  server restarts, as in the reference.
+- A book added by a scan is converted after the next one, once it has been analysed.
+- History events are sent under the reference's names (`BookConverted`); this server
+  stores some of them in capitals (`BOOK_CONVERTED`).
+
 ## PDF pages
 
 A page of a PDF is drawn when it is asked for and sent as a JPEG, as the reference
