@@ -359,6 +359,10 @@
     "defaultMessage": "Create",
     "description": "Collection add to: create button label"
   },
+  "4fiwhi": {
+    "defaultMessage": "Disk space",
+    "description": "Metrics page: total size of book files on disk"
+  },
   "4g2M9O": {
     "defaultMessage": "No series found",
     "description": "Series picker dialog: no results empty state - title"
@@ -418,6 +422,14 @@
   "64/Mdx": {
     "defaultMessage": "You do not have permission to view this page.",
     "description": "Navigation guard: the signed-in user does not have the role a page requires"
+  },
+  "641OVa": {
+    "defaultMessage": "Tasks executed",
+    "description": "Metrics page: chart of how many tasks of each type ran"
+  },
+  "6CgcQc": {
+    "defaultMessage": "Books",
+    "description": "Metrics page: number of books"
   },
   "6F1ebQ": {
     "defaultMessage": "HTTP Server",
@@ -683,6 +695,10 @@
     "defaultMessage": "Left",
     "description": "Page comparison table: table header - left"
   },
+  "AsI+jT": {
+    "defaultMessage": "Read lists",
+    "description": "Metrics page: number of read lists"
+  },
   "B2wcN0": {
     "defaultMessage": "Import ISBN from barcode",
     "description": "Form add/edit library: Metadata - isbn barcode"
@@ -911,6 +927,10 @@
     "defaultMessage": "PDF",
     "description": "Form add/edit library: Scanner - file types: pdf"
   },
+  "EQ5RFX": {
+    "defaultMessage": "Counted since the server last started.",
+    "description": "Metrics page: explains that task figures restart with the server"
+  },
   "EabQ38": {
     "defaultMessage": "Remember me",
     "description": "Server settings: section header for remember me"
@@ -918,6 +938,10 @@
   "EbhcQd": {
     "defaultMessage": "Details",
     "description": "Import books table header: details"
+  },
+  "EjsPUB": {
+    "defaultMessage": "Cover files",
+    "description": "Metrics page: number of cover image files found beside books and series"
   },
   "EnHAAa": {
     "defaultMessage": "PDF",
@@ -1047,6 +1071,10 @@
     "defaultMessage": "Date Time",
     "description": "History Table table header: Date Time"
   },
+  "HO+yGb": {
+    "defaultMessage": "Libraries",
+    "description": "Metrics page: heading of the section about what the libraries hold"
+  },
   "HOBFqq": {
     "defaultMessage": "error",
     "description": "Common message: an unknown error happened"
@@ -1074,6 +1102,10 @@
   "HdsnFp": {
     "defaultMessage": "Collection deleted: {collection}",
     "description": "Snackbar notification shown upon successful collection deletion"
+  },
+  "Heh/9C": {
+    "defaultMessage": "Collections",
+    "description": "Metrics page: number of collections"
   },
   "Hl9H/B": {
     "defaultMessage": "Media",
@@ -2035,6 +2067,10 @@
     "defaultMessage": "Reader settings",
     "description": "EPUB reader: settings button and heading"
   },
+  "aAmYxz": {
+    "defaultMessage": "Nothing has run yet",
+    "description": "Metrics page: shown in a task chart when no task has run"
+  },
   "aDFZOW": {
     "defaultMessage": "Email",
     "description": "Claim server screen: email field label"
@@ -2439,6 +2475,10 @@
     "defaultMessage": "Generated poster size",
     "description": "Server settings: selection of poster size"
   },
+  "eQP+TQ": {
+    "defaultMessage": "Series",
+    "description": "Metrics page: number of series"
+  },
   "eRJOa6": {
     "defaultMessage": "Server base URL",
     "description": "Server settings: input field for server base URL"
@@ -2750,6 +2790,10 @@
   "f5M08C": {
     "defaultMessage": "Search results for \"{term}\"",
     "description": "Search page: title naming what was searched for"
+  },
+  "fLSbYJ": {
+    "defaultMessage": "Tasks total time",
+    "description": "Metrics page: chart of the time spent on each type of task"
   },
   "fQIepD": {
     "defaultMessage": "Books",
@@ -3723,6 +3767,10 @@
     "defaultMessage": "Release year",
     "description": "Filter panel: Release year"
   },
+  "y+lImT": {
+    "defaultMessage": "No library yet",
+    "description": "Metrics page: shown in a per-library chart when the server has no library"
+  },
   "y1Fk/a": {
     "defaultMessage": "No results",
     "description": "Search empty state: title"
@@ -3754,6 +3802,10 @@
   "yl2ic7": {
     "defaultMessage": "Cycle page margin",
     "description": "Reader shortcut: cycle page margin"
+  },
+  "yo9gG5": {
+    "defaultMessage": "Tasks",
+    "description": "Metrics page: heading of the section about background tasks"
   },
   "yrE0Rx": {
     "defaultMessage": "Details",

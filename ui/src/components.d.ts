@@ -153,6 +153,7 @@ declare module 'vue' {
     LibraryTabNavigation: typeof import('./components/library/TabNavigation.vue')['default']
     LocaleSelector: typeof import('./components/LocaleSelector.vue')['default']
     LockIcon: typeof import('./components/LockIcon.vue')['default']
+    MetricsBars: typeof import('./components/metrics/Bars.vue')['default']
     NavigationBreadcrumbs: typeof import('./components/navigation/NavigationBreadcrumbs.vue')['default']
     OverviewSection: typeof import('./components/OverviewSection.vue')['default']
     PageHashKnownTable: typeof import('./components/pageHash/KnownTable.vue')['default']

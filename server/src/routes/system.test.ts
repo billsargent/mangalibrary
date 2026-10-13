@@ -252,3 +252,41 @@ describe('announcements', () => {
     await app.close()
   })
 })
+
+describe('metrics', () => {
+  it('lists the metrics and reads one, for an administrator only', async () => {
+    const { app } = await setup()
+
+    const names = await app.inject({ method: 'GET', url: '/actuator/metrics', headers: admin })
+    expect(names.statusCode).toBe(200)
+    expect(names.json().names).toContain('komga.books')
+
+    const books = await app.inject({ method: 'GET', url: '/actuator/metrics/komga.books', headers: admin })
+    expect(books.statusCode).toBe(200)
+    expect(books.json()).toMatchObject({
+      name: 'komga.books',
+      measurements: [{ statistic: 'VALUE', value: 0 }],
+      availableTags: [],
+    })
+
+    for (const url of ['/actuator/metrics', '/actuator/metrics/komga.books']) {
+      expect((await app.inject({ method: 'GET', url, headers: reader })).statusCode).toBe(403)
+      expect((await app.inject({ method: 'GET', url })).statusCode).toBe(401)
+    }
+
+    await app.close()
+  })
+
+  it('says when there is no such metric, and when a tag is not a tag', async () => {
+    const { app } = await setup()
+    const status = async (url: string) => (await app.inject({ method: 'GET', url, headers: admin })).statusCode
+
+    expect(await status('/actuator/metrics/komga.nothing')).toBe(404)
+    expect(await status('/actuator/metrics/komga.books?tag=library:nowhere')).toBe(404)
+    expect(await status('/actuator/metrics/komga.books?tag=library')).toBe(400)
+    // Several tags arrive as a repeated parameter.
+    expect(await status('/actuator/metrics/komga.books?tag=library:a&tag=type:b')).toBe(404)
+
+    await app.close()
+  })
+})
