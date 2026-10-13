@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
@@ -9,6 +9,9 @@ import { loadConfig } from '../config.js'
 import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
+
+/** A folder that is really there, as a library's root has to be. */
+const folder = (): string => realpathSync.native(mkdtempSync(join(tmpdir(), 'ml-api-library-')))
 
 const ADMIN_KEY = 'admin-api-key'
 const READER_KEY = 'reader-api-key'
@@ -219,7 +222,7 @@ describe('libraries', () => {
       method: 'POST',
       url: '/api/v1/libraries',
       headers: admin,
-      payload: { name: 'Comics', root: '/comics', scanDirectoryExclusions: ['#recycle', 'lost+found'] },
+      payload: { name: 'Comics', root: folder(), scanDirectoryExclusions: ['#recycle', 'lost+found'] },
     })
     expect(created.statusCode).toBe(200)
     const dto = created.json() as { id: string; name: string; scanDirectoryExclusions: string[] }
@@ -275,7 +278,7 @@ describe('libraries', () => {
       method: 'POST',
       url: '/api/v1/libraries',
       headers: admin,
-      payload: { name: 'Comics', root: '/comics' },
+      payload: { name: 'Comics', root: folder() },
     })
     const { id } = created.json() as { id: string }
 
@@ -304,8 +307,102 @@ describe('libraries', () => {
     expect((await patch({ root })).statusCode).toBe(204)
     expect(await jobTypes()).toEqual([])
 
-    expect((await patch({ root: '/somewhere/else' })).statusCode).toBe(204)
+    expect((await patch({ root: folder() })).statusCode).toBe(204)
     expect(await jobTypes()).toEqual(['ScanLibrary'])
+    await app.close()
+  })
+
+  it('scans again when what it scans for changes, or when work on its books is switched on', async () => {
+    const { app, database } = await setup()
+    const patch = (payload: Record<string, unknown>) =>
+      app.inject({ method: 'PATCH', url: '/api/v1/libraries/L1', headers: admin, payload })
+    /** Whether the change asked for a scan, emptying the queue for the next one. */
+    const scanned = async (payload: Record<string, unknown>): Promise<boolean> => {
+      expect((await patch(payload)).statusCode).toBe(204)
+      const jobs = await database.db.selectFrom('jobs').select('type').execute()
+      await database.db.deleteFrom('jobs').execute()
+      return jobs.some((job) => job.type === 'ScanLibrary')
+    }
+    const current = await database.db
+      .selectFrom('libraries')
+      .selectAll()
+      .where('id', '=', 'L1')
+      .executeTakeFirstOrThrow()
+
+    // What a scan would find is different now.
+    expect(await scanned({ scanPdf: current.scan_pdf !== 1 })).toBe(true)
+    expect(await scanned({ scanDirectoryExclusions: ['#recycle'] })).toBe(true)
+    expect(await scanned({ oneshotsDirectory: '_oneshots' })).toBe(true)
+    // Said again with the same value, nothing changed.
+    expect(await scanned({ oneshotsDirectory: '_oneshots' })).toBe(false)
+
+    // Work on the books already there is queued by a scan.
+    await database.db
+      .updateTable('libraries')
+      .set({ hash_pages: 0, convert_to_cbz: 0 })
+      .where('id', '=', 'L1')
+      .execute()
+    expect(await scanned({ hashPages: true })).toBe(true)
+    expect(await scanned({ convertToCbz: true })).toBe(true)
+    // Switching it off, or changing what has nothing to do with the files, does not.
+    expect(await scanned({ hashPages: false })).toBe(false)
+    expect(await scanned({ seriesCover: 'LAST' })).toBe(false)
+    await app.close()
+  })
+
+  it('refuses a library the reference would refuse', async () => {
+    const { app, database } = await setup()
+    const create = (payload: Record<string, unknown>) =>
+      app.inject({ method: 'POST', url: '/api/v1/libraries', headers: admin, payload })
+    const refused = async (response: { statusCode: number; json: () => unknown }) => {
+      expect(response.statusCode).toBe(400)
+      return (response.json() as { message: string }).message
+    }
+
+    const outer = folder()
+    const inner = join(outer, 'manga')
+    mkdirSync(inner)
+    const file = join(outer, 'not-a-folder.txt')
+    writeFileSync(file, 'x')
+
+    expect(await refused(await create({ name: 'Gone', root: join(outer, 'missing') }))).toContain('does not exist')
+    expect(await refused(await create({ name: 'File', root: file }))).toContain('is not a folder')
+
+    expect((await create({ name: 'Manga', root: inner })).statusCode).toBe(200)
+    expect(await refused(await create({ name: 'Manga', root: folder() }))).toBe('Library name already exists')
+    // The same folder, the folder around it and a folder inside it are all one library's files.
+    expect(await refused(await create({ name: 'Again', root: inner }))).toContain('child of existing library Manga')
+    expect(await refused(await create({ name: 'Around', root: outer }))).toContain('parent of existing library Manga')
+    mkdirSync(join(inner, 'shonen'))
+    expect(await refused(await create({ name: 'Inside', root: join(inner, 'shonen') }))).toContain(
+      'child of existing library Manga',
+    )
+    // Nothing was added by a refusal, and nothing was queued for one.
+    expect((await database.db.selectFrom('libraries').select('name').execute()).map((row) => row.name)).not.toContain(
+      'Around',
+    )
+
+    // The same on an update - for what is being changed, and only that.
+    const manga = await database.db
+      .selectFrom('libraries')
+      .select('id')
+      .where('name', '=', 'Manga')
+      .executeTakeFirstOrThrow()
+    const patch = (id: string, payload: Record<string, unknown>) =>
+      app.inject({ method: 'PATCH', url: `/api/v1/libraries/${id}`, headers: admin, payload })
+    const other = (await create({ name: 'Comics', root: folder() })).json() as { id: string }
+
+    expect(await refused(await patch(other.id, { name: 'Manga' }))).toBe('Library name already exists')
+    expect(await refused(await patch(other.id, { root: join(inner, 'shonen') }))).toContain('child of existing library')
+    expect(await refused(await patch(other.id, { root: join(outer, 'missing') }))).toContain('does not exist')
+    // A library is not in its own way, and one whose folder has gone can still be edited.
+    expect((await patch(manga.id, { name: 'Manga', root: inner })).statusCode).toBe(204)
+    await database.db
+      .updateTable('libraries')
+      .set({ root: join(outer, 'missing') })
+      .where('id', '=', other.id)
+      .execute()
+    expect((await patch(other.id, { hashFiles: false })).statusCode).toBe(204)
     await app.close()
   })
 })
