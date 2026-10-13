@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_HOST, DEFAULT_PORT, loadConfig } from './config.js'
+import { DEFAULT_HOST, DEFAULT_PORT, loadConfig, namesDataDir } from './config.js'
 
 function tempDir(): string {
   return mkdtempSync(join(tmpdir(), 'ml-config-'))
@@ -15,6 +15,30 @@ describe('loadConfig', () => {
     expect(config.host).toBe(DEFAULT_HOST)
     expect(config.logLevel).toBe('info')
     expect(config.databaseFile.endsWith('database.sqlite')).toBe(true)
+  })
+
+  it('keeps its data in a directory of its own unless told otherwise', () => {
+    const config = loadConfig({} as NodeJS.ProcessEnv)
+    expect(config.configDir.endsWith('.mangalibrary')).toBe(true)
+    expect(config.databaseFile).toBe(join(config.configDir, 'database.sqlite'))
+  })
+
+  it('reads a setting by its name, and still by the name it used to have', () => {
+    const current = tempDir()
+    const former = tempDir()
+    expect(loadConfig({ MANGALIBRARY_CONFIG_DIR: current } as NodeJS.ProcessEnv).configDir).toBe(current)
+    expect(loadConfig({ KOMGA_CONFIG_DIR: former } as NodeJS.ProcessEnv).configDir).toBe(former)
+    // Named both ways, the name it has now is the one meant.
+    expect(
+      loadConfig({ MANGALIBRARY_CONFIG_DIR: current, KOMGA_CONFIG_DIR: former } as NodeJS.ProcessEnv).configDir,
+    ).toBe(current)
+
+    expect(
+      loadConfig({ MANGALIBRARY_CONFIG_DIR: current, MANGALIBRARY_WORKER_THREADS: 'false' } as NodeJS.ProcessEnv)
+        .workerThreads,
+    ).toBe(false)
+    expect(namesDataDir({ KOMGA_CONFIG_DIR: former } as NodeJS.ProcessEnv)).toBe(true)
+    expect(namesDataDir({} as NodeJS.ProcessEnv)).toBe(false)
   })
 
   it('reads environment overrides', () => {

@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+import { defaultDataDir } from './data-dir.js'
+
 /** Effective server configuration. */
 export interface Config {
   /** Directory holding the database, logs and optional config file. */
@@ -120,21 +122,39 @@ function toSwitch(value: string | undefined, fallback: boolean): boolean {
 }
 
 /**
+ * A setting from the environment, by the name it has now or the name it had.
+ *
+ * The settings were first named after Komga (`KOMGA_CONFIG_DIR`). They are named
+ * after this project now, and the old names are still read so that a setup
+ * written for an earlier version goes on starting. The new name wins.
+ */
+function setting(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  return env[`MANGALIBRARY_${name}`] ?? env[`KOMGA_${name}`]
+}
+
+/** Whether the environment names the data directory, under either name. */
+export function namesDataDir(env: NodeJS.ProcessEnv = process.env): boolean {
+  return setting(env, 'CONFIG_DIR') !== undefined
+}
+
+/**
  * Resolve configuration from environment variables, falling back to
  * `config.json` in the config directory, then to defaults.
  *
  * Precedence: environment > config file > defaults.
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const configDir = resolve(env.KOMGA_CONFIG_DIR ?? join(homedir(), '.komga'))
+  const configDir = resolve(setting(env, 'CONFIG_DIR') ?? defaultDataDir(homedir()))
   const fileConfig = readFileConfig(join(configDir, 'config.json'))
 
   const configuredPort = env.SERVER_PORT ?? env.PORT ?? fileConfig.port?.toString()
   const port = toNumber(configuredPort, DEFAULT_PORT, 'port')
   const host = env.SERVER_HOST ?? fileConfig.host ?? DEFAULT_HOST
   const logLevel = env.LOG_LEVEL ?? fileConfig.logLevel ?? DEFAULT_LOG_LEVEL
-  const sessionTtlMs = toNumber(env.KOMGA_SESSION_TTL_MS, DEFAULT_SESSION_TTL_MS, 'session TTL')
-  const databaseFile = resolve(env.KOMGA_DATABASE_FILE ?? fileConfig.databaseFile ?? join(configDir, 'database.sqlite'))
+  const sessionTtlMs = toNumber(setting(env, 'SESSION_TTL_MS'), DEFAULT_SESSION_TTL_MS, 'session TTL')
+  const databaseFile = resolve(
+    setting(env, 'DATABASE_FILE') ?? fileConfig.databaseFile ?? join(configDir, 'database.sqlite'),
+  )
 
   return {
     configDir,
@@ -144,11 +164,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     configuredPort: configuredPort === undefined || configuredPort === '' ? null : port,
     logLevel,
     sessionTtlMs,
-    announcementsUrl: toUrl(env.KOMGA_ANNOUNCEMENTS_URL ?? fileConfig.announcementsUrl),
-    releasesUrl: toUrl(env.KOMGA_RELEASES_URL ?? fileConfig.releasesUrl),
-    corsAllowedOrigins: toList(env.KOMGA_CORS_ALLOWED_ORIGINS ?? fileConfig.corsAllowedOrigins),
-    fontsDir: resolve(env.KOMGA_FONTS_DIR ?? fileConfig.fontsDir ?? join(configDir, 'fonts')),
-    uiDir: toDirectory(env.KOMGA_UI_DIR ?? fileConfig.uiDir),
-    workerThreads: toSwitch(env.KOMGA_WORKER_THREADS, fileConfig.workerThreads ?? true),
+    announcementsUrl: toUrl(setting(env, 'ANNOUNCEMENTS_URL') ?? fileConfig.announcementsUrl),
+    releasesUrl: toUrl(setting(env, 'RELEASES_URL') ?? fileConfig.releasesUrl),
+    corsAllowedOrigins: toList(setting(env, 'CORS_ALLOWED_ORIGINS') ?? fileConfig.corsAllowedOrigins),
+    fontsDir: resolve(setting(env, 'FONTS_DIR') ?? fileConfig.fontsDir ?? join(configDir, 'fonts')),
+    uiDir: toDirectory(setting(env, 'UI_DIR') ?? fileConfig.uiDir),
+    workerThreads: toSwitch(setting(env, 'WORKER_THREADS'), fileConfig.workerThreads ?? true),
   }
 }
