@@ -130,9 +130,28 @@ cover or a metadata file changed without its book changing - is present since #1
 
 ### Collections and read lists - `SeriesCollectionLifecycle`, `ReadListLifecycle`, `ReadListMatcher`
 
-Create, update, delete, posters, the ComicRack list match and the removal of empty ones
-exist and have tests (`organisation.test.ts`). Manual order was not honoured until #148.
-**Not examined** method by method.
+**Read** on 2026-10-13 beside `organisation/membership.ts` and the two route files.
+
+| Komga                                                                                                | Here                                    | Issue |
+| ---------------------------------------------------------------------------------------------------- | --------------------------------------- | ----- |
+| A series joins a collection, and a book a read list, by name; either is created when it is not there | Same (`organisation.test.ts`)           | -     |
+| A book goes where its document says, or to the end when that place is taken                          | Same                                    | -     |
+| Empty ones are removed when the trash is emptied, if the server is set to                            | Same                                    | -     |
+| A poster made of four members' posters when none was uploaded                                        | Present                                 | -     |
+| A name already in use is refused, on create and on update                                            | **Missing**: two can share a name       | #177  |
+| Matching a ComicRack list says when its name is taken (`ERR_1009`)                                   | **Missing**                             | #177  |
+| A ComicRack list that cannot be used is refused with a code (`ERR_1015`, `ERR_1029` to `ERR_1031`)   | **Differs**: a sentence, no code        | #177  |
+| A collection made from ComicInfo is unordered                                                        | **Differs**: marked as manually ordered | #177  |
+
+### What analysis reports - `BookAnalyzer`
+
+**Read** on 2026-10-13 for the outcomes only, not for how each format is read.
+
+| Komga                                                                                                                                   | Here                                                         | Issue |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----- |
+| A book that cannot be read, or is of no supported kind, is recorded with a code                                                         | Present for three codes (`ERR_1000`, `ERR_1001`, `ERR_1005`) | -     |
+| A book with no pages is an error (`ERR_1006`)                                                                                           | **Differs**: recorded as ready, with no pages                | #178  |
+| Unrecognised entries, a missing file, encrypted and multi-volume RARs, a malformed EPUB and the EPUB parts that failed each have a code | **Missing**: all are `ERR_1005` or not recorded              | #178  |
 
 ### Metadata - `MetadataApplier`, `MetadataAggregator`, `BookMetadataLifecycle`, `SeriesMetadataLifecycle`
 
