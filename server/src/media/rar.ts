@@ -1,5 +1,6 @@
 import { createExtractorFromData, createExtractorFromFile } from 'node-unrar-js'
 
+import { ANALYSIS_ERRORS, BookProblem } from './problems.js'
 import { MAX_ENTRY_BYTES, type Container } from './zip.js'
 
 /** The part of the library's extractor this file reaches into. */
@@ -71,8 +72,25 @@ export async function openRar(source: string | Buffer): Promise<Container> {
   }
 
   takeTurn()
-  const list = extractor.getFileList()
-  const headers = [...list.fileHeaders].filter((header) => !header.flags.directory)
+  // Two kinds of RAR are not read, as the reference does not read them: one that
+  // needs a password, and one that is a part of a set. An archive whose very list
+  // of files is encrypted cannot be listed, which is the same answer.
+  const encrypted = (): BookProblem =>
+    new BookProblem('Encrypted RAR archives are not supported', ANALYSIS_ERRORS.encryptedRar, true)
+  let list
+  let all
+  try {
+    list = extractor.getFileList()
+    all = [...list.fileHeaders]
+  } catch (error) {
+    if (/PASSWORD/i.test(String((error as { reason?: unknown }).reason ?? (error as Error).message))) throw encrypted()
+    throw error
+  }
+  if (list.arcHeader.flags.volume) {
+    throw new BookProblem('Multi-Volume RAR archives are not supported', ANALYSIS_ERRORS.multiVolumeRar, true)
+  }
+  if (list.arcHeader.flags.headerEncrypted || all.some((header) => header.flags.encrypted)) throw encrypted()
+  const headers = all.filter((header) => !header.flags.directory)
 
   const sizes = new Map<string, number>()
   for (const header of headers) sizes.set(header.name, header.unpSize)

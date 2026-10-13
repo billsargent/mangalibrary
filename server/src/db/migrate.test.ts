@@ -81,6 +81,7 @@ describe('migrate', () => {
       '0018_content_version',
       '0019_pdf_page_size',
       '0020_sidecars',
+      '0021_pageless_books',
     ])
 
     // One row per hash, keeping the largest size and the highest delete count, and

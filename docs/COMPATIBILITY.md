@@ -637,6 +637,15 @@ does. Which characters make a letter of the navigation, and that everything else
 - The web UI keeps the chosen letter in the address as `?nav=`, as the legacy interface
   did.
 
+## What analysis reports
+
+A book that cannot be analysed is recorded with the reference's code for why, which the
+web UI turns into a sentence. Where it differs:
+
+- `ERR_1005`, the reference's "unknown error", is followed by the error's own words.
+- `ERR_1007`, `ERR_1008` and `ERR_1036` to `ERR_1039` are never reported: they
+  describe steps of the reference's analysis that this server does not take.
+
 ## Reading metadata
 
 What a book and a series are given from their files follows the reference's rules, read

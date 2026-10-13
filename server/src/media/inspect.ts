@@ -3,7 +3,8 @@ import sharp from 'sharp'
 import { computePositions } from './epub.js'
 import { openBook } from './index.js'
 import { isImageEntry } from './kinds.js'
-import type { Position, TocEntry } from './types.js'
+import { ANALYSIS_ERRORS, BookProblem, fileProblem } from './problems.js'
+import type { EpubInfo, Position, TocEntry } from './types.js'
 
 /**
  * Looking inside a book, without a database.
@@ -15,15 +16,12 @@ import type { Position, TocEntry } from './types.js'
 
 export type AnalysisStatus = 'READY' | 'ERROR' | 'UNSUPPORTED'
 
-/**
- * The codes the reference puts in `media.comment` when analysis fails, kept so a
- * client that reads them keeps working.
- */
-export const ANALYSIS_ERRORS = {
-  unreadable: 'ERR_1000',
-  unsupported: 'ERR_1001',
-  unknown: 'ERR_1005',
-} as const
+export { ANALYSIS_ERRORS }
+
+/** A book that could not be analysed, as an inspection. */
+function failed(status: AnalysisStatus, comment: string): BookInspection {
+  return { status, mediaType: null, pages: [], files: [], epubToc: null, positions: null, comment }
+}
 
 async function imageSize(buffer: Buffer): Promise<{ width: number | null; height: number | null }> {
   try {
@@ -77,6 +75,13 @@ export async function inspectBook(
   try {
     const book = await openBook(path)
     try {
+      // An archive is a book because of the pictures in it. One with none is not a
+      // book with no pages, it is a file that could not be made a book of - which is
+      // an error to the reference too, and what stops it being listed as readable.
+      if ((book.kind === 'ZIP' || book.kind === 'RAR') && book.pages.length === 0) {
+        return failed('ERROR', ANALYSIS_ERRORS.noPages)
+      }
+
       const pages: InspectedPage[] = []
 
       for (const [index, page] of book.pages.entries()) {
@@ -107,24 +112,37 @@ export async function inspectBook(
         files: book.files.map((file) => ({ fileName: file.fileName, size: file.size })),
         epubToc: book.epub?.toc ?? null,
         positions: book.epub ? computePositions(book.pages) : null,
-        comment: null,
+        comment: remarks(book.epub),
       }
     } finally {
       book.close()
     }
   } catch (error) {
+    // A reason the reference has a code for is the code and nothing else: the web
+    // UI has the sentence. Anything else is its "unknown error", with the error's
+    // own words, which are all there is to go on.
+    if (error instanceof BookProblem) return failed(error.unsupported ? 'UNSUPPORTED' : 'ERROR', error.code)
+    const file = fileProblem(error)
+    if (file !== null) return failed('ERROR', file)
+
     const message = (error as Error).message
-    const unsupported = message.includes('is not a book container')
-    const status: AnalysisStatus = unsupported ? 'UNSUPPORTED' : 'ERROR'
-    const code = unsupported ? ANALYSIS_ERRORS.unsupported : ANALYSIS_ERRORS.unknown
-    return {
-      status,
-      mediaType: null,
-      pages: [],
-      files: [],
-      epubToc: null,
-      positions: null,
-      comment: `${code} ${message}`,
+    if (message.includes('is not a book container')) {
+      return failed('UNSUPPORTED', `${ANALYSIS_ERRORS.unsupported} ${message}`)
     }
+    return failed('ERROR', `${ANALYSIS_ERRORS.unknown} ${message}`)
   }
+}
+
+/**
+ * What is worth saying about a book that was read: parts of an EPUB that were
+ * named and could not be found. The book is ready all the same.
+ */
+function remarks(epub: EpubInfo | undefined): string | null {
+  if (!epub) return null
+  const said: string[] = []
+  if (epub.tocUnreadable) said.push(ANALYSIS_ERRORS.epubToc)
+  if (epub.missingResources.length > 0) {
+    said.push(`${ANALYSIS_ERRORS.missingResources} [${epub.missingResources.join(', ')}]`)
+  }
+  return said.length === 0 ? null : said.join(' ')
 }

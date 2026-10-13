@@ -89,23 +89,27 @@ async function readText(container: Container, name: string): Promise<string> {
   return (await container.read(name)).toString('utf8')
 }
 
-/** Table of contents: the navigation document when there is one, else the NCX. */
-async function readToc(container: Container, pkg: EpubPackage): Promise<TocEntry[]> {
+/**
+ * Table of contents: the navigation document when there is one, else the NCX.
+ * `unreadable` says one was named and none could be read, which is different
+ * from a book that has none.
+ */
+async function readToc(container: Container, pkg: EpubPackage): Promise<{ toc: TocEntry[]; unreadable: boolean }> {
   // A package document can name a navigation document that is not in the archive,
   // which makes the table of contents empty rather than the book unreadable.
   const nav = [...pkg.manifest.values()].find((item) => item.properties.split(/\s+/).includes('nav'))
   if (nav) {
     const markup = await readTextOrNull(container, nav.href)
-    if (markup !== null) return readNavToc(markup, directoryOf(nav.href))
+    if (markup !== null) return { toc: readNavToc(markup, directoryOf(nav.href)), unreadable: false }
   }
 
   const ncx = pkg.tocId === null ? undefined : pkg.manifest.get(pkg.tocId)
   if (ncx) {
     const markup = await readTextOrNull(container, ncx.href)
-    if (markup !== null) return readNcxToc(markup, directoryOf(ncx.href))
+    if (markup !== null) return { toc: readNcxToc(markup, directoryOf(ncx.href)), unreadable: false }
   }
 
-  return []
+  return { toc: [], unreadable: nav !== undefined || ncx !== undefined }
 }
 
 async function readTextOrNull(container: Container, name: string): Promise<string | null> {
@@ -199,6 +203,8 @@ export async function openEpub(source: string | Buffer): Promise<{
   pages: { fileName: string; mediaType: string; size: number | null }[]
   files: { fileName: string; mediaType: string; size: number }[]
   toc: TocEntry[]
+  tocUnreadable: boolean
+  missingResources: string[]
   divinaCompatible: boolean
   packageDocument: string
   cover: string | null
@@ -219,6 +225,8 @@ async function describeEpub(container: Container): Promise<{
   pages: { fileName: string; mediaType: string; size: number | null }[]
   files: { fileName: string; mediaType: string; size: number }[]
   toc: TocEntry[]
+  tocUnreadable: boolean
+  missingResources: string[]
   divinaCompatible: boolean
   packageDocument: string
   cover: string | null
@@ -252,11 +260,17 @@ async function describeEpub(container: Container): Promise<{
       size: container.sizes.get(fileName) ?? 0,
     }))
 
+  const { toc, unreadable } = await readToc(container, pkg)
   return {
     container,
     pages,
     files,
-    toc: await readToc(container, pkg),
+    toc,
+    tocUnreadable: unreadable,
+    missingResources: [...pkg.manifest.values()]
+      .map((item) => item.href)
+      .filter((href) => !container.sizes.has(href))
+      .sort(naturalCompare),
     divinaCompatible,
     packageDocument: pkg.xml,
     cover: coverOf(pkg),

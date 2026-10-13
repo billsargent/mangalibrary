@@ -52,6 +52,10 @@ export interface TocEntry {
 /** What the EPUB reader needs beyond a page list. */
 export interface EpubInfo {
   toc: TocEntry[]
+  /** Whether a table of contents is named by the package and could not be read. */
+  tocUnreadable: boolean
+  /** Resources the manifest names that the file does not hold. */
+  missingResources: string[]
   /**
    * Whether every page is an image.
    *
