@@ -60,7 +60,7 @@ name only.
 | `RemoveHashedPages`                                          | same name                            | Present                                                                                                                                                                                                                               |
 | `FindBooksToConvert`, `ConvertBook`                          | `ConvertBook`, queued after a scan   | Present since #161                                                                                                                                                                                                                    |
 | `EmptyTrash`                                                 | same name                            | Present                                                                                                                                                                                                                               |
-| `DeleteBook`, `DeleteSeries`                                 | `DeleteBookFile`, `DeleteSeriesFile` | **Differs** - see section 3                                                                                                                                                                                                           |
+| `DeleteBook`, `DeleteSeries`                                 | `DeleteBookFile`, `DeleteSeriesFile` | Present since #166 - see section 3                                                                                                                                                                                                    |
 | `FindBookThumbnailsToRegenerate`                             | `RegenerateBookThumbnails`           | Present                                                                                                                                                                                                                               |
 | `ImportBook`                                                 | same name                            | Present since #171 (`media/import.test.ts`). An upgrade keeps the book's id, where Komga makes a new book                                                                                                                             |
 | `RepairExtension`                                            | -                                    | **Missing** (#164)                                                                                                                                                                                                                    |
@@ -87,13 +87,17 @@ name only.
 
 ### Deleting files - `BookLifecycle.deleteBookFiles`, `SeriesLifecycle.deleteSeriesFiles`
 
-| Komga                                                    | Here                              | Issue |
-| -------------------------------------------------------- | --------------------------------- | ----- |
-| Removes the file and the artwork found beside it         | Present                           | -     |
-| Records `BookFileDeleted` in the history                 | **Missing**                       | #166  |
-| Removes the folder when it is left empty, and records it | **Missing**: empty folders remain | #166  |
-| Deleting a oneshot deletes its series                    | **Missing**                       | #166  |
-| Removes a series' own artwork                            | **Missing**                       | #166  |
+**Read**, and present since #166 with tests (`content/delete.test.ts`).
+
+| Komga                                                                   | Here                                                                                     |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Removes the file and the artwork found beside it                        | Present                                                                                  |
+| Records `BookFileDeleted` in the history                                | Present                                                                                  |
+| Removes the folder when it is left empty, and records it                | Present. **Stricter on purpose**: never the library's own folder                         |
+| Deleting a oneshot deletes its series                                   | Present                                                                                  |
+| Removes a series' own artwork, then its folder if empty                 | Present                                                                                  |
+| Does nothing when the file is missing or cannot be written              | Present                                                                                  |
+| Leaves a series whose last book was deleted listed, empty, until a scan | **Differs on purpose**: it goes to the trash with its last book when its folder went too |
 
 ### Reading progress - `BookLifecycle.markReadProgress`, `markProgression`
 

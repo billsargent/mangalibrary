@@ -637,6 +637,18 @@ does. Which characters make a letter of the navigation, and that everything else
 - The web UI keeps the chosen letter in the address as `?nav=`, as the legacy interface
   did.
 
+## Deleting files
+
+Deleting a book's or a series' files does what the reference does: the file, the artwork
+found beside it, the folder if that leaves it empty, and a line in the history for each.
+
+- **A library's own folder is never removed**, however empty. The reference removes any
+  folder a deleted book leaves empty, which for a book lying loose in the library's
+  folder is the library itself.
+- **A series goes to the trash with its last book** when its folder went too. The
+  reference leaves it listed with no books until the next scan removes it.
+- A book whose file could not be removed is left as it was, not marked deleted.
+
 ## Importing books
 
 `POST /api/v1/books/import` queues one job a file, as the reference does, and each file

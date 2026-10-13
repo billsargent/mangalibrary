@@ -11,9 +11,9 @@
  * says so and returns: the job is done with either way.
  */
 
-import { unlink } from 'node:fs/promises'
 import type { Kysely } from 'kysely'
 
+import { deleteBookFiles, deleteSeriesFiles, type Deleted } from './content/delete.js'
 import { bookFilePath, findBookRecord } from './content/files.js'
 import { announceBook, announceSeries, bookRef, seriesRef } from './content-events.js'
 import type { DB } from './db/schema.js'
@@ -32,7 +32,6 @@ import { JOB_PRIORITY, enqueueJob, enqueueJobs, type JobRecord } from './jobs.js
 import { analyzeBook } from './media/analyze.js'
 import { booksToConvert, convertBookToCbz } from './media/convert.js'
 import { COPY_MODES, ImportError, importBook, type CopyMode } from './media/import.js'
-import { insideRootOnDisk } from './media/scan.js'
 import {
   pagesToRemoveAutomatically,
   queuePageRemoval,
@@ -354,75 +353,16 @@ async function emptyTrash(context: JobContext, libraryId: string): Promise<numbe
   return Number(books.numDeletedRows ?? 0) + Number(series.numDeletedRows ?? 0)
 }
 
-/** Remove a book's file, then record the book as deleted the way a scan would. */
-async function deleteBookFile(context: JobContext, bookId: string): Promise<void> {
-  const record = await findBookRecord(context.db, bookId)
-  if (record === null) return
-
-  const path = await bookFilePath(record)
-  if (path !== null) {
-    await unlink(path).catch((error: unknown) => {
-      context.log.warn({ bookId, err: String(error) }, 'could not remove a book file')
-    })
+/** Tell whoever is looking what a deletion took away. The rows are still there: they are in the trash. */
+async function announceDeleted(context: JobContext, deleted: Deleted): Promise<void> {
+  for (const bookId of deleted.bookIds) {
+    const ref = await bookRef(context.db, bookId)
+    if (ref) announceBook(context.events, 'BookDeleted', ref)
   }
-
-  // The artwork found beside the book goes with it, as it does in the reference: it
-  // belongs to that book and nothing else names it.
-  const covers = await context.db
-    .selectFrom('thumbnails')
-    .select('url')
-    .where('owner_type', '=', 'BOOK')
-    .where('owner_id', '=', bookId)
-    .where('type', '=', 'SIDECAR')
-    .where('url', 'is not', null)
-    .execute()
-  for (const cover of covers) {
-    if (cover.url === null) continue
-    // The row says where the file is, and a row can be wrong - an imported
-    // database, a library whose folder moved. Nothing outside the book's library
-    // is removed on a row's word.
-    if (!(await insideRootOnDisk(record.root, cover.url))) {
-      context.log.warn({ bookId, file: cover.url }, 'left a book\u2019s artwork file alone: it is outside its library')
-      continue
-    }
-    await unlink(cover.url).catch((error: unknown) => {
-      context.log.warn({ bookId, err: String(error) }, 'could not remove a book\u2019s artwork file')
-    })
+  if (deleted.seriesId !== null) {
+    const ref = await seriesRef(context.db, deleted.seriesId)
+    if (ref) announceSeries(context.events, 'SeriesDeleted', ref)
   }
-
-  const now = new Date().toISOString()
-  await context.db
-    .updateTable('books')
-    .set({ deleted_date: now, last_modified_date: now })
-    .where('id', '=', bookId)
-    .execute()
-
-  // Whoever has the book on screen is told it is gone; a list that still showed
-  // it would offer a book nobody can open.
-  const ref = await bookRef(context.db, bookId)
-  if (ref) announceBook(context.events, 'BookDeleted', ref)
-}
-
-/** Remove every file of a series, and the series with them. */
-async function deleteSeriesFiles(context: JobContext, seriesId: string): Promise<void> {
-  const books = await context.db
-    .selectFrom('books')
-    .select('id')
-    .where('series_id', '=', seriesId)
-    .where('deleted_date', 'is', null)
-    .execute()
-
-  for (const book of books) await deleteBookFile(context, book.id)
-
-  const now = new Date().toISOString()
-  await context.db
-    .updateTable('series')
-    .set({ deleted_date: now, last_modified_date: now })
-    .where('id', '=', seriesId)
-    .execute()
-
-  const ref = await seriesRef(context.db, seriesId)
-  if (ref) announceSeries(context.events, 'SeriesDeleted', ref)
 }
 
 /** Run one job. Throwing is allowed: the worker logs it and drops the job. */
@@ -623,13 +563,13 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
     case 'DeleteBookFile': {
       const bookId = text((job.payload as BookPayload).bookId)
       if (bookId === null) return log.warn({ job: job.id }, 'DeleteBookFile without a book')
-      return deleteBookFile(context, bookId)
+      return announceDeleted(context, await deleteBookFiles(db, log, bookId))
     }
 
     case 'DeleteSeriesFile': {
       const seriesId = text((job.payload as SeriesPayload).seriesId)
       if (seriesId === null) return log.warn({ job: job.id }, 'DeleteSeriesFile without a series')
-      return deleteSeriesFiles(context, seriesId)
+      return announceDeleted(context, await deleteSeriesFiles(db, log, seriesId))
     }
 
     case 'RefreshBookLocalArtwork': {
