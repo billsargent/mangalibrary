@@ -217,7 +217,12 @@ export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): P
 
   // A series is described by its books and by its own sidecars, and a oneshot series
   // is its single book whatever the settings say - which is what the reference does.
-  const readsBooks = library.import_comic_info_series === 1 || library.import_epub_series === 1
+  // The switches are independent, as they are in the reference: a library can take
+  // the collections its books name without taking what they say about the series.
+  const readsComicInfo = library.import_comic_info_series === 1
+  const readsCollections = library.import_comic_info_collection === 1
+  const readsEpub = library.import_epub_series === 1
+  const readsBooks = readsComicInfo || readsCollections || readsEpub
   const readsSidecar = library.import_mylar_series === 1 && series.oneshot !== 1
   const isOneshot = series.oneshot === 1
 
@@ -241,7 +246,9 @@ export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): P
     .orderBy('books.id')
     .execute()
 
-  const patches: SeriesMetadataPatch[] = []
+  const comicPatches: SeriesMetadataPatch[] = []
+  const epubPatches: SeriesMetadataPatch[] = []
+  const named = new Set<string>()
   let failed = false
   for (const book of readsBooks ? books : []) {
     const path = await bookFilePath({
@@ -257,17 +264,17 @@ export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): P
     if (read.status === 'failed') failed = true
     if (read.status !== 'ok') continue
 
-    if (library.import_comic_info_series === 1 && read.documents.comicInfo !== null) {
-      patches.push(
-        comicInfoSeriesPatch(read.documents.comicInfo, {
-          appendVolume: library.import_comic_info_series_append_volume === 1,
-        }),
-      )
+    if ((readsComicInfo || readsCollections) && read.documents.comicInfo !== null) {
+      const patch = comicInfoSeriesPatch(read.documents.comicInfo, {
+        appendVolume: library.import_comic_info_series_append_volume === 1,
+      })
+      if (readsComicInfo) comicPatches.push(patch)
+      if (readsCollections) for (const name of patch.collections ?? []) named.add(name)
     }
-    if (library.import_epub_series === 1 && read.documents.packageDocument !== null) {
+    if (readsEpub && read.documents.packageDocument !== null) {
       // An EPUB states its own collection and never appends a volume, so the
       // library's append setting does not apply to it.
-      patches.push(epubMetadata(read.documents.packageDocument).series)
+      epubPatches.push(epubMetadata(read.documents.packageDocument).series)
     }
   }
 
@@ -319,7 +326,14 @@ export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): P
     }
   }
 
-  const update = applySeriesPatches(state, [aggregateSeriesPatches(patches), ...later])
+  // Each kind of document is folded on its own and applied in turn, as the reference
+  // runs one provider after another: in a series of comics and EPUBs, what most of
+  // the comics say is not outvoted by the EPUBs, it is followed by them.
+  const update = applySeriesPatches(state, [
+    aggregateSeriesPatches(comicPatches),
+    aggregateSeriesPatches(epubPatches),
+    ...later,
+  ])
   let changed: string[] = []
 
   if (!isEmptySeriesUpdate(update)) {
@@ -334,11 +348,9 @@ export async function refreshSeriesMetadata(db: Kysely<DB>, seriesId: string): P
   // every group its books name - and they are honoured whether or not a field was
   // written.
   const collections: string[] = []
-  if (library.import_comic_info_collection === 1) {
-    for (const name of new Set(patches.flatMap((patch) => patch.collections ?? []))) {
-      const outcome = await addSeriesToCollection(db, name, seriesId)
-      if (outcome !== 'present') collections.push(name)
-    }
+  for (const name of named) {
+    const outcome = await addSeriesToCollection(db, name, seriesId)
+    if (outcome !== 'present') collections.push(name)
   }
 
   const aggregationChanged = await aggregateSeriesMetadata(db, seriesId)

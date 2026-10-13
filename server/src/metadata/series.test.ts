@@ -316,7 +316,7 @@ describe('refreshing a series from its books', () => {
   it('imports nothing when the library is set not to', async () => {
     const database = await setup(
       [{ name: 'Volume 1', document: comicInfo({ Series: 'Akira', Publisher: 'Kodansha' }) }],
-      { import_comic_info_series: 0, import_epub_series: 0, import_mylar_series: 0 },
+      { import_comic_info_series: 0, import_epub_series: 0, import_mylar_series: 0, import_comic_info_collection: 0 },
     )
 
     const result = await refreshSeriesMetadata(database.db, 'S1')

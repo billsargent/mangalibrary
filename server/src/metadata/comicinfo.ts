@@ -181,10 +181,9 @@ function readListsOf(xml: string): ReadListEntry[] {
   const storyArcs = elementText(xml, 'StoryArc')
   if (storyArcs === null) return entries
 
-  const names = storyArcs
-    .split(',')
-    .map((name) => name.trim())
-    .filter((name) => name !== '')
+  // Blank names are kept until the pairing is done: the second number belongs to
+  // the second arc whether or not the second arc has a name.
+  const names = storyArcs.split(',').map((name) => name.trim())
   const numbers = (elementText(xml, 'StoryArcNumber') ?? '')
     .split(',')
     .map((number) => number.trim())
@@ -193,12 +192,12 @@ function readListsOf(xml: string): ReadListEntry[] {
   if (numbers.some((number) => number !== null)) {
     for (const [index, name] of names.entries()) {
       const number = numbers[index]
-      if (number !== undefined && number !== null) entries.push({ name, number })
+      if (name !== '' && number !== undefined && number !== null) entries.push({ name, number })
     }
     return entries
   }
 
-  for (const name of names) entries.push({ name, number: null })
+  for (const name of names) if (name !== '') entries.push({ name, number: null })
   return entries
 }
 

@@ -4,6 +4,7 @@ import type { Kysely } from 'kysely'
 import type { DB } from '../db/schema.js'
 import { announceBook, announceSeries, bookRef } from '../content-events.js'
 import type { EventBus } from '../events.js'
+import { enqueueJobs } from '../jobs.js'
 import { naturalCompare } from '../media/kinds.js'
 import { refreshSeriesLocalArtwork } from '../metadata/localArtwork.js'
 import { refreshSeriesMetadata } from '../metadata/series.js'
@@ -124,11 +125,18 @@ export async function addBooks(
  *
  * The book row's number drives ordering; the metadata's number and sort key are
  * kept in step unless they are locked, which is the user saying they know better.
+ *
+ * A number may also have come from the book itself - a ComicInfo that says this is
+ * chapter 5.5 - and a position must not replace that for good. So a book that stays
+ * where it was keeps the number it has, and a book that moves is numbered by its
+ * new place and then asked what it says its number is, which is the reference's
+ * "refresh metadata to reimport book number, else the series resorting would
+ * overwrite it".
  */
 export async function sortBooks(db: Kysely<DB>, seriesId: string, now: string): Promise<void> {
   const books = await db
     .selectFrom('books')
-    .select(['id', 'name'])
+    .select(['id', 'name', 'number'])
     .where('series_id', '=', seriesId)
     .where('deleted_date', 'is', null)
     .execute()
@@ -146,25 +154,46 @@ export async function sortBooks(db: Kysely<DB>, seriesId: string, now: string): 
       .execute()
     const byBook = new Map(metadata.map((row) => [row.book_id, row]))
 
+    const renumbered: string[] = []
     for (const [index, book] of books.entries()) {
-      await db
-        .updateTable('books')
-        .set({ number: index + 1 })
-        .where('id', '=', book.id)
-        .execute()
+      const position = index + 1
+      // A new book has no position yet, so it always gets one.
+      if (book.number === position) continue
+      await db.updateTable('books').set({ number: position }).where('id', '=', book.id).execute()
 
       const meta = byBook.get(book.id)
       if (!meta) continue
-      const number = meta.number_lock === 1 ? meta.number : String(index + 1)
-      const numberSort = meta.number_sort_lock === 1 ? meta.number_sort : index + 1
+      const number = meta.number_lock === 1 ? meta.number : String(position)
+      const numberSort = meta.number_sort_lock === 1 ? meta.number_sort : position
       if (number !== meta.number || numberSort !== meta.number_sort) {
         await db
           .updateTable('book_metadata')
           .set({ number, number_sort: numberSort, last_modified_date: now })
           .where('book_id', '=', book.id)
           .execute()
+        renumbered.push(book.id)
       }
     }
+
+    // A book that has not been analysed yet will be read in full when it is; only
+    // one that already was needs asking again.
+    const analysed =
+      renumbered.length === 0
+        ? []
+        : await db
+            .selectFrom('media')
+            .select('book_id')
+            .where('book_id', 'in', renumbered)
+            .where('status', '=', 'READY')
+            .execute()
+    await enqueueJobs(
+      db,
+      analysed.map((row) => ({
+        type: 'RefreshBookMetadata',
+        uniqueKey: `REFRESH_BOOK_NUMBER_${row.book_id}`,
+        payload: { bookId: row.book_id, capabilities: ['NUMBER', 'NUMBER_SORT'] },
+      })),
+    )
   }
 
   await db.updateTable('series').set({ book_count: books.length }).where('id', '=', seriesId).execute()

@@ -48,18 +48,25 @@ export interface XmlElement {
  * both mean the same thing.
  */
 export function elementsNamed(xml: string, name: string): XmlElement[] {
-  return [...xml.matchAll(new RegExp(`<((?:[\\w.-]+:)?${name})\\b([^>]*)>([\\s\\S]*?)</\\1\\s*>`, 'gi'))].map(
-    (match) => ({
-      tag: `<${match[1]}${match[2] ?? ''}>`,
-      inner: match[3] ?? '',
-    }),
+  // `<meta name="cover" content="c"/>` closes itself. Taken for an opening tag it
+  // would run on to the next `</meta>` and swallow whatever lay between.
+  const pattern = new RegExp(
+    `<((?:[\\w.-]+:)?${name})\\b((?:[^>"']|"[^"]*"|'[^']*')*?)(?:/>|>([\\s\\S]*?)</\\1\\s*>)`,
+    'gi',
   )
+  return [...xml.matchAll(pattern)].map((match) => ({
+    tag: `<${match[1]}${match[2] ?? ''}>`,
+    inner: match[3] ?? '',
+  }))
 }
 
 /** The value of an attribute of an opening tag, or null when it is not there. */
 export function attribute(tag: string, name: string): string | null {
-  const match = new RegExp(`${name}\\s*=\\s*"([^"]*)"`, 'i').exec(tag)
-  return match?.[1] === undefined ? null : unescapeXml(match[1])
+  // The name is a whole word - `id` is not the end of `guid` - and the value may be
+  // quoted either way.
+  const match = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i').exec(tag)
+  const value = match?.[1] ?? match?.[2]
+  return value === undefined ? null : unescapeXml(value)
 }
 
 /**

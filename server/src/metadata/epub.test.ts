@@ -136,3 +136,32 @@ describe('reading an EPUB package document', () => {
     })
   })
 })
+
+describe('an EPUB whose metadata has elements that close themselves', () => {
+  // How calibre and most EPUB 2 tools write the cover and their own fields.
+  const MIXED = `<package><metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <dc:title>Volume 2</dc:title>
+  <meta name="cover" content="cover-image"/>
+  <meta name="calibre:series" content="The Long Series" />
+  <meta property="belongs-to-collection" id="col1">The Long Series</meta>
+  <meta refines="#col1" property="group-position">2</meta>
+  <dc:creator id="a1">Someone</dc:creator>
+  <meta refines='#a1' property='role' scheme='marc:relators'>ill</meta>
+  <dc:identifier guid="not-the-id" id="bookid">isbn:9781566199094</dc:identifier>
+</metadata><spine page-progression-direction="rtl"><itemref idref="p1"/></spine></package>`
+
+  it('still finds the series and the book’s place in it', () => {
+    const { book, series } = epubMetadata(MIXED)
+    expect(series.title).toBe('The Long Series')
+    expect(book.number).toBe('2')
+    expect(book.numberSort).toBe(2)
+  })
+
+  it('reads attributes quoted either way, and the rest of the document', () => {
+    const { book, series } = epubMetadata(MIXED)
+    expect(book.title).toBe('Volume 2')
+    expect(book.authors).toEqual([{ name: 'Someone', role: 'penciller' }])
+    expect(book.isbn).toBe('9781566199094')
+    expect(series.readingDirection).toBe('RIGHT_TO_LEFT')
+  })
+})

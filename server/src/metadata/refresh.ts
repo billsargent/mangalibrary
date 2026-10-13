@@ -182,7 +182,11 @@ export async function refreshBookMetadata(
   if (!library) throw new Error(`library ${record.libraryId} does not exist`)
 
   const imported = new Set<BookMetadataCapability>(options.capabilities ?? BOOK_METADATA_CAPABILITIES)
-  const importsDocuments = library.import_comic_info_book === 1 || library.import_epub_book === 1
+  // The four ComicInfo switches are independent, as they are in the reference: a
+  // library can take the read lists a document names without taking its fields.
+  const readsFields = library.import_comic_info_book === 1
+  const readsReadLists = library.import_comic_info_read_list === 1
+  const importsDocuments = readsFields || readsReadLists || library.import_epub_book === 1
   const importsBarcode = library.import_barcode_isbn === 1 && imported.has('ISBN')
   if (!importsDocuments && !importsBarcode) {
     return {
@@ -218,16 +222,19 @@ export async function refreshBookMetadata(
 
   // The documents are applied in the reference's provider order, so that where two
   // of them disagree the later one wins.
+  const readListEntries: ReadListEntry[] = []
   if (documents !== null) {
-    if (library.import_comic_info_book === 1 && documents.comicInfo !== null) {
-      patches.push(comicInfoBookPatch(documents.comicInfo))
+    if ((readsFields || readsReadLists) && documents.comicInfo !== null) {
+      const patch = comicInfoBookPatch(documents.comicInfo)
+      if (readsFields) patches.push(patch)
+      if (readsReadLists) readListEntries.push(...(patch.readLists ?? []))
     }
     if (library.import_epub_book === 1 && documents.packageDocument !== null) {
       patches.push(epubMetadata(documents.packageDocument).book)
     }
   }
 
-  if (patches.length === 0) {
+  if (patches.length === 0 && readListEntries.length === 0) {
     return {
       status: 'skipped',
       changed: [],
@@ -257,14 +264,7 @@ export async function refreshBookMetadata(
   // Read lists are organisation rather than metadata: a document saying a book
   // belongs to a story arc does not depend on the book's own fields being written,
   // and a locked title does not stop it - which is how the reference treats them.
-  const readLists =
-    library.import_comic_info_read_list === 1
-      ? await addReadLists(
-          db,
-          bookId,
-          patches.flatMap((patch) => patch.readLists ?? []),
-        )
-      : []
+  const readLists = await addReadLists(db, bookId, readListEntries)
 
   if (changed.length === 0 && readLists.length === 0) {
     return { status: 'unchanged', changed: [], readLists: [], reason: null }
