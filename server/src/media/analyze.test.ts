@@ -9,7 +9,9 @@ import { migrations } from '../db/migrations/index.js'
 import { minimalPdf } from '../spikes/minimalPdf.js'
 import { analyzeBook } from './analyze.js'
 import { naturalCompare } from './kinds.js'
+import { writeRar } from '../testing/rar.js'
 import { writeZip } from '../testing/zip.js'
+import { openBook } from './index.js'
 
 // ------------------------------------------------------------------- fixtures
 
@@ -161,11 +163,54 @@ describe('archive books', () => {
 })
 
 describe('rar books', () => {
+  it('lists and measures the pages of a CBR, in reading order', async () => {
+    const db = await database()
+    const path = writeBook(
+      'v1.cbr',
+      writeRar([
+        { name: 'page 10.jpg', data: await jpeg(30, 40) },
+        { name: 'page 2.jpg', data: await jpeg(20, 30) },
+        { name: 'ComicInfo.xml', data: Buffer.from('<ComicInfo><Title>From a RAR</Title></ComicInfo>') },
+        { name: 'page 1.jpg', data: await jpeg(10, 20) },
+      ]),
+    )
+
+    const result = await analyzeBook(db.db, 'B1', path, { analyzeDimensions: true })
+    expect(result.status).toBe('READY')
+
+    const media = await db.db.selectFrom('media').selectAll().where('book_id', '=', 'B1').executeTakeFirstOrThrow()
+    expect(media).toMatchObject({ status: 'READY', page_count: 3 })
+    expect(media.media_type).toContain('rar')
+
+    const pages = await db.db
+      .selectFrom('media_page')
+      .select(['number', 'file_name', 'width', 'height'])
+      .where('book_id', '=', 'B1')
+      .orderBy('number')
+      .execute()
+    expect(pages).toEqual([
+      { number: 1, file_name: 'page 1.jpg', width: 10, height: 20 },
+      { number: 2, file_name: 'page 2.jpg', width: 20, height: 30 },
+      { number: 3, file_name: 'page 10.jpg', width: 30, height: 40 },
+    ])
+
+    // And a page comes out as the image that went in.
+    const book = await openBook(path)
+    try {
+      const second = await sharp(await book.readPage(2)).metadata()
+      expect([second.width, second.height]).toEqual([20, 30])
+      expect((await book.readResource('ComicInfo.xml')).toString()).toContain('From a RAR')
+    } finally {
+      book.close()
+    }
+
+    await db.close()
+  })
+
   it('reports a file that is not really a RAR', async () => {
     const db = await database()
 
-    // A RAR has no writer available to build a fixture with, so what is covered
-    // here is that the container is recognised, handed to the RAR reader, and its
+    // The container is recognised by its name, handed to the RAR reader, and its
     // refusal is recorded rather than thrown.
     const result = await analyzeBook(db.db, 'B1', writeBook('v1.cbr', Buffer.from('not a rar archive')), {})
     expect(result.status).toBe('ERROR')

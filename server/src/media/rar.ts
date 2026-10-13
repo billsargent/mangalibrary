@@ -28,8 +28,9 @@ export async function openRar(buffer: Buffer): Promise<Container> {
       if (size !== undefined && size > MAX_ENTRY_BYTES) {
         throw new Error(`${name} is too large to read: ${size} bytes`)
       }
-      // The extractor returns contents in the order of the list it was given.
-      const extracted = extractor.extract({ files: [{ name, password: undefined }] as never })
+      // Asked for by name. The names are a list of strings: an entry that is not
+      // found comes back as nothing at all, not as an error.
+      const extracted = extractor.extract({ files: [name] })
       const file = [...extracted.files][0]
       if (!file || file.extraction === undefined) throw new Error(`cannot read ${name}`)
       return Buffer.from(file.extraction)
