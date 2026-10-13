@@ -10,6 +10,7 @@ import { refreshSeriesMetadata } from '../metadata/series.js'
 import { cleanupEmptySets } from '../organisation/cleanup.js'
 import { nextTsid } from '../tsid.js'
 import { LibraryScanError, walkLibrary, type ScannedBook, type ScanSettings } from './library.js'
+import { deletedBookFor, restoreBook, type DeletedBook } from './restore.js'
 
 /** What a scan did, so a caller can report it. */
 export interface ScanSummary {
@@ -19,6 +20,9 @@ export interface ScanSummary {
   booksCreated: number
   booksUpdated: number
   booksDeleted: number
+  /** Series and books that were in the trash and came back with their files. */
+  seriesRestored: number
+  booksRestored: number
   /** Collections and read lists removed because the scan emptied them. */
   collectionsDeleted: number
   readListsDeleted: number
@@ -173,14 +177,35 @@ async function softDeleteBooks(db: Kysely<DB>, bookIds: readonly string[], now: 
 }
 
 /**
+ * The deleted series a folder is, judged by the books its files were matched to.
+ *
+ * Every file has to be a book of the same deleted series, and the series has to
+ * have no other book: a folder holding only some of a series' books, or books of
+ * two series, is a new series that those books move into.
+ */
+async function returningSeries(db: Kysely<DB>, matches: readonly (DeletedBook | null)[]): Promise<string | null> {
+  const first = matches[0]
+  if (!first || matches.some((match) => match?.seriesId !== first.seriesId)) return null
+
+  const series = await db
+    .selectFrom('series')
+    .select('deleted_date')
+    .where('id', '=', first.seriesId)
+    .executeTakeFirst()
+  if (!series || series.deleted_date === null) return null
+
+  const books = await db.selectFrom('books').select('id').where('series_id', '=', first.seriesId).execute()
+  return books.length === matches.length ? first.seriesId : null
+}
+
+/**
  * Scan a library and make the database match what is on disk.
  *
  * The walk is `walkLibrary`; this half decides what to write. A series or book
  * that is gone is soft-deleted rather than removed, so the trash bin holds it and
- * a returning series can be matched back to it - which is the hash-based restore
- * in `docs/SCANNING.md` and arrives with file hashing. A book whose file changed
- * has its media marked outdated, because whatever analysis recorded no longer
- * describes it.
+ * a returning file can be matched back to it by its hash - see `restore.ts` and
+ * `docs/SCANNING.md`. A book whose file changed has its media marked outdated,
+ * because whatever analysis recorded no longer describes it.
  *
  * A walk that cannot proceed marks the library unavailable and throws; a walk
  * that succeeds clears the mark. When the library asks for it, the trash is
@@ -230,6 +255,8 @@ export async function scanLibrary(
     booksCreated: 0,
     booksUpdated: 0,
     booksDeleted: 0,
+    seriesRestored: 0,
+    booksRestored: 0,
     collectionsDeleted: 0,
     readListsDeleted: 0,
   }
@@ -269,11 +296,83 @@ export async function scanLibrary(
     }
   }
 
+  // Books that left a series which is still there go to the trash before anything
+  // is added, whichever order the series come in: a file moved from one series to
+  // another has to be in the trash for the series it arrived in to find it.
+  const scannedBookUrls = new Set(found.flatMap((series) => series.books.map((book) => pathToFileURL(book.path).href)))
+  const lost = (
+    await db
+      .selectFrom('books')
+      .select(['id', 'series_id', 'url'])
+      .where('library_id', '=', libraryId)
+      .where('deleted_date', 'is', null)
+      .execute()
+  ).filter((row) => !scannedBookUrls.has(row.url))
+  const seriesWithLoss = new Set(lost.map((row) => row.series_id))
+  if (lost.length > 0) {
+    await softDeleteBooks(
+      db,
+      lost.map((row) => row.id),
+      now,
+    )
+    summary.booksDeleted += lost.length
+    if (events) {
+      for (const row of lost)
+        announceBook(events, 'BookDeleted', { bookId: row.id, seriesId: row.series_id, libraryId })
+    }
+  }
+
+  /** Put a file the library did not have into a series: the book it was, or a new one. */
+  const arrive = async (seriesId: string, book: ScannedBook, match: DeletedBook | null): Promise<void> => {
+    if (match === null) {
+      const [bookId] = await addBooks(db, seriesId, libraryId, [book], now)
+      summary.booksCreated += 1
+      if (events && bookId !== undefined) announceBook(events, 'BookAdded', { bookId, seriesId, libraryId })
+      return
+    }
+    await restoreBook(db, match.id, { seriesId, libraryId }, book, now)
+    summary.booksRestored += 1
+    // A list that dropped the book when it was deleted is told it is back.
+    if (events) announceBook(events, 'BookAdded', { bookId: match.id, seriesId, libraryId })
+  }
+
   for (const scanned of found) {
     const url = pathToFileURL(scanned.path).href
     const current = byUrl.get(url)
 
     if (!current) {
+      const matches: (DeletedBook | null)[] = []
+      const taken = new Set<string>()
+      for (const book of scanned.books) {
+        const match = await deletedBookFor(db, book, taken)
+        if (match) taken.add(match.id)
+        matches.push(match)
+      }
+
+      // A folder whose every file is a book of one deleted series, with none of
+      // that series left over, is that series under a new name or in a new place.
+      const returning = await returningSeries(db, matches)
+      if (returning !== null) {
+        await db
+          .updateTable('series')
+          .set({
+            library_id: libraryId,
+            name: scanned.name,
+            url,
+            file_last_modified: scanned.fileLastModified.toISOString(),
+            oneshot: scanned.oneshot ? 1 : 0,
+            deleted_date: null,
+            last_modified_date: now,
+          })
+          .where('id', '=', returning)
+          .execute()
+        summary.seriesRestored += 1
+        if (events) announceSeries(events, 'SeriesAdded', { seriesId: returning, libraryId })
+        for (const [index, book] of scanned.books.entries()) await arrive(returning, book, matches[index] ?? null)
+        touched.add(returning)
+        continue
+      }
+
       const seriesId = nextTsid()
       await db
         .insertInto('series')
@@ -299,39 +398,24 @@ export async function scanLibrary(
         })
         .execute()
       summary.seriesCreated += 1
-      const added = await addBooks(db, seriesId, libraryId, scanned.books, now)
-      summary.booksCreated += added.length
-      if (events) {
-        announceSeries(events, 'SeriesAdded', { seriesId, libraryId })
-        for (const bookId of added) announceBook(events, 'BookAdded', { bookId, seriesId, libraryId })
-      }
+      if (events) announceSeries(events, 'SeriesAdded', { seriesId, libraryId })
+      for (const [index, book] of scanned.books.entries()) await arrive(seriesId, book, matches[index] ?? null)
       touched.add(seriesId)
       continue
     }
 
     const books = await db
       .selectFrom('books')
-      .select(['id', 'name', 'url', 'file_last_modified', 'deleted_date'])
+      .select(['id', 'name', 'url', 'file_last_modified', 'file_size', 'deleted_date'])
       .where('series_id', '=', current.id)
       .execute()
-    const bookByUrl = new Map(books.map((row) => [row.url, row]))
-    const scannedBookUrls = new Set(scanned.books.map((book) => pathToFileURL(book.path).href))
+    const liveByUrl = new Map(books.filter((row) => row.deleted_date === null).map((row) => [row.url, row]))
+    const deletedByUrl = new Map(books.filter((row) => row.deleted_date !== null).map((row) => [row.url, row]))
 
-    const lost = books.filter((row) => row.deleted_date === null && !scannedBookUrls.has(row.url))
     const changed =
       current.file_last_modified !== scanned.fileLastModified.toISOString() || current.deleted_date !== null
 
-    if (lost.length > 0) {
-      await softDeleteBooks(
-        db,
-        lost.map((row) => row.id),
-        now,
-      )
-      summary.booksDeleted += lost.length
-      touched.add(current.id)
-    }
-
-    if (changed || lost.length > 0 || options.deep === true) {
+    if (changed || seriesWithLoss.has(current.id) || options.deep === true) {
       await db
         .updateTable('series')
         .set({
@@ -346,10 +430,20 @@ export async function scanLibrary(
       summary.seriesUpdated += 1
 
       for (const book of scanned.books) {
-        const existingBook = bookByUrl.get(pathToFileURL(book.path).href)
-        if (!existingBook || existingBook.deleted_date !== null) continue
-
+        const bookUrl = pathToFileURL(book.path).href
+        const existingBook = liveByUrl.get(bookUrl)
         const modified = book.fileLastModified.toISOString()
+
+        if (!existingBook) {
+          // A file where a deleted book's file was, of the same size and date, is
+          // unchanged by every measure the scan has, so it is that book without
+          // being read. Anything else has to prove itself by its hash.
+          const was = deletedByUrl.get(bookUrl)
+          const same = was !== undefined && was.file_last_modified === modified && was.file_size === book.fileSize
+          await arrive(current.id, book, same ? { id: was.id, seriesId: current.id } : await deletedBookFor(db, book))
+          continue
+        }
+
         if (existingBook.file_last_modified === modified) continue
 
         await db
@@ -365,15 +459,6 @@ export async function scanLibrary(
           .execute()
         summary.booksUpdated += 1
         if (events) announceBook(events, 'BookChanged', { bookId: existingBook.id, seriesId: current.id, libraryId })
-      }
-
-      const missingBooks = scanned.books.filter((book) => !bookByUrl.has(pathToFileURL(book.path).href))
-      if (missingBooks.length > 0) {
-        const added = await addBooks(db, current.id, libraryId, missingBooks, now)
-        summary.booksCreated += added.length
-        if (events) {
-          for (const bookId of added) announceBook(events, 'BookAdded', { bookId, seriesId: current.id, libraryId })
-        }
       }
 
       if (events) announceSeries(events, 'SeriesChanged', { seriesId: current.id, libraryId })

@@ -68,12 +68,24 @@ as separate tasks _after_ the walk, never as part of it.
   folder is treated as oneshots too.
 - **Nothing is removed by a scan.** Missing files produce a soft delete, and the
   rows are what makes restore possible.
-- **Restore is hash-based.** A re-added series is matched to a deleted one by
-  book count, the multiset of file sizes and then content hashes; when it matches,
-  metadata, thumbnails, read progress and read-list membership move across and the
-  old row is deleted. This is not implemented yet: hashing book files arrives with
-  the page-hashing work, so today a returning series is created afresh and the
-  deleted one waits in the trash until it is emptied.
+- **Restore is hash-based.** A file the library does not have is compared with the
+  deleted books of exactly its size, by content hash. When one matches, that book
+  is un-deleted and pointed at the file, so its id, metadata, thumbnails, read
+  progress and read-list membership are all still there - whether the file came
+  back where it was, was renamed, or moved to another series or library. A folder
+  whose every file matches a book of one deleted series, with no book of that
+  series left over, restores the series the same way, which is what keeps a renamed
+  series folder from becoming a new series. Komga creates a new row and moves
+  everything across to it; we keep the old row, which comes to the same thing with
+  less to go wrong.
+  - A file is only hashed when a deleted book of its size has a hash to compare
+    with, so adding books to a library with an empty trash reads no file.
+  - A deleted book that was never hashed (the library has file hashing off, or the
+    hash job had not reached it) is restored only when the file is back at the same
+    path with the same size and modified date. Otherwise the file becomes a new
+    book and the old one waits in the trash.
+  - The trash is emptied after restoring, so a library set to empty its trash after
+    every scan still keeps a renamed series.
 - **Unsupported content is not a scan failure.** A file with an accepted
   extension whose content is unrecognised still becomes a book; the analysis step
   marks its media unsupported (`ERR_1001`).
@@ -102,9 +114,8 @@ the library's settings, with no database access. `scanLibrary` in
 `server/src/scan/reconcile.ts` is the reconciliation: it creates, updates,
 soft-deletes and renumbers, marks a changed book's media outdated, marks the
 library unavailable when the walk cannot proceed, empties the trash when the
-library asks for it, and leaves everything else to the trash. What it does not do
-yet is the hash-based restore above, and the cleanup of empty collections and read
-lists after a scan.
+library asks for it, and leaves everything else to the trash. The matching of a
+returning file to a deleted book is in `server/src/scan/restore.ts`.
 
 Our schema stores the exclusions in `libraries.scan_directory_exclusions` (a JSON
 list) rather than a table of its own; the semantics are the ones above.
