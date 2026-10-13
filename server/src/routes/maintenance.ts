@@ -91,6 +91,21 @@ async function listDirectory(path: string, showFiles: boolean): Promise<PathEntr
 }
 
 /**
+ * The name a kind of history event goes by: `BookFileDeleted`, as the reference
+ * names it and its interfaces look it up.
+ *
+ * This server stores some kinds in capitals with underscores. A row carried over
+ * from Komga, or written under the reference's name, is already right.
+ */
+export function eventTypeName(stored: string): string {
+  if (!/^[A-Z]+(_[A-Z]+)*$/.test(stored)) return stored
+  return stored
+    .split('_')
+    .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+    .join('')
+}
+
+/**
  * Bookkeeping an operator needs and nothing a reader does: what the server did
  * to the files (history), what it is still about to do (the task queue), the
  * sync state it keeps for a device, and a way to look at the host's directories
@@ -123,7 +138,7 @@ export async function registerMaintenanceRoutes(app: FastifyInstance, opts: Rout
     const content = rows.map((row) => {
       const event: Record<string, unknown> = {
         id: row.id,
-        type: row.type,
+        type: eventTypeName(row.type),
         timestamp: row.timestamp,
         properties: JSON.parse(row.properties || '{}') as unknown,
       }
