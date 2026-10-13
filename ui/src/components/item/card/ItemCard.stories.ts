@@ -31,7 +31,6 @@ const meta = {
     onClickQuickAction: fn(),
     preSelect: false,
     selected: false,
-    stretchPoster: true,
   },
   argTypes: {
     posterUrl: {
@@ -47,7 +46,6 @@ type Story = StoryObj<typeof meta>
 export const Default: Story = {
   args: {
     lines: [{ text: 'Line 1' }, { text: 'Line 2' }],
-    stretchPoster: true,
   },
 }
 
@@ -64,7 +62,6 @@ export const LongText: Story = {
       },
       { text: 'Short 2 lines', lines: 2 },
     ],
-    stretchPoster: true,
   },
 }
 
@@ -96,7 +93,6 @@ export const LandscapeStretched: Story = {
   args: {
     topRightIcon: 'i-mdi:check',
     posterUrl: seriesPosterUrl('idL'),
-    stretchPoster: true,
   },
 }
 
@@ -104,7 +100,6 @@ export const LandscapeNotStretched: Story = {
   args: {
     topRightIcon: 'i-mdi:check',
     posterUrl: seriesPosterUrl('idL'),
-    stretchPoster: false,
   },
 }
 

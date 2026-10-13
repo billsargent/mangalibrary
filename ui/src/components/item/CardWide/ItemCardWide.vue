@@ -38,7 +38,7 @@
               :src="posterUrl"
               lazy-src="@/assets/cover.svg"
               aspect-ratio="0.7071"
-              :class="{ normal: true, inset: selected }"
+              :class="{ normal: true, inset: selected, 'blur-poster': blurPoster }"
               :width="width"
             >
               <template #placeholder>
@@ -124,6 +124,8 @@
 <script setup lang="ts">
 import type { ItemCardEmits, ItemCardProps } from '@/types/ItemCard'
 import { vOnLongPress } from '@vueuse/components'
+import { useClientSettingsUser } from '@/colada/client-settings'
+import { ClientSettingUser } from '@/types/ClientSettingsUser'
 import { usePrimaryInput } from '@/composables/device'
 import { useDisplay } from 'vuetify'
 
@@ -134,8 +136,11 @@ function onCardLongPress() {
   if (isTouchPrimary.value) emit('cardLongPress')
 }
 
+const { userSettings } = useClientSettingsUser()
+const stretchPoster = computed(() => userSettings.value[ClientSettingUser.PosterStretch])
+
 const {
-  stretchPoster,
+  blurPoster = false,
   width = 150,
   disableSelection = false,
   selected = false,
@@ -145,6 +150,10 @@ const {
   menuIcon,
 } = defineProps<
   ItemCardProps & {
+    /**
+     * Whether to blur the poster, which is how an unread item is kept from spoiling itself.
+     */
+    blurPoster?: boolean
     /**
      * Poster URL.
      */

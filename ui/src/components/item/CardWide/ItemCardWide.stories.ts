@@ -33,7 +33,6 @@ const meta = {
     onClickMenu: fn(),
     preSelect: false,
     selected: false,
-    stretchPoster: true,
     menuIcon: 'i-mdi:menu',
     quickActionIcon: 'i-mdi:pencil',
   },
@@ -49,9 +48,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
-  args: {
-    stretchPoster: true,
-  },
+  args: {},
 }
 
 export const LongText: Story = {
@@ -61,7 +58,6 @@ export const LongText: Story = {
     text: `The story unfolds on Miravara, a planet encased within a colossal, translucent barrier known as the Glass Frontier. For centuries, this barrier has protected the populace from a dying sun, filtering its radiation into usable power. Entire cities cling to its surface like glowing barnacles—each one a hybrid of sleek crystal towers and decaying steel foundations. Below the barrier lies the Underglow, a vast labyrinth of machinery and forgotten people who maintain the world’s vital energy grid, unseen by those above.
 
 Politically, Miravara is divided between the High Dominion—wealthy citizens who live near the surface of the barrier—and the Conduits, a laboring caste living in the Underglow. Above them all looms the enigmatic Council of Luminarchs, a secretive group rumored to communicate directly with the Glass Frontier itself.`,
-    stretchPoster: true,
   },
 }
 
@@ -81,7 +77,6 @@ export const LandscapeStretched: Story = {
   args: {
     topRightIcon: 'i-mdi:check',
     posterUrl: seriesPosterUrl('idL'),
-    stretchPoster: true,
   },
 }
 
@@ -89,7 +84,6 @@ export const LandscapeNotStretched: Story = {
   args: {
     topRightIcon: 'i-mdi:check',
     posterUrl: seriesPosterUrl('idL'),
-    stretchPoster: false,
   },
 }
 

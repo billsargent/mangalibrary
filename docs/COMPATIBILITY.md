@@ -623,6 +623,19 @@ bar, as the legacy interface does. It differs in how:
 - Books are sent in one request (`PATCH /api/v1/books/metadata`); series have no such
   endpoint and are updated one after another.
 
+## Interface settings
+
+The web UI keeps its settings in the client-settings API under the keys the legacy
+interface used, so what was saved there is read here.
+
+- Per user: `webui.poster.stretch` and `webui.poster.blur_unread`, stored as `true` or
+  `false`. A user who never chose gets stretched posters here; the legacy interface
+  showed the whole poster until told otherwise.
+- Server-wide: `webui.series_groups`. Only the `name` of the stored value is used
+  (`alpha` or `japanese`); the table of groups comes from the build.
+- `webui.oauth2.hide_login` and `webui.oauth2.auto_login` are not offered, because
+  this server has no OAuth2 login. Values already stored are left as they are.
+
 ## Not in scope (yet)
 
 OPDS v1/v2, Kobo sync, KOReader sync, Mihon/Tachiyomi shims, OAuth2/OIDC login,

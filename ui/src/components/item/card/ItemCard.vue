@@ -21,7 +21,7 @@
           :src="posterUrl"
           lazy-src="@/assets/cover.svg"
           aspect-ratio="0.7071"
-          :class="{ normal: true, inset: selected }"
+          :class="{ normal: true, inset: selected, 'blur-poster': blurPoster }"
         >
           <template #placeholder>
             <div class="d-flex align-center justify-center fill-height">
@@ -196,6 +196,8 @@
 <script setup lang="ts">
 import type { ItemCardEmits, ItemCardLine, ItemCardProps, ItemCardTitle } from '@/types/ItemCard'
 import { vOnLongPress } from '@vueuse/components'
+import { useClientSettingsUser } from '@/colada/client-settings'
+import { ClientSettingUser } from '@/types/ClientSettingsUser'
 import { usePrimaryInput } from '@/composables/device'
 import { reactiveOmit, reactivePick } from '@vueuse/core'
 import type { RouteLocationObject } from '@/types/route'
@@ -203,8 +205,11 @@ import type { RouteLocationObject } from '@/types/route'
 const { isTouchPrimary } = usePrimaryInput()
 const router = useRouter()
 
+const { userSettings } = useClientSettingsUser()
+const stretchPoster = computed(() => userSettings.value[ClientSettingUser.PosterStretch])
+
 const {
-  stretchPoster,
+  blurPoster = false,
   width = 150,
   disableSelection = false,
   selected = false,
@@ -216,6 +221,10 @@ const {
   cardTo,
 } = defineProps<
   ItemCardProps & {
+    /**
+     * Whether to blur the poster, which is how an unread item is kept from spoiling itself.
+     */
+    blurPoster?: boolean
     /**
      * Poster URL.
      */
@@ -315,6 +324,11 @@ function onCardLongPress() {
 
 .translucent {
   background-color: rgba(0, 0, 0, 0.7);
+}
+
+// Only the picture is blurred: what sits on top of it stays readable.
+.blur-poster .v-img__img {
+  filter: blur(6px);
 }
 
 // Required so that opacity change in VOverlay has transition

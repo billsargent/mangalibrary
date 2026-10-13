@@ -21,12 +21,6 @@ export type ItemCardProps = {
    */
   preSelect?: boolean
   /**
-   * Whether to stretch the poster or not. If `false`, the image will have the `contain` property.
-   *
-   * Defaults to `true`.
-   */
-  stretchPoster?: boolean
-  /**
    * The active sorts in the parent view. Can be used to adjust the card subtitle.
    */
   sortActive?: Sort[]
