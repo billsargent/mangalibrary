@@ -82,7 +82,7 @@ elsewhere. Allowing it is a statement about who may make a browser request to th
 it is off unless an operator asks for it:
 
 ```bash
-MANGALIBRARY_CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:4173 npm start
+MANGALIBRARY_CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:4173 npm run dev
 ```
 
 The value is a comma-separated list of origins (`scheme://host:port`, no trailing slash), or

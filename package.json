@@ -8,9 +8,13 @@
     "node": ">=22"
   },
   "scripts": {
-    "install:all": "npm install && npm --prefix server install && npm --prefix importer install",
+    "install:all": "npm install && npm --prefix server install && npm --prefix importer install && npm --prefix ui install",
+    "build": "npm run build:server && npm run build:ui",
+    "build:server": "npm --prefix server run build",
     "build:ui": "npm --prefix ui run build:with-i18n",
-    "start": "npm --prefix server run dev",
+    "start": "node scripts/start.mjs",
+    "dev": "npm --prefix server run dev",
+    "smoke": "node scripts/smoke.mjs",
     "type-check": "npm --prefix server run type-check && npm --prefix importer run type-check",
     "test": "npm --prefix server test && npm --prefix importer test",
     "lint": "npm --prefix server run lint && npm --prefix importer run lint",
