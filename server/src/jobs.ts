@@ -1,6 +1,16 @@
 import { randomBytes } from 'node:crypto'
-import type { Kysely } from 'kysely'
+import { sql, type Kysely } from 'kysely'
 import type { DB } from './db/schema.js'
+import { nextTsid } from './tsid.js'
+
+/**
+ * How many times a job is run before it is given up on.
+ *
+ * Most failures are of the moment - a drive that was asleep, a file still being
+ * copied - and the second run succeeds. A job that fails every time is not going
+ * to be fixed by a fourth.
+ */
+export const MAX_JOB_ATTEMPTS = 3
 
 /** Priority levels, matching Komga's task priorities. */
 export const JOB_PRIORITY = { HIGHEST: 8, HIGH: 6, DEFAULT: 4, LOW: 2, LOWEST: 0 } as const
@@ -33,6 +43,10 @@ export interface JobRecord {
  * A job is a row, so it survives a restart and so two requests for the same work
  * collapse into one: the queue is keyed by `uniqueKey`, and asking for the same
  * key twice replaces what was queued rather than piling it up.
+ *
+ * Asked for while it is running, the job is marked to run once more when it
+ * finishes: the run in progress may have started before whatever prompted the
+ * request, and its row would otherwise be removed with the request in it.
  */
 export async function enqueueJob(db: Kysely<DB>, options: EnqueueOptions): Promise<void> {
   const now = new Date().toISOString()
@@ -51,8 +65,28 @@ export async function enqueueJob(db: Kysely<DB>, options: EnqueueOptions): Promi
       created_date: now,
       last_modified_date: now,
     })
-    .onConflict((oc) => oc.column('unique_key').doUpdateSet({ last_modified_date: now, payload }))
+    .onConflict((oc) =>
+      oc.column('unique_key').doUpdateSet({
+        last_modified_date: now,
+        payload,
+        requeued: sql<number>`case when owner is not null then 1 else requeued end`,
+      }),
+    )
     .execute()
+}
+
+/**
+ * Record many jobs as one piece of work: all of them or none.
+ *
+ * A scan asks for a job per book. Queued one by one, a stop part-way leaves some
+ * of a library asked for and the rest forgotten, and each is a write of its own;
+ * together they are one, which is also far quicker for a large library.
+ */
+export async function enqueueJobs(db: Kysely<DB>, jobs: readonly EnqueueOptions[]): Promise<void> {
+  if (jobs.length === 0) return
+  await db.transaction().execute(async (trx) => {
+    for (const job of jobs) await enqueueJob(trx, job)
+  })
 }
 
 /**
@@ -111,9 +145,69 @@ export async function takeNextJob(db: Kysely<DB>, owner: string): Promise<JobRec
   })
 }
 
-/** Drop a job that has been run, whether or not it worked. */
-export async function deleteJob(db: Kysely<DB>, id: string): Promise<void> {
-  await db.deleteFrom('jobs').where('id', '=', id).execute()
+/**
+ * Take a job that has been run off the queue - or, when it was asked for again
+ * while it ran, put it back to run once more. Says which.
+ */
+export async function finishJob(db: Kysely<DB>, id: string): Promise<'DONE' | 'REQUEUED'> {
+  return db.transaction().execute(async (trx) => {
+    const row = await trx.selectFrom('jobs').select('requeued').where('id', '=', id).executeTakeFirst()
+    if (row?.requeued !== 1) {
+      await trx.deleteFrom('jobs').where('id', '=', id).execute()
+      return 'DONE'
+    }
+    await trx
+      .updateTable('jobs')
+      .set({ owner: null, requeued: 0, attempts: 0, last_modified_date: new Date().toISOString() })
+      .where('id', '=', id)
+      .execute()
+    return 'REQUEUED'
+  })
+}
+
+/**
+ * Deal with a job whose run threw: back on the queue while it has attempts left,
+ * and off it for good when it has none. Says which.
+ *
+ * A job given up on that was asked for again meanwhile still gets that run, as a
+ * fresh job: the request was for the work, not for another failure.
+ */
+export async function failJob(db: Kysely<DB>, job: JobRecord): Promise<'RETRY' | 'GAVE_UP'> {
+  if (job.attempts < MAX_JOB_ATTEMPTS) {
+    await db
+      .updateTable('jobs')
+      .set({ owner: null, last_modified_date: new Date().toISOString() })
+      .where('id', '=', job.id)
+      .execute()
+    return 'RETRY'
+  }
+  await finishJob(db, job.id)
+  return 'GAVE_UP'
+}
+
+/**
+ * Leave a trace of a job that was given up on, where an operator looks: the
+ * history, beside what else the server did to the library.
+ */
+export async function recordJobFailure(db: Kysely<DB>, job: JobRecord, error: unknown): Promise<void> {
+  const payload = (job.payload ?? {}) as Record<string, unknown>
+  const id = (key: string) => (typeof payload[key] === 'string' ? (payload[key] as string) : null)
+  await db
+    .insertInto('historical_events')
+    .values({
+      id: nextTsid(),
+      type: 'TaskFailed',
+      book_id: id('bookId'),
+      series_id: id('seriesId'),
+      properties: JSON.stringify({
+        task: job.type,
+        reason: error instanceof Error ? error.message : String(error),
+        attempts: String(job.attempts),
+        ...(id('libraryId') === null ? {} : { library: id('libraryId') }),
+      }),
+      timestamp: new Date().toISOString(),
+    })
+    .execute()
 }
 
 /**

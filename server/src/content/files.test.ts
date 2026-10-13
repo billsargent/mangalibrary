@@ -4,7 +4,11 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { confinedPath } from './files.js'
+import { createDatabase } from '../db/index.js'
+import { migrate } from '../db/migrate.js'
+import { migrations } from '../db/migrations/index.js'
+import { thumbnailBytes } from '../thumbnails/generate.js'
+import { confinedPath, insideALibrary } from './files.js'
 
 /** A library folder holding one book, and the URL a scan would store for it. */
 function library(): { root: string; book: string; url: string } {
@@ -64,5 +68,42 @@ describe('confinedPath', () => {
     const { root, url } = library()
 
     expect(await confinedPath(join(root, 'missing'), url, 'file')).toBeNull()
+  })
+})
+
+describe('a file a row names', () => {
+  async function withLibrary() {
+    const { root, book } = library()
+    const database = createDatabase(':memory:')
+    await migrate(database.db, migrations)
+    await database.db
+      .insertInto('libraries')
+      .values({ id: 'L1', name: 'Main', root, created_date: 'now', last_modified_date: 'now' } as never)
+      .execute()
+    return { root, book, db: database.db }
+  }
+
+  it('is inside a library only when it is under one of their folders', async () => {
+    const { root, book, db } = await withLibrary()
+    const elsewhere = join(realpathSync.native(mkdtempSync(join(tmpdir(), 'ml-files-out-'))), 'secret.jpg')
+    writeFileSync(elsewhere, 'secret')
+
+    expect(await insideALibrary(db, book)).toBe(true)
+    expect(await insideALibrary(db, join(root, 'Akira'))).toBe(true)
+    expect(await insideALibrary(db, elsewhere)).toBe(false)
+    expect(await insideALibrary(db, join(root, '..', 'nothing-here.jpg'))).toBe(false)
+  })
+
+  it('is read as artwork only from inside a library', async () => {
+    const { root, db } = await withLibrary()
+    const cover = join(root, 'Akira', 'cover.jpg')
+    writeFileSync(cover, 'cover')
+    const elsewhere = join(realpathSync.native(mkdtempSync(join(tmpdir(), 'ml-files-out-'))), 'secret.jpg')
+    writeFileSync(elsewhere, 'secret')
+    const record = (url: string) => ({ id: 'T1', mediaType: 'image/jpeg', bytes: null, url }) as never
+
+    expect((await thumbnailBytes(db, record(cover)))?.toString()).toBe('cover')
+    // A row that points outside is answered as if the file were not there.
+    expect(await thumbnailBytes(db, record(elsewhere))).toBeNull()
   })
 })

@@ -109,6 +109,7 @@ declare module 'vue' {
     HistoryExpandDuplicatePageDeleted: typeof import('./components/history/expand/DuplicatePageDeleted.vue')['default']
     HistoryExpandSeriesDirectoryDeleted: typeof import('./components/history/expand/SeriesDirectoryDeleted.vue')['default']
     HistoryExpandTable: typeof import('./components/history/expand/Table.vue')['default']
+    HistoryExpandTaskFailed: typeof import('./components/history/expand/TaskFailed.vue')['default']
     HistoryTable: typeof import('./components/history/HistoryTable.vue')['default']
     ImportBooksDirectorySelection: typeof import('./components/import/books/DirectorySelection.vue')['default']
     ImportBooksTransientBooksTable: typeof import('./components/import/books/TransientBooksTable.vue')['default']

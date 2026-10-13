@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import type { Kysely } from 'kysely'
 
 import type { DB } from '../db/schema.js'
-import { insideRoot } from '../media/scan.js'
+import { insideRoot, insideRootOnDisk } from '../media/scan.js'
 
 /**
  * Where the rows of a library point, and how to get there.
@@ -167,4 +167,19 @@ export async function archiveEntries(
     entries.push({ name: name(basename(path), index), path })
   }
   return entries
+}
+
+/**
+ * Whether a path is inside one of the libraries, as the disk spells it.
+ *
+ * A row can name a file - artwork found beside a book does - and a row can be
+ * wrong, or come from a database somebody else wrote. A file is only read on a
+ * row's word when it is somewhere the server was pointed at.
+ */
+export async function insideALibrary(db: Kysely<DB>, path: string): Promise<boolean> {
+  const libraries = await db.selectFrom('libraries').select('root').execute()
+  for (const library of libraries) {
+    if (await insideRootOnDisk(library.root, path)) return true
+  }
+  return false
 }

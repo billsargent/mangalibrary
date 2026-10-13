@@ -27,4 +27,9 @@ export const historicalEventMessages: Record<string, MessageDescriptor> = {
     defaultMessage: 'Book Imported',
     id: 'enum.historicalEvent.BookImported',
   }),
+  TaskFailed: defineMessage({
+    description: 'Historical event: TaskFailed, a background task the server gave up on',
+    defaultMessage: 'Task Failed',
+    id: 'enum.historicalEvent.TaskFailed',
+  }),
 }
