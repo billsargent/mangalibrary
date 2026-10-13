@@ -25,6 +25,18 @@ const IDLE_MS = 60_000
 
 let pool: Piscina | null = null
 
+/**
+ * Threads that read pages for people who are reading.
+ *
+ * Apart from the pool above, so that a scan with every job thread busy does not
+ * keep a reader waiting for a page. Each is a pool of one thread, and a book
+ * always goes to the same one: the thread keeps the book it last read from open,
+ * and a book spread over several threads would be held open by each of them.
+ * Two, so that two people reading two books are not in each other's way.
+ */
+const READER_THREADS = 2
+let readers: Piscina[] = []
+
 /** The most threads this machine is asked for: every core but the one that serves. */
 export function defaultThreadLimit(): number {
   return Math.max(1, availableParallelism() - 1)
@@ -56,14 +68,20 @@ export function startThreads(options: { maxThreads?: number } = {}): number {
     maxThreads,
     idleTimeout: IDLE_MS,
   })
+  readers = Array.from(
+    { length: READER_THREADS },
+    () => new Piscina({ ...workerSettings(), minThreads: 0, maxThreads: 1, idleTimeout: IDLE_MS }),
+  )
   return maxThreads
 }
 
 /** Stop the threads, once what they are doing is done. Tasks run in place again. */
 export async function stopThreads(): Promise<void> {
   const stopping = pool
+  const stoppingReaders = readers
   pool = null
-  await stopping?.close()
+  readers = []
+  await Promise.all([stopping?.close(), ...stoppingReaders.map((reader) => reader.close())])
 }
 
 /** Whether tasks are being run on threads. */
@@ -82,4 +100,29 @@ export async function onThread<Name extends TaskName>(
     return task(input)
   }
   return (await pool.run(input, { name })) as Result
+}
+
+/** Which reader a book goes to: always the same one for the same file. */
+function readerFor(path: string): Piscina | undefined {
+  let sum = 0
+  for (let index = 0; index < path.length; index += 1) sum = (sum * 31 + path.charCodeAt(index)) >>> 0
+  return readers[sum % READER_THREADS]
+}
+
+/**
+ * Run a task on the reader thread that the book at `path` belongs to, or in
+ * place when there are no threads.
+ */
+export async function onReader<Name extends TaskName>(
+  path: string,
+  name: Name,
+  input: Parameters<Tasks[Name]>[0],
+): Promise<Awaited<ReturnType<Tasks[Name]>>> {
+  type Result = Awaited<ReturnType<Tasks[Name]>>
+  const reader = readerFor(path)
+  if (reader === undefined) {
+    const task = tasks[name] as (input: Parameters<Tasks[Name]>[0]) => Promise<Result>
+    return task(input)
+  }
+  return (await reader.run(input, { name })) as Result
 }

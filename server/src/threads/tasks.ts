@@ -14,6 +14,7 @@ import { isMainThread, threadId } from 'node:worker_threads'
 
 import { fileHash, koreaderHash, pageHash } from '../hashing/hashes.js'
 import { openBook } from '../media/index.js'
+import { keptOpen } from '../media/kept-open.js'
 import { inspectBook, type BookInspection } from '../media/inspect.js'
 import { isbnBarcodePatch } from '../metadata/barcode.js'
 import { readBookDocuments, type BookDocumentsRead } from '../metadata/document.js'
@@ -73,6 +74,32 @@ export async function hashPages(input: { path: string; pages: number[] }): Promi
  */
 export async function poster(input: { path: string }): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
   return posterOf(input.path)
+}
+
+/**
+ * One page of a book that has to be unpacked or drawn: a CBR's or a PDF's.
+ *
+ * The book stays open on this thread for the next page of it. A file that will
+ * not open and a page that is not there are answers, not errors: the caller
+ * tells a reader which it was.
+ */
+export async function readPage(input: {
+  path: string
+  pageNumber: number
+}): Promise<{ bytes: Uint8Array; mediaType: string } | { failed: 'OPEN' | 'PAGE' }> {
+  let book
+  try {
+    book = await keptOpen(input.path)
+  } catch {
+    return { failed: 'OPEN' }
+  }
+  const page = book.pages[input.pageNumber - 1]
+  if (page === undefined) return { failed: 'PAGE' }
+  try {
+    return { bytes: await book.readPage(input.pageNumber), mediaType: page.mediaType }
+  } catch {
+    return { failed: 'PAGE' }
+  }
 }
 
 /** Which thread a task runs on, for telling whether the threads are really there. */

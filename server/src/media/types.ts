@@ -6,6 +6,12 @@ export interface PageEntry {
   mediaType: string
   /** Bytes, when the container knows before reading; PDF pages are rendered. */
   size: number | null
+  /**
+   * The size in pixels, when the container knows it without reading the page: a
+   * PDF does, because it decides how large each page is drawn.
+   */
+  width?: number
+  height?: number
 }
 
 /** A file inside a book, which an EPUB reader needs as a resource. */

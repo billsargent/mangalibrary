@@ -8,6 +8,7 @@ import { requireAdmin, requireRole } from '../auth/session.js'
 import type { DB } from '../db/schema.js'
 import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
 import { openBook } from '../media/index.js'
+import { readBookPage } from '../media/pages.js'
 import { mediaTypeFor, profileFor } from '../media/kinds.js'
 import { bookFilePath, findBookRecord, type BookFileRecord } from '../content/files.js'
 import { resizedImage } from '../thumbnails/image.js'
@@ -132,23 +133,15 @@ async function pageFor(
 async function readPage(
   book: BookFileRecord,
   pageNumber: number,
-): Promise<{ code: number; message: string } | { bytes: Buffer }> {
+): Promise<{ code: number; message: string } | { bytes: Buffer; mediaType: string }> {
   const path = await bookFilePath(book)
   if (!path) return { code: 404, message: 'File not found, it may have moved' }
 
-  let contents
-  try {
-    contents = await openBook(path)
-  } catch {
-    return { code: 404, message: 'File not found, it may have moved' }
-  }
-  try {
-    return { bytes: await contents.readPage(pageNumber) }
-  } catch {
-    return { code: 400, message: 'Page number does not exist' }
-  } finally {
-    contents.close()
-  }
+  const read = await readBookPage(path, pageNumber)
+  if ('bytes' in read) return read
+  return read.failed === 'OPEN'
+    ? { code: 404, message: 'File not found, it may have moved' }
+    : { code: 400, message: 'Page number does not exist' }
 }
 
 /** Re-encode an image to JPEG or PNG, or null when it cannot be read. */
@@ -226,7 +219,10 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
     if ('code' in page) return reply.code(page.code).send({ message: page.message })
 
     let bytes = page.bytes
-    let type = mediaType
+    // What the file says the page is, over what was recorded when it was analysed:
+    // the two differ for a book analysed by a version that read its pages another
+    // way, until it is analysed again, and the bytes are what is being sent.
+    let type = page.mediaType || mediaType
     if (convertTo === 'jpeg' || convertTo === 'png') {
       const target = convertTo === 'jpeg' ? 'image/jpeg' : 'image/png'
       if (type !== target) {
@@ -259,7 +255,7 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
       const page = await readPage(book, pageNumber)
       if ('code' in page) return reply.code(page.code).send({ message: page.message })
 
-      const thumbnail = await resizeImage(page.bytes, mediaType, PAGE_THUMBNAIL_SIZE)
+      const thumbnail = await resizeImage(page.bytes, page.mediaType || mediaType, PAGE_THUMBNAIL_SIZE)
       if (thumbnail === null) return reply.code(404).send({ message: 'Image conversion failed' })
 
       return reply.headers(cacheHeaders(lastModified)).type('image/jpeg').send(thumbnail)

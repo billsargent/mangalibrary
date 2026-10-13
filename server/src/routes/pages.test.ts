@@ -275,9 +275,12 @@ describe('book page images', () => {
 
     const pdf = await app.inject({ method: 'GET', url: '/api/v1/books/B2/pages/1', headers: reader })
     expect(pdf.statusCode).toBe(200)
-    // Our PDF reader renders each page to PNG.
-    expect(pdf.headers['content-type']).toBe('image/png')
-    expect(pdf.rawPayload.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    // A PDF page is drawn, and sent as a JPEG as the reference sends it - whatever
+    // was recorded for the page by a version that drew PNGs, as this row was.
+    expect(pdf.headers['content-type']).toBe('image/jpeg')
+    expect(pdf.rawPayload.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]))
+    const drawn = await sharp(pdf.rawPayload).metadata()
+    expect(Math.max(drawn.width ?? 0, drawn.height ?? 0)).toBeGreaterThanOrEqual(1600)
 
     const epub = await app.inject({ method: 'GET', url: '/api/v1/books/B3/pages/1', headers: reader })
     expect(epub.statusCode).toBe(404)

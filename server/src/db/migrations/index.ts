@@ -17,6 +17,7 @@ import { migration0015PageHash } from './0015_page_hash.js'
 import { migration0016SearchSeriesTitleSort } from './0016_search_series_title_sort.js'
 import { migration0017JobRequeued } from './0017_job_requeued.js'
 import { migration0018ContentVersion } from './0018_content_version.js'
+import { migration0019PdfPageSize } from './0019_pdf_page_size.js'
 
 /**
  * Ordered migration registry, applied in id order by the runner.
@@ -44,4 +45,5 @@ export const migrations: Migration[] = [
   migration0016SearchSeriesTitleSort,
   migration0017JobRequeued,
   migration0018ContentVersion,
+  migration0019PdfPageSize,
 ]

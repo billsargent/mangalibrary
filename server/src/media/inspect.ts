@@ -82,10 +82,14 @@ export async function inspectBook(
       for (const [index, page] of book.pages.entries()) {
         // Dimensions are only known by decoding an image, which is the expensive
         // part of analysis, so a caller can turn it off.
+        // A container that already knows - a PDF, which sets the size its pages are
+        // drawn at - is taken at its word, and nothing is drawn to find out.
         const size =
-          options.analyzeDimensions === true && isImageEntry(page.fileName)
-            ? await imageSize(await book.readPage(index + 1))
-            : { width: null, height: null }
+          page.width !== undefined && page.height !== undefined
+            ? { width: page.width, height: page.height }
+            : options.analyzeDimensions === true && isImageEntry(page.fileName)
+              ? await imageSize(await book.readPage(index + 1))
+              : { width: null, height: null }
 
         pages.push({
           fileName: page.fileName,

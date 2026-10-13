@@ -637,6 +637,16 @@ does. Which characters make a letter of the navigation, and that everything else
 - The web UI keeps the chosen letter in the address as `?nav=`, as the legacy interface
   did.
 
+## PDF pages
+
+A page of a PDF is drawn when it is asked for and sent as a JPEG, as the reference
+sends it. It is drawn with its longer side at 1600 pixels; the reference draws at 3200.
+The size recorded for a page at analysis is that drawn size, worked out from the page's
+size on paper without drawing it.
+
+A PDF analysed by a version that drew pages at the paper size is analysed again by the
+next scan after upgrading (migration 0019), so its recorded sizes match what is sent.
+
 ## Reading mode
 
 The reader uses the reading mode its user last picked for every book. The reference

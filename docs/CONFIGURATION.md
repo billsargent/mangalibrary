@@ -48,6 +48,13 @@ Each thread costs memory of its own while it works and is let go after a minute 
 
 `MANGALIBRARY_WORKER_THREADS=false` turns them off: the same work then runs on the main thread.
 
+Two more threads serve pages to people who are reading: a page of a CBR is unpacked and
+a page of a PDF is drawn on one of them, so that neither holds up the server and a scan
+with every job thread busy does not keep a reader waiting. A book always goes to the
+same one of the two, which keeps the book it last read from open for a minute; an open
+PDF is its whole file in memory, so at most two are held at once. The same switch turns
+these off.
+
 ## The web UI
 
 The server serves the built web UI from its own origin, at `/`. It looks for the bundle in
