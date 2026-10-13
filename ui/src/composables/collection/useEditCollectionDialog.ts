@@ -96,7 +96,7 @@ export function useEditCollectionDialog() {
       }
 
       // update collection
-      const updateDto = pick(updatedData.entity, 'name', 'ordered')
+      const updateDto = pick(updatedData.entity, 'name', 'ordered', 'seriesIds')
       mutateUpdateCollection({ collectionId: collection.id, data: updateDto })
         .then(() => {
           hideDialog()

@@ -106,15 +106,21 @@ export function clearAllReadLists() {
 export function clearReadList(readListId: string) {
   void entityChanged(QUERY_KEYS_READLIST.root, readListId)
   void entitiesChanged(QUERY_KEYS_READLIST.byBook())
+  // What is in it, or the order of it, may be what changed: any list of books
+  // narrowed to this read list is out of date, and nothing says which those are.
+  void entitiesChanged(QUERY_KEYS_BOOKS.root)
 }
 
 export function clearAllCollections() {
-  void entitiesChanged(QUERY_KEYS_READLIST.root)
+  void entitiesChanged(QUERY_KEYS_COLLECTIONS.root)
 }
 
 export function clearCollection(collectionId: string) {
   void entityChanged(QUERY_KEYS_COLLECTIONS.root, collectionId)
   void entitiesChanged(QUERY_KEYS_COLLECTIONS.bySeries())
+  // What is in it, or the order of it, may be what changed: any list of series
+  // narrowed to this collection is out of date, and nothing says which those are.
+  void entitiesChanged(QUERY_KEYS_SERIES.root)
 }
 
 export function clearThumbnailBook(bookId: string) {

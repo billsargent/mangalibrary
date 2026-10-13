@@ -27,6 +27,14 @@
       />
     </template>
 
+    <template #[`item.3`]>
+      <CollectionFormContents
+        v-model="model.entity.seriesIds"
+        :collection-id="model.entity.id"
+        :ordered="model.entity.ordered"
+      />
+    </template>
+
     <template #[`item.2`]>
       <v-sheet class="pa-4">
         <PosterUpload
@@ -63,6 +71,14 @@ const tabs = [
       id: 'ddpX9L',
     }),
     value: 1,
+  },
+  {
+    text: intl.formatMessage({
+      description: 'Form edit collection: Contents',
+      defaultMessage: 'Contents',
+      id: 'DFlexg',
+    }),
+    value: 3,
   },
   {
     text: intl.formatMessage({
