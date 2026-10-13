@@ -9,7 +9,7 @@ import { findBooks, type BookQueryFilters } from './books.js'
 import { buildBookDtos, buildSeriesDtos, loadSeriesCounts } from './content-data.js'
 import type { SeriesCounts, SeriesRow } from './content-dto.js'
 import { contentDisposition } from './content-disposition.js'
-import { contentContext, scopedLibraryIds, type ContentContext } from './context.js'
+import { allowedSeries, contentContext, scopedLibraryIds, type ContentContext } from './context.js'
 import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { applySeriesMetadataPatch } from './metadata.js'
@@ -136,13 +136,16 @@ const LIVE_BOOK_COUNT = sql<number>`(
   where counted_book.series_id = series.id and counted_book.deleted_date is null
 )`
 
-function seriesQuery(db: Kysely<DB>, filters: SeriesFilters) {
+function seriesQuery(db: Kysely<DB>, filters: SeriesFilters, onlySeries: readonly string[] | null = null) {
   let query = db
     .selectFrom('series')
     .innerJoin('series_metadata', 'series_metadata.series_id', 'series.id')
     .leftJoin('book_metadata_aggregation', 'book_metadata_aggregation.series_id', 'series.id')
 
   query = query.where('series.library_id', 'in', filters.libraryIds)
+  // What a restricted user may see is decided in the query, so the database pages
+  // the result. Decided afterwards, every series had to be fetched to find a page.
+  if (onlySeries !== null) query = query.where('series.id', 'in', onlySeries)
   query =
     filters.deleted === true
       ? query.where('series.deleted_date', 'is not', null)
@@ -327,29 +330,28 @@ export async function findSeries(
 ): Promise<SeriesPage> {
   if (filters.libraryIds.length === 0) return { rows: [], total: 0 }
 
-  const needsPostFilter = context.restrictedSeriesIds !== null || filters.readStatuses.length > 0
+  const needsPostFilter = filters.readStatuses.length > 0
+  const onlySeries = context.restrictedSeriesIds
 
   if (!needsPostFilter) {
-    const counted = await seriesQuery(db, filters)
+    const counted = await seriesQuery(db, filters, onlySeries)
       .select((eb) => eb.fn.countAll<number>().as('total'))
       .executeTakeFirstOrThrow()
     const total = Number(counted.total)
 
-    let idsQuery = applySort(seriesQuery(db, filters).select('series.id'), sorts).orderBy('series.id')
+    let idsQuery = applySort(seriesQuery(db, filters, onlySeries).select('series.id'), sorts).orderBy('series.id')
     if (!unpaged) idsQuery = idsQuery.limit(size).offset(page * size)
     const ids = (await idsQuery.execute()).map((row) => row.id)
     return { rows: await loadSeriesRows(db, ids), total }
   }
 
   const ordered = (
-    await applySort(seriesQuery(db, filters).select('series.id'), sorts).orderBy('series.id').execute()
+    await applySort(seriesQuery(db, filters, onlySeries).select('series.id'), sorts)
+      .orderBy('series.id')
+      .execute()
   ).map((row) => row.id)
 
   let candidates = ordered
-  if (context.restrictedSeriesIds !== null) {
-    const allowed = new Set(context.restrictedSeriesIds)
-    candidates = candidates.filter((id) => allowed.has(id))
-  }
 
   if (filters.readStatuses.length > 0) {
     const counts = await loadSeriesCounts(db, candidates, context.user.id)
@@ -476,7 +478,7 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
     if (!row) return { status: 404 }
     const series = row as unknown as SeriesRow
     if (!context.libraryIds.includes(series.library_id)) return { status: 403 }
-    if (context.restrictedSeriesIds !== null && !context.restrictedSeriesIds.includes(series.id)) {
+    if (allowedSeries(context)?.has(series.id) === false) {
       return { status: 403 }
     }
     return { row: series }
@@ -706,7 +708,7 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
         .orderBy('number')
         .execute()
 
-      const allowed = context.restrictedSeriesIds === null ? null : new Set(context.restrictedSeriesIds)
+      const allowed = allowedSeries(context)
       const seriesByCollection = new Map<string, string[]>()
       for (const member of members) {
         if (allowed !== null && !allowed.has(member.series_id)) continue

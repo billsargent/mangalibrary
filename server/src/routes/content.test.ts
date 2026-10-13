@@ -1468,3 +1468,65 @@ describe('books', () => {
     await app.close()
   })
 })
+
+describe('what a restricted reader may see, from one request to the next', () => {
+  const seen = async (app: FastifyInstance, url = '/api/v1/series?sort=metadata.titleSort,asc') => {
+    const page = (await app.inject({ method: 'GET', url, headers: reader })).json() as {
+      content: { id: string }[]
+      totalElements: number
+    }
+    return { ids: page.content.map((series) => series.id), total: page.totalElements }
+  }
+  const status = async (app: FastifyInstance, seriesId: string) =>
+    (await app.inject({ method: 'GET', url: '/api/v1/series/' + seriesId, headers: reader })).statusCode
+
+  it('follows a change to a series age rating at once, in either direction', async () => {
+    const { app, database } = await setup()
+    const before = await seen(app)
+    expect(before.ids.length).toBeGreaterThan(0)
+    // The answer is kept between requests; asking twice must not change it.
+    expect(await seen(app)).toEqual(before)
+
+    const rate = (seriesId: string, age: number) =>
+      database.db.updateTable('series_metadata').set({ age_rating: age }).where('series_id', '=', seriesId).execute()
+    const visible = before.ids[0]!
+    const original = (
+      await database.db.selectFrom('series_metadata').select('age_rating').where('series_id', '=', visible).execute()
+    )[0]!.age_rating!
+
+    await rate(visible, 18)
+    const after = await seen(app)
+    expect(after.ids).not.toContain(visible)
+    expect(after.total).toBe(before.total - 1)
+    expect(await status(app, visible)).toBe(403)
+
+    await rate(visible, original)
+    expect(await seen(app)).toEqual(before)
+    expect(await status(app, visible)).toBe(200)
+    await app.close()
+  })
+
+  it('pages what the reader may see, and counts only that', async () => {
+    const { app } = await setup()
+    const all = await seen(app)
+    expect(all.total).toBe(all.ids.length)
+
+    const first = await seen(app, '/api/v1/series?sort=metadata.titleSort,asc&size=1')
+    expect(first.ids).toEqual(all.ids.slice(0, 1))
+    expect(first.total).toBe(all.total)
+
+    const books = (await app.inject({ method: 'GET', url: '/api/v1/books?size=1', headers: reader })).json() as {
+      content: { seriesId: string }[]
+      totalElements: number
+    }
+    const everyBook = (
+      await app.inject({ method: 'GET', url: '/api/v1/books?unpaged=true', headers: reader })
+    ).json() as {
+      content: { seriesId: string }[]
+    }
+    expect(books.content).toHaveLength(1)
+    expect(books.totalElements).toBe(everyBook.content.length)
+    expect(everyBook.content.every((book) => all.ids.includes(book.seriesId))).toBe(true)
+    await app.close()
+  })
+})

@@ -67,6 +67,7 @@ export interface DB {
   page_hash: PageHashTable
   page_hash_thumbnail: PageHashThumbnailTable
   historical_events: HistoricalEventsTable
+  content_version: ContentVersionTable
   jobs: JobsTable
   client_settings_global: ClientSettingsGlobalTable
   client_settings_user: ClientSettingsUserTable
@@ -496,6 +497,12 @@ export interface HistoricalEventsTable {
   series_id: string | null
   properties: Generated<string>
   timestamp: string
+}
+
+/** One row: a count of the changes that can alter what a restricted user may see. */
+export interface ContentVersionTable {
+  id: number
+  version: number
 }
 
 export interface JobsTable {

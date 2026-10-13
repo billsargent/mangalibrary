@@ -32,12 +32,72 @@ export interface ContentContext {
   restrictedSeriesIds: string[] | null
 }
 
+/** What was worked out for one set of rules, and the state of the library it was worked out from. */
+interface Remembered {
+  version: number
+  seriesIds: string[]
+}
+
+/**
+ * What restricted users may see, per database, by the rules that decide it.
+ *
+ * Keyed by the rules and not the user: two users with the same restriction see
+ * the same series. Bounded, so a server with many differently restricted users
+ * does not keep a list for each for ever.
+ */
+const remembered = new WeakMap<Kysely<DB>, Map<string, Remembered>>()
+const REMEMBERED_RULES = 64
+
+const sets = new WeakMap<readonly string[], Set<string>>()
+
+/**
+ * The series a restricted user may see, as a set, or `null` for every series.
+ *
+ * Made once for a list and kept with it: the same list answers request after
+ * request, and a membership test is asked for every item of a listing.
+ */
+export function allowedSeries(context: ContentContext): ReadonlySet<string> | null {
+  const ids = context.restrictedSeriesIds
+  if (ids === null) return null
+  let set = sets.get(ids)
+  if (set === undefined) {
+    set = new Set(ids)
+    sets.set(ids, set)
+  }
+  return set
+}
+
+/** The count that moves when a series' library, age rating or labels change. */
+async function contentVersion(db: Kysely<DB>): Promise<number | null> {
+  try {
+    const row = await db.selectFrom('content_version').select('version').where('id', '=', 1).executeTakeFirst()
+    return row?.version ?? null
+  } catch {
+    // A database from before the counter has nothing to compare with, so nothing is kept.
+    return null
+  }
+}
+
 /** Resolve which libraries and series the caller may see. */
 export async function contentContext(db: Kysely<DB>, req: FastifyRequest): Promise<ContentContext> {
   const user = requireUser(req)
   const libraryIds = visibleLibraryIds(user, await allLibraryIds(db))
   if (!hasContentRestrictions(user) || libraryIds.length === 0) {
     return { user, libraryIds, restrictedSeriesIds: hasContentRestrictions(user) ? [] : null }
+  }
+
+  // Working this out reads every series and every label, and a request for one
+  // page of a book asks for it. It is kept until something it depends on changes.
+  const version = await contentVersion(db)
+  const rules = JSON.stringify([user.restrictions, [...libraryIds].sort()])
+  let known = remembered.get(db)
+  if (known === undefined) {
+    known = new Map()
+    remembered.set(db, known)
+  }
+  const kept = known.get(rules)
+  if (version !== null && kept?.version === version) {
+    return { user, libraryIds, restrictedSeriesIds: kept.seriesIds }
   }
 
   const rows = await db
@@ -64,6 +124,10 @@ export async function contentContext(db: Kysely<DB>, req: FastifyRequest): Promi
     )
     .map((row) => row.id)
 
+  if (version !== null) {
+    if (known.size >= REMEMBERED_RULES) known.clear()
+    known.set(rules, { version, seriesIds: restrictedSeriesIds })
+  }
   return { user, libraryIds, restrictedSeriesIds }
 }
 
@@ -73,7 +137,7 @@ export async function contentContext(db: Kysely<DB>, req: FastifyRequest): Promi
  */
 export function seriesAllowed(context: ContentContext, seriesId: string, libraryId: string): boolean {
   if (!canAccessLibrary(context.user, libraryId)) return false
-  return context.restrictedSeriesIds === null || context.restrictedSeriesIds.includes(seriesId)
+  return allowedSeries(context)?.has(seriesId) ?? true
 }
 
 /**
@@ -100,7 +164,8 @@ export function scopedLibraryIds(context: ContentContext, requested: unknown): s
  * the caller can see.
  */
 export async function accessibleSeriesIds(db: Kysely<DB>, context: ContentContext): Promise<Set<string> | null> {
-  if (context.restrictedSeriesIds !== null) return new Set(context.restrictedSeriesIds)
+  const restricted = allowedSeries(context)
+  if (restricted !== null) return new Set(restricted)
 
   const all = await allLibraryIds(db)
   if (context.libraryIds.length === all.length) return null
