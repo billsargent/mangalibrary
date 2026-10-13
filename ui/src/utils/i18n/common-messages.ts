@@ -203,6 +203,31 @@ export const commonMessages = {
     defaultMessage: 'Must be a valid BCP 47 language code',
     id: 'v3beFf',
   }),
+  mediaPageRefresh: defineMessage({
+    description: 'Media management pages: button that reloads the table',
+    defaultMessage: 'Refresh',
+    id: 'M1kkFr',
+  }),
+  mediaPageUnavailable: defineMessage({
+    description: 'Media management pages: chip shown for a book whose file is gone',
+    defaultMessage: 'Unavailable',
+    id: 'ccXoky',
+  }),
+  mediaPageMediaType: defineMessage({
+    description: 'Media management pages: column header, media type',
+    defaultMessage: 'Media type',
+    id: 'iIdF6Q',
+  }),
+  mediaPageUrl: defineMessage({
+    description: 'Media management pages: column header, where the file is',
+    defaultMessage: 'File',
+    id: '9jP+g7',
+  }),
+  mediaPageSize: defineMessage({
+    description: 'Media management pages: column header, file size',
+    defaultMessage: 'Size',
+    id: 'tDIWUd',
+  }),
   bulkEditHint: defineMessage({
     description: 'Bulk edit metadata forms: explanation shown at the top',
     defaultMessage:

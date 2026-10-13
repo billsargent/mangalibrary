@@ -379,6 +379,11 @@ async function deleteBookFile(context: JobContext, bookId: string): Promise<void
     .set({ deleted_date: now, last_modified_date: now })
     .where('id', '=', bookId)
     .execute()
+
+  // Whoever has the book on screen is told it is gone; a list that still showed
+  // it would offer a book nobody can open.
+  const ref = await bookRef(context.db, bookId)
+  if (ref) announceBook(context.events, 'BookDeleted', ref)
 }
 
 /** Remove every file of a series, and the series with them. */
@@ -398,6 +403,9 @@ async function deleteSeriesFiles(context: JobContext, seriesId: string): Promise
     .set({ deleted_date: now, last_modified_date: now })
     .where('id', '=', seriesId)
     .execute()
+
+  const ref = await seriesRef(context.db, seriesId)
+  if (ref) announceSeries(context.events, 'SeriesDeleted', ref)
 }
 
 /** Run one job. Throwing is allowed: the worker logs it and drops the job. */

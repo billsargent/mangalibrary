@@ -8,6 +8,25 @@
  * `docs/COMPATIBILITY.md`.
  */
 
+import { fileURLToPath } from 'node:url'
+
+/**
+ * Where a series or a book is, as a path.
+ *
+ * A scan stores a location as a `file:` URL. The reference answers with the path
+ * that URL names, which is what a person reading it expects to see, and so does
+ * this. Anything that is not such a URL - a relative path written by hand - is
+ * given as it is.
+ */
+export function filePathOf(url: string): string {
+  if (!url.startsWith('file:')) return url
+  try {
+    return fileURLToPath(url)
+  } catch {
+    return url
+  }
+}
+
 export interface AuthorDto {
   name: string
   role: string
@@ -360,7 +379,7 @@ export function toSeriesDto(
     id: row.id,
     libraryId: row.library_id,
     name: row.name,
-    url: row.url,
+    url: filePathOf(row.url),
     oneshot: row.oneshot === 1,
     booksCount: counts.booksCount,
     booksReadCount: counts.booksReadCount,
@@ -468,7 +487,7 @@ export function toBookDto(
     seriesTitle,
     libraryId: row.library_id,
     name: row.name,
-    url: row.url,
+    url: filePathOf(row.url),
     number: row.number,
     oneshot: row.oneshot === 1,
     deleted: row.deleted_date !== null,
