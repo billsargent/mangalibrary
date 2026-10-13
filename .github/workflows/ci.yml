@@ -62,3 +62,18 @@ jobs:
       - run: npm run test:unit
       # The bundle the product ships is produced here and nowhere else.
       - run: npm run build
+
+  # What somebody installing it does, start to finish, on the system it will run on:
+  # the README's own steps, then a library scanned and a page read from the built
+  # server through the machine's network address.
+  install:
+    name: Install, build and run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run install:all
+      - run: npm run build
+      - run: npm run smoke
