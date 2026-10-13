@@ -1,10 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
+import { hashBookFile } from '../hashing/books.js'
 import { analyzeBook } from '../media/analyze.js'
 import { EventBus } from '../events.js'
 import { SETTING_KEYS, setSetting } from '../settings.js'
@@ -112,6 +113,8 @@ describe('scanning a library', () => {
       booksCreated: 0,
       booksUpdated: 0,
       booksDeleted: 0,
+      seriesRestored: 0,
+      booksRestored: 0,
       collectionsDeleted: 0,
       readListsDeleted: 0,
     })
@@ -420,5 +423,194 @@ describe('announcing what a scan did', () => {
       { name: 'SeriesDeleted', data: { seriesId: series.id, libraryId: 'L1' } },
       { name: 'BookDeleted', data: { bookId: book.id, seriesId: series.id, libraryId: 'L1' } },
     ])
+  })
+})
+
+describe('bringing back what was deleted', () => {
+  /** Hash every book, as the job a scan queues would. */
+  async function hashAll(database: Database): Promise<void> {
+    for (const book of await database.db.selectFrom('books').select('id').execute()) {
+      await hashBookFile(database.db, book.id)
+    }
+  }
+
+  const live = async (database: Database) =>
+    (await database.db.selectFrom('books').selectAll().orderBy('name').execute()).filter(
+      (book) => book.deleted_date === null,
+    )
+
+  it('restores a book whose file comes back, with what was known about it', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz', 'Akira/Volume 2.cbz'])
+    await scanLibrary(database.db, 'L1')
+    await hashAll(database)
+    const before = (await bookRows(database)).find((book) => book.name === 'Volume 2')!
+    await database.db
+      .updateTable('book_metadata')
+      .set({ summary: 'Kept by hand' })
+      .where('book_id', '=', before.id)
+      .execute()
+
+    rmSync(join(root, 'Akira/Volume 2.cbz'))
+    await scanLibrary(database.db, 'L1')
+    expect((await live(database)).map((book) => book.name)).toEqual(['Volume 1'])
+
+    // Put back by copying, so the file's date is not the one the library recorded.
+    files(root, ['Akira/Volume 2.cbz'])
+    utimesSync(join(root, 'Akira/Volume 2.cbz'), new Date(), new Date('2031-01-01T00:00:00Z'))
+    const summary = await scanLibrary(database.db, 'L1')
+
+    expect(summary).toMatchObject({ booksRestored: 1, booksCreated: 0 })
+    const after = (await live(database)).find((book) => book.name === 'Volume 2')!
+    expect(after.id).toBe(before.id)
+    expect(after.number).toBe(2)
+    expect(after.file_last_modified).toBe('2031-01-01T00:00:00.000Z')
+    const metadata = await database.db
+      .selectFrom('book_metadata')
+      .select('summary')
+      .where('book_id', '=', before.id)
+      .executeTakeFirst()
+    expect(metadata?.summary).toBe('Kept by hand')
+    expect(await database.db.selectFrom('books').select('id').execute()).toHaveLength(2)
+  })
+
+  it('does not restore a book on its name alone when it has no hash', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz'])
+    await scanLibrary(database.db, 'L1')
+    const before = (await bookRows(database))[0]!
+
+    rmSync(join(root, 'Akira/Volume 1.cbz'))
+    await scanLibrary(database.db, 'L1')
+    files(root, ['Akira/Volume 1.cbz'])
+    utimesSync(join(root, 'Akira/Volume 1.cbz'), new Date(), new Date('2031-01-01T00:00:00Z'))
+    const summary = await scanLibrary(database.db, 'L1')
+
+    expect(summary).toMatchObject({ booksRestored: 0, booksCreated: 1 })
+    const books = await live(database)
+    expect(books).toHaveLength(1)
+    expect(books[0]!.id).not.toBe(before.id)
+    // The old book waits in the trash.
+    expect(await database.db.selectFrom('books').select('id').execute()).toHaveLength(2)
+  })
+
+  it('restores an unhashed book whose file is back exactly as it was', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz'])
+    const path = join(root, 'Akira/Volume 1.cbz')
+    const date = new Date('2030-06-01T00:00:00Z')
+    utimesSync(path, date, date)
+    await scanLibrary(database.db, 'L1')
+    const before = (await bookRows(database))[0]!
+
+    // As when a file returns from a backup with its date intact.
+    rmSync(path)
+    await scanLibrary(database.db, 'L1')
+    files(root, ['Akira/Volume 1.cbz'])
+    utimesSync(path, date, date)
+    const summary = await scanLibrary(database.db, 'L1')
+
+    expect(summary).toMatchObject({ booksRestored: 1, booksCreated: 0 })
+    expect((await live(database)).map((book) => book.id)).toEqual([before.id])
+  })
+
+  it('does not take a different file of the same size for a deleted book', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz'])
+    await scanLibrary(database.db, 'L1')
+    await hashAll(database)
+    const before = (await bookRows(database))[0]!
+
+    rmSync(join(root, 'Akira/Volume 1.cbz'))
+    await scanLibrary(database.db, 'L1')
+    // The same number of bytes, and other bytes.
+    writeFileSync(join(root, 'Akira/Volume 1.cbz'), 'Akira/Volume 9.cbz')
+    utimesSync(join(root, 'Akira/Volume 1.cbz'), new Date(), new Date('2031-01-01T00:00:00Z'))
+    const summary = await scanLibrary(database.db, 'L1')
+
+    expect(summary).toMatchObject({ booksRestored: 0, booksCreated: 1 })
+    expect((await live(database))[0]!.id).not.toBe(before.id)
+  })
+
+  it('keeps a series whose folder was renamed', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz', 'Akira/Volume 2.cbz', 'Berserk/Volume 1.cbz'])
+    await scanLibrary(database.db, 'L1')
+    await hashAll(database)
+    const series = (await seriesRows(database)).find((row) => row.name === 'Akira')!
+    const books = (await bookRows(database, series.id)).map((book) => book.id).sort()
+
+    renameSync(join(root, 'Akira'), join(root, 'Akira (1982)'))
+    const summary = await scanLibrary(database.db, 'L1')
+
+    expect(summary).toMatchObject({
+      seriesDeleted: 1,
+      seriesRestored: 1,
+      seriesCreated: 0,
+      booksRestored: 2,
+      booksCreated: 0,
+    })
+    const rows = await seriesRows(database)
+    expect(rows.map((row) => [row.name, row.deleted_date])).toEqual([
+      ['Akira (1982)', null],
+      ['Berserk', null],
+    ])
+    expect(rows[0]!.id).toBe(series.id)
+    expect(rows[0]!.book_count).toBe(2)
+    const after = await bookRows(database, series.id)
+    expect(after.map((book) => book.id).sort()).toEqual(books)
+    expect(after.every((book) => book.deleted_date === null && book.url.includes('Akira%20(1982)'))).toBe(true)
+  })
+
+  it('makes a new series of a folder that comes back with another file in it', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz'])
+    await scanLibrary(database.db, 'L1')
+    await hashAll(database)
+    const series = (await seriesRows(database))[0]!
+    const book = (await bookRows(database))[0]!
+
+    renameSync(join(root, 'Akira'), join(root, 'Akira (1982)'))
+    files(root, ['Akira (1982)/Volume 2.cbz'])
+    const summary = await scanLibrary(database.db, 'L1')
+
+    expect(summary).toMatchObject({ seriesRestored: 0, seriesCreated: 1, booksRestored: 1, booksCreated: 1 })
+    const created = (await seriesRows(database)).find((row) => row.deleted_date === null)!
+    expect(created.id).not.toBe(series.id)
+    // The book it knew moves into the new series rather than being made again.
+    const moved = (await live(database)).find((row) => row.name === 'Volume 1')!
+    expect(moved.id).toBe(book.id)
+    expect(moved.series_id).toBe(created.id)
+  })
+
+  it('keeps a book moved from one series to another, whichever is scanned first', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz', 'Akira/Extra.cbz', 'Berserk/Volume 1.cbz', 'Zetman/Volume 1.cbz'])
+    await scanLibrary(database.db, 'L1')
+    await hashAll(database)
+    const all = await bookRows(database)
+    const extra = all.find((book) => book.name === 'Extra')!
+    const berserk = all.find((book) => book.url.includes('Berserk'))!
+    const series = await seriesRows(database)
+
+    // One moves to a series scanned later than its own, and one to an earlier one.
+    renameSync(join(root, 'Akira/Extra.cbz'), join(root, 'Zetman/Side Story.cbz'))
+    renameSync(join(root, 'Berserk/Volume 1.cbz'), join(root, 'Akira/Volume 0.cbz'))
+    files(root, ['Berserk/Volume 2.cbz'])
+    const summary = await scanLibrary(database.db, 'L1')
+
+    expect(summary).toMatchObject({ booksDeleted: 2, booksRestored: 2, booksCreated: 1 })
+    const after = await live(database)
+    const movedExtra = after.find((book) => book.id === extra.id)!
+    expect(movedExtra.name).toBe('Side Story')
+    expect(movedExtra.series_id).toBe(series.find((row) => row.name === 'Zetman')!.id)
+    expect(after.find((book) => book.id === berserk.id)!.series_id).toBe(series.find((row) => row.name === 'Akira')!.id)
+    // A title that was only the file's name follows the file.
+    const title = await database.db
+      .selectFrom('book_metadata')
+      .select('title')
+      .where('book_id', '=', extra.id)
+      .executeTakeFirst()
+    expect(title?.title).toBe('Side Story')
   })
 })
