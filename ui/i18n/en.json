@@ -2799,6 +2799,10 @@
     "defaultMessage": "Series Directory Deleted",
     "description": "Historical event: SeriesFolderDeleted"
   },
+  "enum.historicalEvent.TaskFailed": {
+    "defaultMessage": "Task Failed",
+    "description": "Historical event: TaskFailed, a background task the server gave up on"
+  },
   "enum.pageHashAction.DELETE_AUTO": {
     "defaultMessage": "Auto delete",
     "description": "Page Hash Action: DELETE_AUTO"

@@ -18,7 +18,16 @@ import type { DB } from './db/schema.js'
 import { EventBus } from './events.js'
 import { handleJob, type JobContext, type JobLogger } from './handlers.js'
 import { recordTask } from './metrics.js'
-import { JOB_PRIORITY, deleteJob, disownJobs, enqueueJob, takeNextJob, type JobRecord } from './jobs.js'
+import {
+  JOB_PRIORITY,
+  disownJobs,
+  enqueueJob,
+  failJob,
+  finishJob,
+  recordJobFailure,
+  takeNextJob,
+  type JobRecord,
+} from './jobs.js'
 import { SETTING_KEYS, getIntSetting } from './settings.js'
 
 /** How often the queue and the schedule are looked at. */
@@ -79,19 +88,32 @@ export async function startJobWorker(options: WorkerOptions): Promise<JobWorker>
 
   const runJob = async (job: JobRecord): Promise<void> => {
     const started = Date.now()
+    let failure: { error: unknown } | null = null
     try {
       await handleJob(context, job)
       log.debug({ type: job.type, job: job.id, ms: Date.now() - started }, 'job finished')
     } catch (error) {
-      // The job is dropped either way: the reference does the same, and the
-      // schedule or the next scan is what asks for the work again.
-      log.error({ type: job.type, job: job.id, err: String(error) }, 'job failed')
-    } finally {
-      // Counted whether it worked or not: the time was spent either way.
-      recordTask(job.type, Date.now() - started)
-      await deleteJob(db, job.id).catch((error: unknown) => {
-        log.error({ job: job.id, err: String(error) }, 'could not remove a finished job')
-      })
+      failure = { error }
+    }
+    // Counted whether it worked or not: the time was spent either way.
+    recordTask(job.type, Date.now() - started)
+
+    try {
+      if (failure === null) {
+        await finishJob(db, job.id)
+        return
+      }
+      // A job that fails is tried again, and one that keeps failing is given up
+      // on where somebody can find it, rather than vanishing into the log.
+      const err = String(failure.error)
+      if ((await failJob(db, job)) === 'RETRY') {
+        log.warn({ type: job.type, job: job.id, attempt: job.attempts, err }, 'job failed, and will be tried again')
+        return
+      }
+      log.error({ type: job.type, job: job.id, attempts: job.attempts, err }, 'job failed, and was given up on')
+      await recordJobFailure(db, job, failure.error)
+    } catch (error) {
+      log.error({ job: job.id, err: String(error) }, 'could not settle a finished job')
     }
   }
 

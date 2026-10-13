@@ -158,8 +158,13 @@ async function ownerVisible(db: Kysely<DB>, context: ContentContext, spec: Owner
  * cache holding the old image is invalidated by the changed tag. Artwork found
  * beside a book is read from its file here.
  */
-async function sendImage(req: FastifyRequest, reply: FastifyReply, record: ThumbnailRecord): Promise<FastifyReply> {
-  const bytes = await thumbnailBytes(record)
+async function sendImage(
+  db: Kysely<DB>,
+  req: FastifyRequest,
+  reply: FastifyReply,
+  record: ThumbnailRecord,
+): Promise<FastifyReply> {
+  const bytes = await thumbnailBytes(db, record)
   if (bytes === null) return reply.code(404).send({ message: 'Thumbnail not found' })
 
   const etag = `"${record.id}-"`
@@ -217,14 +222,14 @@ export async function registerThumbnailRoutes(app: FastifyInstance, opts: RouteO
       if (!resolved) return reply
 
       const stored = await chosenThumbnail(db, spec.ownerType, resolved.id)
-      if (stored !== null) return sendImage(req, reply, stored)
+      if (stored !== null) return sendImage(db, req, reply, stored)
 
       // A series shows the poster of one of its books, and a collection or a read
       // list shows four of its members side by side, which is what the reference
       // does when the owner has no poster of its own.
       if (spec.ownerType === 'SERIES') {
         const borrowed = await seriesCoverThumbnail(db, resolved.id, resolved.context.user.id)
-        if (borrowed !== null) return sendImage(req, reply, borrowed)
+        if (borrowed !== null) return sendImage(db, req, reply, borrowed)
       }
       if (spec.ownerType === 'COLLECTION') {
         const built = await collectionMosaicThumbnail(db, resolved.id, resolved.context.user.id)
@@ -267,7 +272,7 @@ export async function registerThumbnailRoutes(app: FastifyInstance, opts: RouteO
         .where('owner_id', '=', resolved.id)
         .executeTakeFirst()
       if (!row) return reply.code(404).send({ message: 'Thumbnail not found' })
-      return sendImage(req, reply, thumbnailRecord(row as unknown as ThumbnailRow))
+      return sendImage(db, req, reply, thumbnailRecord(row as unknown as ThumbnailRow))
     })
 
     /**

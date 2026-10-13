@@ -11,7 +11,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import type { Kysely } from 'kysely'
 
-import { bookFilePath, findBookRecord } from '../content/files.js'
+import { bookFilePath, findBookRecord, insideALibrary } from '../content/files.js'
 import type { DB, ThumbnailOwnerType } from '../db/schema.js'
 import { SETTING_KEYS, getStringSetting } from '../settings.js'
 import { onThread } from '../threads/index.js'
@@ -76,11 +76,13 @@ export function thumbnailRecord(row: ThumbnailRow): ThumbnailRecord {
  *
  * A poster this server made is bytes in the row; artwork found beside a book is a
  * file on disk, which is read when it is asked for. Null means the bytes cannot be
- * had - the file has been removed, or cannot be read.
+ * had - the file has been removed, cannot be read, or is not inside a library,
+ * where artwork found beside a book always is.
  */
-export async function thumbnailBytes(record: ThumbnailRecord): Promise<Buffer | null> {
+export async function thumbnailBytes(db: Kysely<DB>, record: ThumbnailRecord): Promise<Buffer | null> {
   if (record.bytes !== null && record.bytes.length > 0) return record.bytes
   if (record.url === null) return null
+  if (!(await insideALibrary(db, record.url))) return null
   return await readFile(record.url).catch(() => null)
 }
 
@@ -305,7 +307,7 @@ export async function collectionMosaicThumbnail(
   const covers: Buffer[] = []
   for (const seriesId of fourOf(members.map((member) => member.series_id))) {
     const thumbnail = await seriesCoverThumbnail(db, seriesId, userId)
-    const bytes = thumbnail === null ? null : await thumbnailBytes(thumbnail)
+    const bytes = thumbnail === null ? null : await thumbnailBytes(db, thumbnail)
     if (bytes !== null) covers.push(bytes)
   }
   return mosaic(covers, await thumbnailMaxEdge(db))
@@ -325,7 +327,7 @@ export async function readListMosaicThumbnail(db: Kysely<DB>, readListId: string
   const covers: Buffer[] = []
   for (const bookId of fourOf(members.map((member) => member.book_id))) {
     const thumbnail = await chosenThumbnail(db, 'BOOK', bookId)
-    const bytes = thumbnail === null ? null : await thumbnailBytes(thumbnail)
+    const bytes = thumbnail === null ? null : await thumbnailBytes(db, thumbnail)
     if (bytes !== null) covers.push(bytes)
   }
   return mosaic(covers, await thumbnailMaxEdge(db))

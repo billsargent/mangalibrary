@@ -482,7 +482,12 @@ export interface PageHashThumbnailTable {
 }
 
 export type HistoricalEventType =
-  'BOOK_FILE_DELETED' | 'SERIES_FOLDER_DELETED' | 'BOOK_CONVERTED' | 'BOOK_IMPORTED' | 'DUPLICATE_PAGE_DELETED'
+  | 'BOOK_FILE_DELETED'
+  | 'SERIES_FOLDER_DELETED'
+  | 'BOOK_CONVERTED'
+  | 'BOOK_IMPORTED'
+  | 'DUPLICATE_PAGE_DELETED'
+  | 'TaskFailed'
 
 export interface HistoricalEventsTable {
   id: string
@@ -502,6 +507,8 @@ export interface JobsTable {
   payload: Generated<string>
   owner: string | null
   attempts: Generated<number>
+  /** Set when the job was asked for again while it was running. */
+  requeued: Generated<number>
   created_date: string
   last_modified_date: string
 }

@@ -10,7 +10,16 @@ import { migrations } from './db/migrations/index.js'
 import { EventBus } from './events.js'
 import { fileHash } from './hashing/hashes.js'
 import type { JobLogger } from './handlers.js'
-import { JOB_PRIORITY, deleteJob, disownJobs, enqueueJob, takeNextJob } from './jobs.js'
+import {
+  JOB_PRIORITY,
+  MAX_JOB_ATTEMPTS,
+  disownJobs,
+  enqueueJob,
+  enqueueJobs,
+  failJob,
+  finishJob,
+  takeNextJob,
+} from './jobs.js'
 import { SETTING_KEYS, setSetting } from './settings.js'
 import { writeZip } from './testing/zip.js'
 import { startJobWorker, scanKey } from './worker.js'
@@ -128,7 +137,7 @@ describe('the job queue', () => {
     expect((await takeNextJob(database.db, 'w2'))?.type).toBe('Other')
     expect(await takeNextJob(database.db, 'w3')).toBeNull()
 
-    await deleteJob(database.db, first!.id)
+    await finishJob(database.db, first!.id)
     expect((await takeNextJob(database.db, 'w4'))?.type).toBe('Two')
   })
 
@@ -324,7 +333,7 @@ describe('the worker', () => {
     }
   })
 
-  it('drops a job that fails, and says so', async () => {
+  it('tries a job that fails again, then gives up where somebody can find it', async () => {
     const { database } = await setupLibrary()
     const log = logger()
     await enqueueJob(database.db, {
@@ -336,10 +345,86 @@ describe('the worker', () => {
     const worker = await startJobWorker({ db: database.db, log, schedule: false })
     try {
       await until(async () => (await database.db.selectFrom('jobs').selectAll().execute()).length === 0)
-      expect(log.messages.some((entry) => entry.level === 'error' && entry.message === 'job failed')).toBe(true)
+      await until(async () => (await database.db.selectFrom('historical_events').selectAll().execute()).length > 0)
+
+      const retried = log.messages.filter((entry) => entry.message === 'job failed, and will be tried again')
+      expect(retried.map((entry) => entry.context.attempt)).toEqual([1, 2])
+      expect(log.messages.filter((entry) => entry.message === 'job failed, and was given up on')).toHaveLength(1)
+
+      const events = await database.db.selectFrom('historical_events').selectAll().execute()
+      expect(events).toHaveLength(1)
+      expect(events[0]).toMatchObject({ type: 'TaskFailed', book_id: null, series_id: null })
+      expect(JSON.parse(events[0]!.properties)).toEqual({
+        task: 'ScanLibrary',
+        reason: 'library GONE does not exist',
+        attempts: String(MAX_JOB_ATTEMPTS),
+        library: 'GONE',
+      })
     } finally {
       await worker.stop()
     }
+  })
+
+  it('runs a job once more when it was asked for while it ran', async () => {
+    const { database } = await setupLibrary()
+    const again = { type: 'ScanLibrary', uniqueKey: scanKey('L1'), payload: { libraryId: 'L1' } }
+    await enqueueJob(database.db, again)
+
+    const running = await takeNextJob(database.db, 'w1')
+    expect(running?.type).toBe('ScanLibrary')
+    // Somebody asks for a scan while this one is under way.
+    await enqueueJob(database.db, { ...again, payload: { libraryId: 'L1', scanDeep: true } })
+    expect(await takeNextJob(database.db, 'w2')).toBeNull()
+
+    expect(await finishJob(database.db, running!.id)).toBe('REQUEUED')
+    const next = await takeNextJob(database.db, 'w1')
+    // It is the request that was made, and it starts with a clean record.
+    expect(next).toMatchObject({ id: running!.id, attempts: 1, payload: { libraryId: 'L1', scanDeep: true } })
+
+    expect(await finishJob(database.db, next!.id)).toBe('DONE')
+    expect(await database.db.selectFrom('jobs').selectAll().execute()).toEqual([])
+  })
+
+  it('does not mark a job that was only waiting', async () => {
+    const { database } = await setupLibrary()
+    const job = { type: 'ScanLibrary', uniqueKey: scanKey('L1'), payload: { libraryId: 'L1' } }
+    await enqueueJob(database.db, job)
+    await enqueueJob(database.db, job)
+
+    const running = await takeNextJob(database.db, 'w1')
+    expect(await finishJob(database.db, running!.id)).toBe('DONE')
+  })
+
+  it('keeps a request made during a run that was given up on', async () => {
+    const { database } = await setupLibrary()
+    const job = { type: 'ScanLibrary', uniqueKey: scanKey('L1'), payload: { libraryId: 'L1' } }
+    await enqueueJob(database.db, job)
+
+    let running = await takeNextJob(database.db, 'w1')
+    for (let attempt = 1; attempt < MAX_JOB_ATTEMPTS; attempt += 1) {
+      expect(await failJob(database.db, running!)).toBe('RETRY')
+      running = await takeNextJob(database.db, 'w1')
+      expect(running?.attempts).toBe(attempt + 1)
+    }
+    await enqueueJob(database.db, job)
+    expect(await failJob(database.db, running!)).toBe('GAVE_UP')
+
+    expect((await takeNextJob(database.db, 'w1'))?.attempts).toBe(1)
+  })
+
+  it('queues many jobs together or not at all', async () => {
+    const { database } = await setupLibrary()
+    const job = (key: string, type: string | null) => ({ type: type as string, uniqueKey: key, payload: {} })
+
+    await expect(enqueueJobs(database.db, [job('A', 'One'), job('B', 'Two'), job('C', null)])).rejects.toThrow()
+    expect(await database.db.selectFrom('jobs').selectAll().execute()).toEqual([])
+
+    await enqueueJobs(database.db, [job('A', 'One'), job('B', 'Two')])
+    await enqueueJobs(database.db, [])
+    expect((await database.db.selectFrom('jobs').select('unique_key').execute()).map((row) => row.unique_key)).toEqual([
+      'A',
+      'B',
+    ])
   })
 
   it('remakes the posters the server has outgrown', async () => {

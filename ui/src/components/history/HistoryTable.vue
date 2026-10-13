@@ -109,6 +109,7 @@ import { useQuery } from '@pinia/colada'
 import { historyQuery } from '@/colada/history'
 import HistoryExpandBookFileDeleted from '@/components/history/expand/BookFileDeleted.vue'
 import HistoryExpandBookImported from '@/components/history/expand/BookImported.vue'
+import HistoryExpandTaskFailed from '@/components/history/expand/TaskFailed.vue'
 import HistoryExpandBookConverted from '@/components/history/expand/BookConverted.vue'
 import HistoryExpandDuplicatePageDeleted from '@/components/history/expand/DuplicatePageDeleted.vue'
 import HistoryExpandSeriesDirectoryDeleted from '@/components/history/expand/SeriesDirectoryDeleted.vue'
@@ -181,6 +182,8 @@ function getIcon(eventType: string): string {
       return 'i-mdi:archive-refresh'
     case 'BookImported':
       return 'i-mdi:import'
+    case 'TaskFailed':
+      return 'i-mdi:alert-circle-outline'
     default:
       return ''
   }
@@ -207,6 +210,8 @@ function getExpandedComponent(eventType: string): Component | null {
       return markRaw(HistoryExpandBookConverted)
     case 'BookImported':
       return markRaw(HistoryExpandBookImported)
+    case 'TaskFailed':
+      return markRaw(HistoryExpandTaskFailed)
     default:
       return null
   }

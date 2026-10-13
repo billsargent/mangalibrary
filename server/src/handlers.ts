@@ -28,8 +28,9 @@ import {
   hashSettings,
   type HashOutcome,
 } from './hashing/books.js'
-import { JOB_PRIORITY, enqueueJob, type JobRecord } from './jobs.js'
+import { JOB_PRIORITY, enqueueJob, enqueueJobs, type JobRecord } from './jobs.js'
 import { analyzeBook } from './media/analyze.js'
+import { insideRootOnDisk } from './media/scan.js'
 import {
   pagesToRemoveAutomatically,
   queuePageRemoval,
@@ -101,8 +102,9 @@ async function analyzeMissingBooks(context: JobContext, libraryId: string): Prom
     .orderBy('books.number')
     .execute()
 
-  for (const book of books) {
-    await enqueueJob(context.db, {
+  await enqueueJobs(
+    context.db,
+    books.map((book) => ({
       type: 'AnalyzeBook',
       uniqueKey: `ANALYZE_BOOK_${book.id}`,
       priority: JOB_PRIORITY.HIGH,
@@ -110,8 +112,8 @@ async function analyzeMissingBooks(context: JobContext, libraryId: string): Prom
       // sees half a series renumbered.
       groupId: book.series_id,
       payload: { bookId: book.id },
-    })
-  }
+    })),
+  )
   return books.length
 }
 
@@ -187,39 +189,45 @@ async function queueBookHashes(context: JobContext, libraryId: string): Promise<
   const queued: HashesQueued = { files: 0, koreader: 0, pages: 0 }
 
   if (settings.files) {
-    for (const bookId of await booksNeedingFileHash(context.db, libraryId)) {
-      await enqueueJob(context.db, {
+    const books = await booksNeedingFileHash(context.db, libraryId)
+    await enqueueJobs(
+      context.db,
+      books.map((bookId) => ({
         type: 'HashBook',
         uniqueKey: `HASH_BOOK_${bookId}`,
         priority: JOB_PRIORITY.LOWEST,
         payload: { bookId },
-      })
-      queued.files += 1
-    }
+      })),
+    )
+    queued.files = books.length
   }
 
   if (settings.koreader) {
-    for (const bookId of await booksNeedingKoreaderHash(context.db, libraryId)) {
-      await enqueueJob(context.db, {
+    const books = await booksNeedingKoreaderHash(context.db, libraryId)
+    await enqueueJobs(
+      context.db,
+      books.map((bookId) => ({
         type: 'HashBookKoreader',
         uniqueKey: `HASH_BOOK_KOREADER_${bookId}`,
         priority: JOB_PRIORITY.LOWEST,
         payload: { bookId },
-      })
-      queued.koreader += 1
-    }
+      })),
+    )
+    queued.koreader = books.length
   }
 
   if (settings.pages) {
-    for (const bookId of await booksNeedingPageHash(context.db, libraryId)) {
-      await enqueueJob(context.db, {
+    const books = await booksNeedingPageHash(context.db, libraryId)
+    await enqueueJobs(
+      context.db,
+      books.map((bookId) => ({
         type: 'HashBookPages',
         uniqueKey: `HASH_BOOK_PAGES_${bookId}`,
         priority: JOB_PRIORITY.LOWEST,
         payload: { bookId },
-      })
-      queued.pages += 1
-    }
+      })),
+    )
+    queued.pages = books.length
   }
 
   return queued
@@ -368,6 +376,13 @@ async function deleteBookFile(context: JobContext, bookId: string): Promise<void
     .execute()
   for (const cover of covers) {
     if (cover.url === null) continue
+    // The row says where the file is, and a row can be wrong - an imported
+    // database, a library whose folder moved. Nothing outside the book's library
+    // is removed on a row's word.
+    if (!(await insideRootOnDisk(record.root, cover.url))) {
+      context.log.warn({ bookId, file: cover.url }, 'left a book\u2019s artwork file alone: it is outside its library')
+      continue
+    }
     await unlink(cover.url).catch((error: unknown) => {
       context.log.warn({ bookId, err: String(error) }, 'could not remove a book\u2019s artwork file')
     })
@@ -539,18 +554,21 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
         .orderBy('number')
         .execute()
 
-      for (const book of books) {
-        await enqueueJob(db, {
-          type: 'RefreshBookMetadata',
-          uniqueKey: `REFRESH_BOOK_METADATA_${book.id}`,
-          payload: { bookId: book.id },
-        })
-        await enqueueJob(db, {
-          type: 'RefreshBookLocalArtwork',
-          uniqueKey: `REFRESH_BOOK_LOCAL_ARTWORK_${book.id}`,
-          payload: { bookId: book.id },
-        })
-      }
+      await enqueueJobs(
+        db,
+        books.flatMap((book) => [
+          {
+            type: 'RefreshBookMetadata',
+            uniqueKey: `REFRESH_BOOK_METADATA_${book.id}`,
+            payload: { bookId: book.id },
+          },
+          {
+            type: 'RefreshBookLocalArtwork',
+            uniqueKey: `REFRESH_BOOK_LOCAL_ARTWORK_${book.id}`,
+            payload: { bookId: book.id },
+          },
+        ]),
+      )
 
       // A series' own cover sits in the series' folder, so the series are asked for
       // theirs too - which is what a library-wide refresh means in the reference.
@@ -561,13 +579,14 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
         .where('deleted_date', 'is', null)
         .execute()
 
-      for (const entry of series) {
-        await enqueueJob(db, {
+      await enqueueJobs(
+        db,
+        series.map((entry) => ({
           type: 'RefreshSeriesLocalArtwork',
           uniqueKey: `REFRESH_SERIES_LOCAL_ARTWORK_${entry.id}`,
           payload: { seriesId: entry.id },
-        })
-      }
+        })),
+      )
       return
     }
 
