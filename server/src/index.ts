@@ -1,6 +1,6 @@
 import { buildServer } from './app.js'
 import { homedir } from 'node:os'
-import { loadConfig, namesDataDir } from './config.js'
+import { ConfigError, ensureWritable, loadConfig, namesDataDir, programConfigFile } from './config.js'
 import { adoptLegacyDataDir } from './data-dir.js'
 import { createDatabase } from './db/index.js'
 import { migrate } from './db/migrate.js'
@@ -12,10 +12,12 @@ import { startJobWorker } from './worker.js'
 async function main(): Promise<void> {
   // An install that began in Komga's directory is brought to ours before anything
   // opens it. A directory named in the environment is the operator's and is left alone.
-  const adoption = namesDataDir() ? { outcome: 'NONE' as const } : adoptLegacyDataDir(homedir())
+  const programFile = programConfigFile()
+  const adoption = namesDataDir(process.env, programFile) ? { outcome: 'NONE' as const } : adoptLegacyDataDir(homedir())
   if (adoption.outcome === 'KEPT') process.env.MANGALIBRARY_CONFIG_DIR = adoption.dir
 
-  const config = loadConfig()
+  const config = loadConfig(process.env, programFile)
+  ensureWritable(config)
   // The UI built beside the server is served unless another one is named.
   config.uiDir ??= bundledUiDir()
   const database = createDatabase(config.databaseFile)
@@ -31,6 +33,8 @@ async function main(): Promise<void> {
       'could not move the data directory to ~/.mangalibrary, so the old one is still in use; stop whatever has it open and start again',
     )
   app.log.info(`data directory: ${config.configDir}`)
+  app.log.info(`database: ${config.databaseFile}`)
+  if (config.configFile !== null) app.log.info(`config file: ${config.configFile}`)
 
   // Reading a book's file - unpacking it, rendering it, hashing it - happens on
   // threads of its own, so a scan does not hold up the requests beside it.
@@ -66,6 +70,9 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error(err)
+  // A mistake in the configuration is said plainly; anything else is a fault of
+  // ours, and is shown with where it came from.
+  if (err instanceof ConfigError) console.error(`\nManga Library cannot start: ${err.message}\n`)
+  else console.error(err)
   process.exit(1)
 })

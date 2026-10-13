@@ -12,7 +12,7 @@
  */
 
 import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { networkInterfaces, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -99,6 +99,21 @@ for (const [series, book, number] of [
   )
 }
 
+// Everything it is told, it is told by a config file: where the data goes, where
+// the database goes - somewhere else, and by a path relative to the file - and the port.
+const configFile = join(work, 'settings', 'mangalibrary.json')
+const databaseFile = join(work, 'database', 'library.sqlite')
+mkdirSync(join(work, 'settings'))
+writeFileSync(
+  configFile,
+  JSON.stringify({
+    dataDir: '../data',
+    databaseFile: '../database/library.sqlite',
+    port: Number(PORT),
+    logLevel: 'warn',
+  }),
+)
+
 // Started the way the README says to: through start.sh where there is a shell for it.
 const [command, script] =
   process.platform === 'win32'
@@ -106,7 +121,7 @@ const [command, script] =
     : ['sh', join(root, 'scripts', 'start.sh')]
 const server = spawn(command, [script, '--no-build'], {
   cwd: root,
-  env: { ...process.env, MANGALIBRARY_CONFIG_DIR: join(work, 'config'), SERVER_PORT: PORT, LOG_LEVEL: 'warn' },
+  env: { ...process.env, MANGALIBRARY_CONFIG_FILE: configFile },
   stdio: ['ignore', 'inherit', 'inherit'],
 })
 let exited = null
@@ -141,6 +156,8 @@ try {
     await sleep(250)
   }
   check(true, 'the built server starts and answers on the network address')
+  check(existsSync(databaseFile), 'the database is where the config file put it')
+  check(!existsSync(join(work, 'data', 'database.sqlite')), 'and not in the data folder')
 
   const page = await fetch(`${base}/`)
   check(page.ok && (await page.text()).includes('<div id="app"'), 'the web UI is served')

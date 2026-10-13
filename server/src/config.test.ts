@@ -1,8 +1,16 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_HOST, DEFAULT_PORT, loadConfig, namesDataDir } from './config.js'
+import {
+  ConfigError,
+  DEFAULT_HOST,
+  DEFAULT_PORT,
+  ensureWritable,
+  loadConfig,
+  namesDataDir,
+  PROGRAM_CONFIG_NAME,
+} from './config.js'
 
 function tempDir(): string {
   return mkdtempSync(join(tmpdir(), 'ml-config-'))
@@ -108,5 +116,91 @@ describe('loadConfig', () => {
     writeFileSync(join(dir, 'config.json'), JSON.stringify({ workerThreads: false }))
     expect(load().workerThreads).toBe(false)
     expect(load('true').workerThreads).toBe(true)
+  })
+})
+
+describe('the config file beside the program', () => {
+  const none = {} as NodeJS.ProcessEnv
+  const program = (content: unknown): { folder: string; file: string } => {
+    const folder = tempDir()
+    const file = join(folder, PROGRAM_CONFIG_NAME)
+    writeFileSync(file, typeof content === 'string' ? content : JSON.stringify(content))
+    return { folder, file }
+  }
+
+  it('says where the data is kept, which the file inside the data cannot', () => {
+    const data = tempDir()
+    const { file } = program({ dataDir: data, port: 8123 })
+
+    const config = loadConfig(none, file)
+    expect(config.configDir).toBe(data)
+    expect(config.databaseFile).toBe(join(data, 'database.sqlite'))
+    expect(config.port).toBe(8123)
+    expect(config.configFile).toBe(file)
+    expect(namesDataDir(none, file)).toBe(true)
+  })
+
+  it('puts the database somewhere of its own, and reads its paths from where the file is', () => {
+    const { folder, file } = program({ dataDir: 'data', databaseFile: 'db/library.sqlite' })
+
+    const config = loadConfig(none, file)
+    expect(config.configDir).toBe(join(folder, 'data'))
+    expect(config.databaseFile).toBe(join(folder, 'db', 'library.sqlite'))
+  })
+
+  it('gives way to the environment, and wins over the file in the data folder', () => {
+    const data = tempDir()
+    writeFileSync(join(data, 'config.json'), JSON.stringify({ port: 1111, logLevel: 'warn', host: '127.0.0.1' }))
+    const { file } = program({ dataDir: data, port: 2222, logLevel: 'debug' })
+
+    const config = loadConfig({ SERVER_PORT: '3333' } as NodeJS.ProcessEnv, file)
+    expect(config.port).toBe(3333)
+    expect(config.logLevel).toBe('debug')
+    // What only the file in the data folder says is still read.
+    expect(config.host).toBe('127.0.0.1')
+
+    const elsewhere = tempDir()
+    expect(loadConfig({ MANGALIBRARY_CONFIG_DIR: elsewhere } as NodeJS.ProcessEnv, file).configDir).toBe(elsewhere)
+  })
+
+  it('is not looked for unless a place is given, and need not be there', () => {
+    expect(loadConfig(none).configFile).toBeNull()
+    expect(loadConfig(none, join(tempDir(), PROGRAM_CONFIG_NAME)).configFile).toBeNull()
+    expect(namesDataDir(none, join(tempDir(), PROGRAM_CONFIG_NAME))).toBe(false)
+  })
+
+  it('can be named, and then has to exist', () => {
+    const data = tempDir()
+    const { file } = program({ dataDir: data })
+    const named = { MANGALIBRARY_CONFIG_FILE: file } as NodeJS.ProcessEnv
+
+    expect(loadConfig(named).configDir).toBe(data)
+    expect(() => loadConfig({ MANGALIBRARY_CONFIG_FILE: join(data, 'missing.json') } as NodeJS.ProcessEnv)).toThrow(
+      ConfigError,
+    )
+  })
+
+  it('says so in a sentence when it is not valid', () => {
+    const { file } = program('{ "port": 8080, }')
+    expect(() => loadConfig(none, file)).toThrow(ConfigError)
+    expect(() => loadConfig(none, file)).toThrow(/is not valid JSON/)
+  })
+})
+
+describe('a place for the database', () => {
+  it('is made when it is not there', () => {
+    const databaseFile = join(tempDir(), 'new', 'folder', 'database.sqlite')
+    ensureWritable({ databaseFile })
+    expect(existsSync(join(databaseFile, '..'))).toBe(true)
+  })
+
+  it('is refused in a sentence when it cannot be used', () => {
+    // A file where a folder would have to be: nothing can be created under it.
+    const blocker = join(tempDir(), 'not-a-folder')
+    writeFileSync(blocker, 'in the way')
+    const databaseFile = join(blocker, 'database.sqlite')
+
+    expect(() => ensureWritable({ databaseFile })).toThrow(ConfigError)
+    expect(() => ensureWritable({ databaseFile })).toThrow(/The database cannot be kept at/)
   })
 })

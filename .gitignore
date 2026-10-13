@@ -6,6 +6,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# The config file beside the program is each install's own
+/mangalibrary.json
+
 # Local data / databases (never commit a library database)
 data/
 *.sqlite

@@ -51,14 +51,23 @@ scan and analyse the first time; it can be used while that goes on.
 - **From other machines.** It listens on every network address of the machine, on port 25600. Open that port in the machine's firewall (`sudo ufw allow 25600/tcp`, or your
   system's equivalent) and browse to `http://<the machine>:25600`. It speaks plain http:
   keep it to a network you trust or a VPN, or put an HTTPS proxy in front of it.
-- **Settings.** `SERVER_PORT=8080 ./scripts/start.sh` changes the port;
-  [docs/CONFIGURATION.md](docs/CONFIGURATION.md) has the rest. `LOG_LEVEL=warn` quiets
+- **Settings.** Copy `mangalibrary.example.json` to `mangalibrary.json` and edit it:
+  where the data goes (`dataDir`, `databaseFile`), the port, the address. `git pull`
+  leaves that file alone. One start can be told differently from the environment
+  (`SERVER_PORT=8080 ./scripts/start.sh`); [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+  has every setting. `LOG_LEVEL=warn` quiets
   the log, which otherwise has a line for every request.
-- **Your data** is in `~/.mangalibrary`: one SQLite database, `database.sqlite`, holding
+- **Your data** is in `~/.mangalibrary` unless you say otherwise - the start script
+  prints where - and is one SQLite database, `database.sqlite`, holding
   everything this server knows - users, read progress, metadata, posters. Your books
-  are only ever read where they are. To back up, stop the server and copy that folder.
-- **Node.js 22, not newer.** The database module ships ready-made for it. Under a
-  version it has no build for, the start script says so and stops (#140).
+  are only ever read where they are. To back up, stop the server and copy that folder. Keep the database on a local disk,
+  not a network share.
+- **Node.js 22, not newer.** The database module ships ready-made for Node 22. Under
+  Node 24 or later it is compiled on the spot and then crashes at start ("Assertion
+  failed ... Aborted") - seen on a real install, and not yet caught by the start script
+  (#140). If your system's Node is newer, install 22 beside it and reinstall under it:
+  `nvm install 22`, then `rm -rf server/node_modules importer/node_modules` and
+  `npm run install:all` again.
 - **Keeping it running.** The start script runs until it is stopped. To have it start
   with the machine, run it from a systemd unit or a `tmux`/`screen` session.
 

@@ -1,0 +1,7 @@
+{
+  "dataDir": "/srv/mangalibrary",
+  "databaseFile": "/srv/mangalibrary/database.sqlite",
+  "port": 25600,
+  "host": "0.0.0.0",
+  "logLevel": "info"
+}
