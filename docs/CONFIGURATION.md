@@ -7,20 +7,36 @@ The server reads configuration from environment variables, falling back to
 
 ## Settings
 
-| Setting              | Environment variable         | `config.json` key    | Default                       |
-| -------------------- | ---------------------------- | -------------------- | ----------------------------- |
-| Config directory     | `KOMGA_CONFIG_DIR`           | —                    | `~/.komga`                    |
-| Database file        | `KOMGA_DATABASE_FILE`        | `databaseFile`       | `<configDir>/database.sqlite` |
-| HTTP port            | `SERVER_PORT` (or `PORT`)    | `port`               | `25600`                       |
-| Bind address         | `SERVER_HOST`                | `host`               | `0.0.0.0`                     |
-| Log level            | `LOG_LEVEL`                  | `logLevel`           | `info`                        |
-| Session lifetime     | `KOMGA_SESSION_TTL_MS`       | —                    | `604800000` (7 days)          |
-| Announcements feed   | `KOMGA_ANNOUNCEMENTS_URL`    | `announcementsUrl`   | unset                         |
-| Release notes        | `KOMGA_RELEASES_URL`         | `releasesUrl`        | unset                         |
-| Fonts directory      | `KOMGA_FONTS_DIR`            | `fontsDir`           | `<configDir>/fonts`           |
-| Cross-origin callers | `KOMGA_CORS_ALLOWED_ORIGINS` | `corsAllowedOrigins` | none                          |
-| Web UI bundle        | `KOMGA_UI_DIR`               | `uiDir`              | `ui/dist` beside the server   |
-| Worker threads       | `KOMGA_WORKER_THREADS`       | `workerThreads`      | on                            |
+| Setting              | Environment variable                | `config.json` key    | Default                       |
+| -------------------- | ----------------------------------- | -------------------- | ----------------------------- |
+| Config directory     | `MANGALIBRARY_CONFIG_DIR`           | —                    | `~/.mangalibrary`             |
+| Database file        | `MANGALIBRARY_DATABASE_FILE`        | `databaseFile`       | `<configDir>/database.sqlite` |
+| HTTP port            | `SERVER_PORT` (or `PORT`)           | `port`               | `25600`                       |
+| Bind address         | `SERVER_HOST`                       | `host`               | `0.0.0.0`                     |
+| Log level            | `LOG_LEVEL`                         | `logLevel`           | `info`                        |
+| Session lifetime     | `MANGALIBRARY_SESSION_TTL_MS`       | —                    | `604800000` (7 days)          |
+| Announcements feed   | `MANGALIBRARY_ANNOUNCEMENTS_URL`    | `announcementsUrl`   | unset                         |
+| Release notes        | `MANGALIBRARY_RELEASES_URL`         | `releasesUrl`        | unset                         |
+| Fonts directory      | `MANGALIBRARY_FONTS_DIR`            | `fontsDir`           | `<configDir>/fonts`           |
+| Cross-origin callers | `MANGALIBRARY_CORS_ALLOWED_ORIGINS` | `corsAllowedOrigins` | none                          |
+| Web UI bundle        | `MANGALIBRARY_UI_DIR`               | `uiDir`              | `ui/dist` beside the server   |
+| Worker threads       | `MANGALIBRARY_WORKER_THREADS`       | `workerThreads`      | on                            |
+
+## Where the data is kept
+
+The database, `config.json` and the fonts directory live in the config directory,
+`~/.mangalibrary` unless `MANGALIBRARY_CONFIG_DIR` names another.
+
+Earlier versions used `~/.komga`, which is Komga's own directory, and named their
+settings `KOMGA_*`. Both are still understood:
+
+- The first start with no config directory named moves `~/.komga` to `~/.mangalibrary`
+  when the database in it is one this server made, and says so in the log. A directory
+  holding a real Komga database is recognised and left untouched. If the move cannot be
+  made - another program has the directory open - the old directory goes on being used
+  and the log says why.
+- A setting still named `KOMGA_...` is read as before. Named both ways, the
+  `MANGALIBRARY_...` one wins.
 
 ## Worker threads
 
@@ -30,12 +46,12 @@ many books are worked on at once is the _Task threads_ server setting, in the UI
 Server settings; the server will not use more threads than the machine has cores, less one.
 Each thread costs memory of its own while it works and is let go after a minute idle.
 
-`KOMGA_WORKER_THREADS=false` turns them off: the same work then runs on the main thread.
+`MANGALIBRARY_WORKER_THREADS=false` turns them off: the same work then runs on the main thread.
 
 ## The web UI
 
 The server serves the built web UI from its own origin, at `/`. It looks for the bundle in
-`ui/dist` beside the server, which is where `npm run build:ui` leaves it; `KOMGA_UI_DIR`
+`ui/dist` beside the server, which is where `npm run build:ui` leaves it; `MANGALIBRARY_UI_DIR`
 names another directory. A directory with no `index.html` in it is not a bundle: the
 server then starts without a UI, says so in its log, and answers the API as usual.
 
@@ -59,7 +75,7 @@ elsewhere. Allowing it is a statement about who may make a browser request to th
 it is off unless an operator asks for it:
 
 ```bash
-KOMGA_CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:4173 npm start
+MANGALIBRARY_CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:4173 npm start
 ```
 
 The value is a comma-separated list of origins (`scheme://host:port`, no trailing slash), or
@@ -81,7 +97,7 @@ something an operator has to clean up.
 Environment:
 
 ```bash
-KOMGA_CONFIG_DIR=/data/komga SERVER_PORT=8080 LOG_LEVEL=debug npm start
+MANGALIBRARY_CONFIG_DIR=/data/mangalibrary SERVER_PORT=8080 LOG_LEVEL=debug npm start
 ```
 
 `config.json` in the config directory:

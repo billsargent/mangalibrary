@@ -1,5 +1,7 @@
 import { buildServer } from './app.js'
-import { loadConfig } from './config.js'
+import { homedir } from 'node:os'
+import { loadConfig, namesDataDir } from './config.js'
+import { adoptLegacyDataDir } from './data-dir.js'
 import { createDatabase } from './db/index.js'
 import { migrate } from './db/migrate.js'
 import { migrations } from './db/migrations/index.js'
@@ -8,6 +10,11 @@ import { startThreads, stopThreads } from './threads/index.js'
 import { startJobWorker } from './worker.js'
 
 async function main(): Promise<void> {
+  // An install that began in Komga's directory is brought to ours before anything
+  // opens it. A directory named in the environment is the operator's and is left alone.
+  const adoption = namesDataDir() ? { outcome: 'NONE' as const } : adoptLegacyDataDir(homedir())
+  if (adoption.outcome === 'KEPT') process.env.MANGALIBRARY_CONFIG_DIR = adoption.dir
+
   const config = loadConfig()
   // The UI built beside the server is served unless another one is named.
   config.uiDir ??= bundledUiDir()
@@ -17,6 +24,13 @@ async function main(): Promise<void> {
 
   const app = await buildServer({ config, database })
   if (applied.length > 0) app.log.info({ applied }, 'applied migrations')
+  if (adoption.outcome === 'MOVED') app.log.info(adoption, 'moved the data directory to its new place')
+  if (adoption.outcome === 'KEPT')
+    app.log.warn(
+      adoption,
+      'could not move the data directory to ~/.mangalibrary, so the old one is still in use; stop whatever has it open and start again',
+    )
+  app.log.info(`data directory: ${config.configDir}`)
 
   // Reading a book's file - unpacking it, rendering it, hashing it - happens on
   // threads of its own, so a scan does not hold up the requests beside it.
@@ -47,7 +61,8 @@ async function main(): Promise<void> {
   const address = await app.listen({ port: config.port, host: config.host })
   app.log.info(`MangaLibrary listening on ${address}`)
   if (hasUiBundle(config.uiDir)) app.log.info(`serving the web UI from ${config.uiDir}`)
-  else app.log.warn(`no web UI at ${config.uiDir}: build it with "npm run build:ui", or point KOMGA_UI_DIR at one`)
+  else
+    app.log.warn(`no web UI at ${config.uiDir}: build it with "npm run build:ui", or point MANGALIBRARY_UI_DIR at one`)
 }
 
 main().catch((err) => {

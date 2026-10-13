@@ -12,7 +12,7 @@ To have a backend serving those requests, start the server in this repository on
 
 ```bash
 cd server
-SERVER_PORT=8080 KOMGA_CORS_ALLOWED_ORIGINS=http://localhost:3000 npm run dev
+SERVER_PORT=8080 MANGALIBRARY_CORS_ALLOWED_ORIGINS=http://localhost:3000 npm run dev
 ```
 
 Both settings matter. The server listens on `25600` by default, so without `SERVER_PORT` the UI talks to nothing, and a browser refuses a cross-origin call from `localhost:3000` unless the server names that origin - which is off by default, because nothing in a deployment needs it. See [the configuration documentation](../docs/CONFIGURATION.md).
