@@ -11,6 +11,10 @@
     "defaultMessage": "Library created: {library}",
     "description": "Snackbar notification shown upon successful library creation"
   },
+  "+MhEDM": {
+    "defaultMessage": "{count, plural, one {# series} other {# series}}",
+    "description": "Alphabetical navigation: how many series a letter leads to, shown on hover"
+  },
   "+PNCoe": {
     "defaultMessage": "Alternate title",
     "description": "Form edit: Alternate titles - alternate title field label"
@@ -1346,6 +1350,10 @@
   "NN7kAK": {
     "defaultMessage": "Kobo sync forced: {apiKeyComment}",
     "description": "Snackbar notification shown upon successful API key force sync"
+  },
+  "NYbVbN": {
+    "defaultMessage": "All",
+    "description": "Alphabetical navigation: the choice that shows every series"
   },
   "Nahedl": {
     "defaultMessage": "Add",
@@ -3726,6 +3734,10 @@
   "xAZMxz": {
     "defaultMessage": "Filename",
     "description": "Book info: filename"
+  },
+  "xCwovb": {
+    "defaultMessage": "Series by first character",
+    "description": "Alphabetical navigation: accessible name of the row of letters"
   },
   "xLd5Qi": {
     "defaultMessage": "You have reached the end of the book.",

@@ -193,6 +193,13 @@
     </v-list>
   </TempDrawer>
 
+  <SeriesAlphabeticalNavigation
+    :model-value="symbol"
+    :symbols="symbols"
+    :counts="counts"
+    @update:model-value="(value: string) => chooseSymbol(value)"
+  />
+
   <EmptyStateFilterNoResults
     v-if="totalElements === 0 && filterCount > 0"
     @reset="clearFilters()"
@@ -233,7 +240,15 @@
 
 <script lang="ts" setup>
 import { useInfiniteQuery, useQuery } from '@pinia/colada'
-import { seriesListQuery, seriesListQueryInfinite } from '@/colada/series'
+import { QUERY_KEYS_SERIES, seriesListQuery, seriesListQueryInfinite } from '@/colada/series'
+import { useClientSettingsGlobal } from '@/colada/client-settings'
+import { useRouteQuery } from '@vueuse/router'
+import {
+  navigationSymbols,
+  SYMBOL_ALL,
+  symbolCondition,
+  symbolCounts,
+} from '@/functions/alphabetical'
 
 import { PageRequest, type Sort } from '@/types/PageRequest'
 import { useGetLibrariesByViewId } from '@/composables/libraries'
@@ -262,7 +277,7 @@ import { useFilterContributors, useFilters } from '@/composables/filter'
 import ChipCount from '@/components/ChipCount.vue'
 import { contributorsRolesMessages } from '@/types/referential'
 import { useSelectionContextualActions } from '@/composables/selection'
-import type { SearchConditionSeries } from '@/generated/openapi'
+import { komgaGetSeriesAlphabeticalGroups, type SearchConditionSeries } from '@/generated/openapi'
 import { BrowsingContextKey } from '@/functions/browsing-context'
 import { useSort } from '@/composables/sort'
 
@@ -328,7 +343,9 @@ const {
   restore: sortRestore,
 } = useSort(sortDefault, sortOptions, false)
 
-const conds = computed(() => ({
+// Everything that narrows the list except the letter, which is what the counts
+// beside the letters are counts of.
+const condsWithoutSymbol = computed(() => ({
   allOf: [
     valuesToConditions(libraryIds.value, 'libraryId'),
     schemaFilterIncludeExcludeToConditions(filters.value.complete.filter, 'complete'),
@@ -348,6 +365,39 @@ const conds = computed(() => ({
     ),
   ].filter(Boolean) as SearchConditionSeries[],
 }))
+
+// The letter is kept in the address, as the page is, so a link or the back button
+// returns to it.
+const { seriesGroups } = useClientSettingsGlobal()
+const symbols = computed(() => navigationSymbols(seriesGroups.value))
+const queryNav = useRouteQuery('nav', SYMBOL_ALL, { transform: (input) => String(input) })
+const symbol = computed(() =>
+  symbols.value.includes(queryNav.value) ? queryNav.value : SYMBOL_ALL,
+)
+
+function chooseSymbol(value: string) {
+  // The page that was open is a page of another list.
+  page1.value = 1
+  queryNav.value = value
+}
+
+const { data: groupCounts } = useQuery(() => ({
+  key: [...QUERY_KEYS_SERIES.root, 'alphabetical-groups', JSON.stringify(condsWithoutSymbol.value)],
+  query: () => komgaGetSeriesAlphabeticalGroups({ body: { condition: condsWithoutSymbol.value } }),
+  placeholderData: (
+    previousData: Awaited<ReturnType<typeof komgaGetSeriesAlphabeticalGroups>> | undefined,
+  ) => previousData,
+}))
+const counts = computed(() => symbolCounts(groupCounts.value, seriesGroups.value))
+
+const conds = computed(() => {
+  const narrowed = symbolCondition(symbol.value, seriesGroups.value)
+  return {
+    allOf: narrowed
+      ? [...condsWithoutSymbol.value.allOf, narrowed]
+      : condsWithoutSymbol.value.allOf,
+  }
+})
 
 // clear selection if filter or paging changes
 watch([() => JSON.stringify(conds.value), () => appStore.browsingPaging], () =>

@@ -423,10 +423,25 @@ export function filtersFrom(
   }
 }
 
-/** Alphabetical bucket, matching Komga: non-alphanumeric titles are grouped under `#`. */
-function groupOf(titleSort: string): string {
-  const first = titleSort.trim().charAt(0).toUpperCase()
-  return /[A-Z0-9]/.test(first) ? first : '#'
+/**
+ * The group a series is counted in: the first character of its sort title, in
+ * lower case, whatever that character is.
+ *
+ * That is what the reference answers. Deciding which characters make a letter of
+ * the navigation, and that the rest are `#`, is left to the client, because it
+ * depends on the alphabet the client is showing: under a Japanese grouping `か` is
+ * a group of its own and not one of the rest.
+ *
+ * Accents are dropped the way the title filter drops them, so the count under a
+ * letter is the number of series that choosing the letter then lists.
+ */
+export function groupOf(titleSort: string): string {
+  // By code point, so a character outside the basic plane is not cut in half.
+  const [first = ''] = titleSort.trimStart()
+  return first
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
 }
 
 export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOptions): Promise<void> {

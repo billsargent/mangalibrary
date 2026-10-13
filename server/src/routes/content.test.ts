@@ -9,6 +9,7 @@ import { loadConfig } from '../config.js'
 import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
+import { groupOf } from './series.js'
 
 const ADMIN_KEY = 'admin-key'
 const READER_KEY = 'reader-key'
@@ -470,7 +471,7 @@ describe('series listing', () => {
       headers: admin,
       payload: {},
     })
-    expect((groups.json() as { group: string }[]).map((entry) => entry.group)).toEqual(['A', 'B', 'S'])
+    expect((groups.json() as { group: string }[]).map((entry) => entry.group)).toEqual(['a', 'b', 's'])
     await app.close()
   })
 
@@ -479,9 +480,21 @@ describe('series listing', () => {
 
     const groups = await app.inject({ method: 'GET', url: '/api/v1/series/alphabetical-groups', headers: admin })
     expect(groups.json()).toEqual([
-      { group: 'A', count: 1 },
-      { group: 'B', count: 1 },
-      { group: 'S', count: 1 },
+      { group: 'a', count: 1 },
+      { group: 'b', count: 1 },
+      { group: 's', count: 1 },
+    ])
+
+    // The first character is the group whatever it is; a client decides which
+    // characters are letters of its navigation.
+    expect(['Élan', '  berserk', '20th Century Boys', 'がんばれ', '#DRCL', '𠮷野家', ''].map(groupOf)).toEqual([
+      'e',
+      'b',
+      '2',
+      'か',
+      '#',
+      '𠮷',
+      '',
     ])
 
     const dates = await app.inject({ method: 'GET', url: '/api/v1/series/release-dates', headers: admin })
