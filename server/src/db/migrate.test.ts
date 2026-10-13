@@ -82,6 +82,7 @@ describe('migrate', () => {
       '0019_pdf_page_size',
       '0020_sidecars',
       '0021_pageless_books',
+      '0022_job_queue_indexes',
     ])
 
     // One row per hash, keeping the largest size and the highest delete count, and

@@ -1,3 +1,5 @@
+import { EventBus } from '../events.js'
+import { handleJob } from '../handlers.js'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -303,5 +305,49 @@ describe('an ISBN read from a barcode', () => {
     expect(await storedIsbn(database)).toBe('old')
 
     await database.close()
+  })
+})
+
+describe('the barcode, when a book is analysed by the queue', () => {
+  const quiet = { debug() {}, info() {}, warn() {}, error() {} }
+  const job = (type: string, payload: unknown) => ({
+    id: 'J1',
+    type,
+    priority: 6,
+    groupId: null,
+    uniqueKey: 'K1',
+    payload,
+    attempts: 1,
+  })
+
+  it('is left for a job of its own, so that looking for it does not hold up reading', async () => {
+    const { database } = await setup({ pages: [await blankPage(), await ean13Image(ISBN)] })
+    const context = { db: database.db, log: quiet, events: new EventBus() }
+
+    await handleJob(context, job('AnalyzeBook', { bookId: 'B1' }))
+
+    // The book can be read, and nothing has looked for a barcode yet.
+    const media = await database.db.selectFrom('media').select('status').where('book_id', '=', 'B1').execute()
+    expect(media).toEqual([{ status: 'READY' }])
+    expect(await storedIsbn(database)).toBe('')
+
+    // It was asked for, behind everything else.
+    const later = await database.db
+      .selectFrom('jobs')
+      .select(['type', 'priority', 'payload'])
+      .where('unique_key', '=', 'REFRESH_BOOK_BARCODE_B1')
+      .executeTakeFirstOrThrow()
+    expect(later).toMatchObject({ type: 'RefreshBookMetadata', priority: 0 })
+
+    await handleJob(context, job(later.type, JSON.parse(later.payload)))
+    expect(await storedIsbn(database)).toBe(ISBN)
+  })
+
+  it('is not asked for in a library that does not import it', async () => {
+    const { database } = await setup({ pages: [await ean13Image(ISBN)], importBarcode: 0 })
+    await handleJob({ db: database.db, log: quiet, events: new EventBus() }, job('AnalyzeBook', { bookId: 'B1' }))
+
+    const asked = await database.db.selectFrom('jobs').select('unique_key').execute()
+    expect(asked.map((row) => row.unique_key)).not.toContain('REFRESH_BOOK_BARCODE_B1')
   })
 })

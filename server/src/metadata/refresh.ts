@@ -169,7 +169,16 @@ async function writeUpdate(db: Kysely<DB>, bookId: string, update: BookMetadataU
 export async function refreshBookMetadata(
   db: Kysely<DB>,
   bookId: string,
-  options: { path?: string; capabilities?: readonly BookMetadataCapability[] } = {},
+  options: {
+    path?: string
+    capabilities?: readonly BookMetadataCapability[]
+    /**
+     * False leaves the barcode unread. Looking for one draws six pages and searches
+     * each, which is about half a second a book: far more than everything else a
+     * refresh does, so a caller in a hurry reads it later.
+     */
+    barcode?: boolean
+  } = {},
 ): Promise<MetadataRefreshResult> {
   const record = await findBookRecord(db, bookId)
   if (record === null) throw new Error(`book ${bookId} does not exist`)
@@ -187,7 +196,7 @@ export async function refreshBookMetadata(
   const readsFields = library.import_comic_info_book === 1
   const readsReadLists = library.import_comic_info_read_list === 1
   const importsDocuments = readsFields || readsReadLists || library.import_epub_book === 1
-  const importsBarcode = library.import_barcode_isbn === 1 && imported.has('ISBN')
+  const importsBarcode = library.import_barcode_isbn === 1 && imported.has('ISBN') && options.barcode !== false
   if (!importsDocuments && !importsBarcode) {
     return {
       status: 'skipped',

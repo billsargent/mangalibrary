@@ -383,6 +383,29 @@ describe('announcing what a scan did', () => {
     return { events, seen }
   }
 
+  it('hands the series to be read to a caller that has a queue, and reads none of them itself', async () => {
+    const { database, root } = await setup()
+    bookWithDocument(root, 'Folder A/Volume 1.cbz', { Series: 'Titled by its book' })
+    bookWithDocument(root, 'Folder B/Volume 1.cbz', { Series: 'Another' })
+
+    const handed: { metadata: string[]; artwork: string[] }[] = []
+    await scanLibrary(database.db, 'L1', { readLater: async (work) => void handed.push(work) })
+
+    const series = await seriesRows(database)
+    expect(handed).toHaveLength(1)
+    expect([...handed[0]!.metadata].sort()).toEqual(series.map((row) => row.id).sort())
+    expect(handed[0]!.artwork).toEqual([])
+    expect(handed[0]!.metadata).toHaveLength(2)
+    // No book was opened: the series are still called what their folders are.
+    const titles = await database.db.selectFrom('series_metadata').select('title').orderBy('title').execute()
+    expect(titles.map((row) => row.title)).toEqual(['Folder A', 'Folder B'])
+
+    // A scan that changes nothing has nothing to hand over.
+    handed.length = 0
+    await scanLibrary(database.db, 'L1', { readLater: async (work) => void handed.push(work) })
+    expect(handed).toEqual([{ metadata: [], artwork: [] }])
+  })
+
   it('names what it found, with what it belongs to', async () => {
     const { database, root } = await setup()
     const { events, seen } = collector()

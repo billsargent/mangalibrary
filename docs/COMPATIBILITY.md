@@ -672,6 +672,12 @@ file by file (`docs/PARITY.md`, section 3). Where it differs:
 - Mylar's `series.json` is read for what it has; the reference refuses one with a
   required field missing.
 - An ISBN read from a barcode is applied before the documents, so a document's wins.
+- **The barcode is looked for after a book can be read**, by a job of its own at the
+  lowest priority. The reference looks for it in the refresh that follows analysis. It
+  costs about half a second a book, thirteen times the rest of analysis together.
+- **A series is read from its books by a job**, queued by the scan below analysis, as the
+  reference queues a task; but here a book is analysed first, so a new series is called
+  what its folder is until its turn comes.
 
 ## Deleting files
 
