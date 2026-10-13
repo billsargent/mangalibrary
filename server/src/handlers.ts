@@ -138,16 +138,31 @@ async function analyzeOne(context: JobContext, bookId: string): Promise<boolean>
 
   const library = await context.db
     .selectFrom('libraries')
-    .select('analyze_dimensions')
+    .select(['analyze_dimensions', 'import_barcode_isbn'])
     .where('id', '=', record.libraryId)
     .executeTakeFirst()
 
   const analysis = await analyzeBook(context.db, bookId, path, {
     analyzeDimensions: library?.analyze_dimensions === 1,
+    barcodeLater: true,
   })
   if (analysis.status !== 'READY') {
     context.log.warn({ bookId, status: analysis.status, comment: analysis.comment }, 'analysis did not succeed')
     return false
+  }
+
+  // The ISBN on a book's cover is looked for by a job of its own, behind everything
+  // else. Finding it means drawing six pages and searching each - half a second a
+  // book, against four hundredths for the rest of analysis - and nobody is waiting
+  // for an ISBN to open a book. Measured on 200,000 books: read here, the library
+  // took a day to become readable; read later, a few hours.
+  if (library?.import_barcode_isbn === 1) {
+    await enqueueJob(context.db, {
+      type: 'RefreshBookMetadata',
+      uniqueKey: `REFRESH_BOOK_BARCODE_${bookId}`,
+      priority: JOB_PRIORITY.LOWEST,
+      payload: { bookId, capabilities: ['ISBN'] },
+    })
   }
 
   // A cover beside the book is looked for now that the file has been read, and the
@@ -380,7 +395,33 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       if (libraryId === null) return log.warn({ job: job.id }, 'ScanLibrary without a library')
 
       const scanStarted = Date.now()
-      const summary = await scanLibrary(db, libraryId, { deep: payload.scanDeep === true, events: context.events })
+      // What the scan found about each series is read from its books by jobs of
+      // their own, below analysis: a reader wants a book that can be opened before
+      // a series that is titled, and reading a series opens every book it has.
+      const summary = await scanLibrary(db, libraryId, {
+        deep: payload.scanDeep === true,
+        events: context.events,
+        readLater: async ({ metadata, artwork }) => {
+          await enqueueJobs(
+            db,
+            metadata.map((seriesId) => ({
+              type: 'RefreshSeriesMetadata',
+              uniqueKey: `REFRESH_SERIES_METADATA_${seriesId}`,
+              priority: JOB_PRIORITY.LOW,
+              payload: { seriesId },
+            })),
+          )
+          await enqueueJobs(
+            db,
+            [...metadata, ...artwork].map((seriesId) => ({
+              type: 'RefreshSeriesLocalArtwork',
+              uniqueKey: `REFRESH_SERIES_LOCAL_ARTWORK_${seriesId}`,
+              priority: JOB_PRIORITY.LOW,
+              payload: { seriesId },
+            })),
+          )
+        },
+      })
       log.info(
         { libraryId, ...summary, seconds: Math.round((Date.now() - scanStarted) / 100) / 10 },
         'scanned a library',

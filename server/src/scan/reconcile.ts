@@ -13,6 +13,15 @@ import { nextTsid } from '../tsid.js'
 import { LibraryScanError, walkLibrary, type ScannedBook, type ScannedSeries, type ScanSettings } from './library.js'
 import { deletedBookFor, deletedBookSizes, restoreBook, type DeletedBook } from './restore.js'
 
+/**
+ * The series a scan leaves to be read: those whose books or metadata file changed,
+ * which are read again from their books, and those of which only a cover changed.
+ */
+export interface SeriesToRead {
+  metadata: string[]
+  artwork: string[]
+}
+
 /** What a scan did, so a caller can report it. */
 export interface ScanSummary {
   seriesCreated: number
@@ -373,7 +382,7 @@ async function changedSidecars(
 export async function scanLibrary(
   db: Kysely<DB>,
   libraryId: string,
-  options: { deep?: boolean; events?: EventBus } = {},
+  options: { deep?: boolean; events?: EventBus; readLater?: (work: SeriesToRead) => Promise<void> } = {},
 ): Promise<ScanSummary> {
   const now = new Date().toISOString()
   const library = await db.selectFrom('libraries').selectAll().where('id', '=', libraryId).executeTakeFirst()
@@ -708,12 +717,22 @@ export async function scanLibrary(
   const sidecars = await changedSidecars(db, libraryId, found)
   for (const seriesId of sidecars.metadata) touched.add(seriesId)
 
-  for (const seriesId of touched) {
-    await refreshSeriesMetadata(db, seriesId)
-    await refreshSeriesLocalArtwork(db, seriesId)
-  }
-  for (const seriesId of sidecars.artwork) {
-    if (!touched.has(seriesId)) await refreshSeriesLocalArtwork(db, seriesId)
+  //
+  // Reading a series opens every one of its books. On a first scan that is every
+  // book in the library, and done here it would hold the scan - and everything
+  // queued behind it, analysis first of all - for as long as that takes: measured
+  // at about forty minutes for 200,000 books, with nothing readable meanwhile. So a
+  // caller with a queue is handed the list instead, as the reference queues a task
+  // a series. Read here only for a caller without one.
+  const artworkOnly = sidecars.artwork.filter((seriesId) => !touched.has(seriesId))
+  if (options.readLater) {
+    await options.readLater({ metadata: [...touched], artwork: artworkOnly })
+  } else {
+    for (const seriesId of touched) {
+      await refreshSeriesMetadata(db, seriesId)
+      await refreshSeriesLocalArtwork(db, seriesId)
+    }
+    for (const seriesId of artworkOnly) await refreshSeriesLocalArtwork(db, seriesId)
   }
 
   if (library.empty_trash_after_scan === 1) {

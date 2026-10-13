@@ -155,3 +155,31 @@ library where nothing changed still opens no file.
 
 The first scan after this was added sees every such file as new. That costs a look at
 each series' covers, and a re-read of each series that has a `series.json`.
+
+## What a first scan costs, and in what order
+
+A scan records what is on disk and then stops. Everything that opens a book is a job of
+its own, in this order, so that a library can be read as early as possible:
+
+1. **Analysis** of each book (pages, metadata from the book's own documents), and its
+   poster straight after. A book can be opened once this has run for it.
+2. **Each series read from its books** - its title, publisher and the rest - and the
+   cover in its folder. Until then a series is called what its folder is.
+3. **Hashing**, when the library asks for it, and **the ISBN barcode**, when the library
+   imports it. Looking for a barcode draws six pages of a book and searches each; it is
+   by far the slowest thing done to a book, and nothing waits for it.
+
+Measured on a generated library of 200,000 books in 20,000 series (20 pages and a
+ComicInfo each), on one task thread, on Windows, with the built server:
+
+|                                    |                                         |
+| ---------------------------------- | --------------------------------------- |
+| The scan records all 200,000 books | about 3 minutes                         |
+| First book analysed                | within half a minute of the scan ending |
+| Analysis, with posters             | about 28 books a second                 |
+| Memory                             | 100 MB at rest, 645 MB at the peak      |
+| Database                           | about 320 MB before analysis completes  |
+
+At that rate the whole library is readable in about two hours. Before the order above was
+arranged (#184) the same library analysed one book a second, after forty minutes in
+which it analysed none.

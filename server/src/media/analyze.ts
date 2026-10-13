@@ -30,7 +30,11 @@ export async function analyzeBook(
   db: Kysely<DB>,
   bookId: string,
   path: string,
-  options: { analyzeDimensions?: boolean } = {},
+  options: {
+    analyzeDimensions?: boolean
+    /** Leave the ISBN barcode for later: the caller will ask for it once the book can be read. */
+    barcodeLater?: boolean
+  } = {},
 ): Promise<Analysis> {
   const now = new Date().toISOString()
   const inspection = await onThread('inspect', { path, options })
@@ -115,7 +119,7 @@ export async function analyzeBook(
     // worker exists it happens here, so that analysing a book is all a caller has
     // to do. A document that cannot be read is reported, never thrown, so it
     // cannot fail an analysis that otherwise worked.
-    await refreshBookMetadata(db, bookId, { path })
+    await refreshBookMetadata(db, bookId, { path, barcode: options.barcodeLater !== true })
 
     // A book's metadata is what a series' booksMetadata is made of, so the series'
     // view of its books is recomputed here. The reference does this through a task
