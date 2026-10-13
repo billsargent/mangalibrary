@@ -145,13 +145,20 @@ cover or a metadata file changed without its book changing - is present since #1
 
 ### What analysis reports - `BookAnalyzer`
 
-**Read** on 2026-10-13 for the outcomes only, not for how each format is read.
+**Read** on 2026-10-13 for the outcomes only, not for how each format is read. Present
+since #178 (`media/outcomes.test.ts`) unless a row says otherwise.
 
-| Komga                                                                                                                                   | Here                                                         | Issue |
-| --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----- |
-| A book that cannot be read, or is of no supported kind, is recorded with a code                                                         | Present for three codes (`ERR_1000`, `ERR_1001`, `ERR_1005`) | -     |
-| A book with no pages is an error (`ERR_1006`)                                                                                           | **Differs**: recorded as ready, with no pages                | #178  |
-| Unrecognised entries, a missing file, encrypted and multi-volume RARs, a malformed EPUB and the EPUB parts that failed each have a code | **Missing**: all are `ERR_1005` or not recorded              | #178  |
+| Komga                                                                                                                 | Here                                                                                                                                                   |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Not a kind of file that is read: unsupported, `ERR_1001`                                                              | Same                                                                                                                                                   |
+| May not be read `ERR_1000`; not there `ERR_1018`; anything else `ERR_1005`                                            | Same. `ERR_1005` is followed by the error's own words                                                                                                  |
+| An archive with no pages is an error, `ERR_1006`                                                                      | Same. It was recorded as ready, with no pages                                                                                                          |
+| An encrypted RAR `ERR_1002`, a multi-volume RAR `ERR_1004`: unsupported                                               | Same. An archive with only some files encrypted is refused whole, as there                                                                             |
+| A file named `.epub` that is not one, `ERR_1032`                                                                      | Same                                                                                                                                                   |
+| An EPUB whose manifest names what the file does not hold is ready, with `ERR_1033 [names]`                            | Same                                                                                                                                                   |
+| An EPUB whose table of contents could not be read is ready, with `ERR_1035`                                           | Same, when one is named and cannot be found                                                                                                            |
+| Entries of an archive that could not be told apart are named, `ERR_1007`; the entries could not be listed, `ERR_1008` | **Not applicable**: an entry is known by its name here and is not opened during analysis; an archive that cannot be listed is `ERR_1005`               |
+| EPUB landmarks, page list, pages or positions failed: `ERR_1036` to `ERR_1039`                                        | **Not applicable**: landmarks and the page list are not read (#137), and pages and positions are computed from the spine, which cannot fail on its own |
 
 ### Metadata - `MetadataApplier`, `MetadataAggregator`, `BookMetadataLifecycle`, `SeriesMetadataLifecycle`
 

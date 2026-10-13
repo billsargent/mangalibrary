@@ -4,6 +4,7 @@ import { basename } from 'node:path'
 import { openEpub } from './epub.js'
 import { containerFor, isImageEntry, MEDIA_TYPES, mediaTypeFor, naturalCompare, type ContainerKind } from './kinds.js'
 import { openPdf } from './pdf.js'
+import { ANALYSIS_ERRORS, BookProblem, fileProblem } from './problems.js'
 import { openRar } from './rar.js'
 import type { BookContents, FileEntry, PageEntry } from './types.js'
 import { openZip, type Container } from './zip.js'
@@ -90,7 +91,13 @@ export async function openBook(path: string, stated?: ContainerKind): Promise<Bo
   }
 
   if (kind === 'EPUB') {
-    const epub = await openEpub(path)
+    // A file named as an EPUB that cannot be opened as one - no package, no spine,
+    // not a zip at all - is the reference's "EPUB file has wrong media type". A
+    // file that is not there is not that.
+    const epub = await openEpub(path).catch((error: unknown) => {
+      if (fileProblem(error) !== null || error instanceof BookProblem) throw error
+      throw new BookProblem((error as Error).message, ANALYSIS_ERRORS.notAnEpub)
+    })
     return {
       kind,
       mediaType: MEDIA_TYPES.EPUB,
@@ -99,6 +106,8 @@ export async function openBook(path: string, stated?: ContainerKind): Promise<Bo
       files: epub.files,
       epub: {
         toc: epub.toc,
+        tocUnreadable: epub.tocUnreadable,
+        missingResources: epub.missingResources,
         divinaCompatible: epub.divinaCompatible,
         packageDocument: epub.packageDocument,
         cover: epub.cover,

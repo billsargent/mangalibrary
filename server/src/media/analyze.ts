@@ -43,7 +43,7 @@ export async function analyzeBook(
           book_id: bookId,
           media_type: inspection.mediaType,
           status: 'READY',
-          comment: null,
+          comment: inspection.comment,
           page_count: inspection.pages.length,
           created_date: now,
           last_modified_date: now,
@@ -52,7 +52,7 @@ export async function analyzeBook(
           oc.column('book_id').doUpdateSet({
             media_type: inspection.mediaType,
             status: 'READY',
-            comment: null,
+            comment: inspection.comment,
             page_count: inspection.pages.length,
             last_modified_date: now,
           }),
@@ -134,7 +134,12 @@ export async function analyzeBook(
     if (owner?.oneshot === 1) await refreshSeriesMetadata(db, owner.series_id)
     else if (owner) await aggregateSeriesMetadata(db, owner.series_id)
 
-    return { status: 'READY', mediaType: inspection.mediaType, pageCount: inspection.pages.length, comment: null }
+    return {
+      status: 'READY',
+      mediaType: inspection.mediaType,
+      pageCount: inspection.pages.length,
+      comment: inspection.comment,
+    }
   }
 
   await db

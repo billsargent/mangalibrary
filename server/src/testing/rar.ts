@@ -12,7 +12,10 @@ import { crc32 } from 'node:zlib'
  * Not for anything but tests: names are ASCII only, nothing is compressed, and
  * there are no folders, comments or recovery records.
  */
-export function writeRar(entries: readonly { name: string; data: Buffer }[]): Buffer {
+export function writeRar(
+  entries: readonly { name: string; data: Buffer }[],
+  options: { volume?: boolean } = {},
+): Buffer {
   /** A header's checksum is the low half of the CRC of everything after it. */
   const withChecksum = (afterChecksum: Buffer): Buffer => {
     const checksum = Buffer.alloc(2)
@@ -24,7 +27,7 @@ export function writeRar(entries: readonly { name: string; data: Buffer }[]): Bu
 
   const main = Buffer.alloc(11)
   main.writeUInt8(0x73, 0) // an archive header
-  main.writeUInt16LE(0, 1) // no flags
+  main.writeUInt16LE(options.volume === true ? 0x0001 : 0, 1) // one of a set of volumes, or no flags
   main.writeUInt16LE(13, 3) // its size, checksum included
 
   const blocks: Buffer[] = [marker, withChecksum(main)]

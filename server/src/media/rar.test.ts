@@ -43,17 +43,18 @@ describe.each([
     expect(await archive.read('1File.txt')).toHaveLength(0)
   })
 
-  it('reads what is not encrypted and refuses what is', async () => {
-    const archive = await openRar(sample('FileEncByName.rar'))
+  it('refuses an archive with anything encrypted in it, as the reference does', async () => {
+    // Some of this one's files can be read without a password. A comic that is
+    // partly locked is not a comic that can be read, so the whole of it is refused.
+    await expect(openRar(sample('FileEncByName.rar'))).rejects.toMatchObject({ code: 'ERR_1002', unsupported: true })
 
-    expect((await archive.read('1File.txt')).toString()).toBe('1File')
-    await expect(archive.read('3Sec.txt')).rejects.toThrow(/[Pp]assword/)
-    // A refusal does not spoil the archive for the next read.
-    expect((await archive.read('1File.txt')).toString()).toBe('1File')
+    // A refusal does not spoil the unpacker for the next archive.
+    const next = await openRar(sample('WithComment.rar'))
+    expect(next.entries).toEqual(['1File.txt', '2中文.txt'])
   })
 
   it('refuses an archive it cannot even list', async () => {
-    await expect(openRar(sample('HeaderEnc1234.rar'))).rejects.toThrow(/[Pp]assword/)
+    await expect(openRar(sample('HeaderEnc1234.rar'))).rejects.toMatchObject({ code: 'ERR_1002', unsupported: true })
     await expect(openRar(Buffer.from('not a rar archive'))).rejects.toThrow()
     await expect(openRar(join(tmpdir(), 'no-such-archive.rar'))).rejects.toThrow()
   })
@@ -62,7 +63,7 @@ describe.each([
     // The unpacker is shared by everything on a thread, and answers to one archive
     // at a time.
     const first = await openRar(sample('FolderTest.rar'))
-    const second = await openRar(sample('FileEncByName.rar'))
+    const second = await openRar(writeRar([{ name: '1File.txt', data: Buffer.from('1File') }]))
 
     expect((await first.read('Folder1/Folder 中文/2中文.txt')).toString('utf8')).toContain('中文中文')
     expect((await second.read('1File.txt')).toString()).toBe('1File')
