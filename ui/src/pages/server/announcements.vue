@@ -7,6 +7,20 @@
 
     <EmptyStateNetworkError v-else-if="error" />
 
+    <v-alert
+      v-else-if="announcements && announcements.items.length === 0"
+      type="info"
+      variant="tonal"
+    >
+      {{
+        $formatMessage({
+          description: 'Announcements view: shown when there are no announcements',
+          defaultMessage: 'There are no announcements.',
+          id: '1RxKqE',
+        })
+      }}
+    </v-alert>
+
     <template v-else-if="announcements">
       <div
         v-for="(item, index) in announcements.items"

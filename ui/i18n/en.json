@@ -195,6 +195,10 @@
     "defaultMessage": "Duplicate book",
     "description": "Import reading list table: tooltip for status - duplicate book"
   },
+  "1RxKqE": {
+    "defaultMessage": "There are no announcements.",
+    "description": "Announcements view: shown when there are no announcements"
+  },
   "1T59g0": {
     "defaultMessage": "Missing posters",
     "description": "Missing posters page: title"
@@ -2382,6 +2386,10 @@
   "c+hx0g": {
     "defaultMessage": "Users",
     "description": "Users table global header"
+  },
+  "c5nC6I": {
+    "defaultMessage": "This server is not set to look for updates.",
+    "description": "Updates view: shown when the server lists no releases"
   },
   "cA6T9s": {
     "defaultMessage": "Full screen",

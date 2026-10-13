@@ -296,10 +296,18 @@ export async function buildBookDtos(db: Kysely<DB>, rows: readonly BookRow[], us
     loadProgress(db, ids, userId),
     seriesIds.length === 0
       ? Promise.resolve([])
-      : db.selectFrom('series').select(['id', 'name']).where('id', 'in', seriesIds).execute(),
+      : db
+          .selectFrom('series')
+          .leftJoin('series_metadata', 'series_metadata.series_id', 'series.id')
+          .select(['series.id', 'series.name', 'series_metadata.title'])
+          .where('series.id', 'in', seriesIds)
+          .execute(),
   ])
 
-  const titles = new Map(series.map((row) => [row.id, row.name]))
+  // The title the series goes by - from its books' metadata, or as somebody edited
+  // it - which is what the reference sends. The folder's name is only what a
+  // series is called until it has a title.
+  const titles = new Map(series.map((row) => [row.id, row.title ?? row.name]))
 
   return rows.map((row) => {
     const meta = metadata.get(row.id)

@@ -978,7 +978,7 @@ describe('full text search', () => {
 
 describe('books', () => {
   it('returns pages of books scoped to the caller', async () => {
-    const { app } = await setup()
+    const { app, database } = await setup()
 
     const res = await app.inject({ method: 'GET', url: '/api/v1/books', headers: reader })
     expect(res.statusCode).toBe(200)
@@ -1008,6 +1008,11 @@ describe('books', () => {
       expect(dto, `missing ${key}`).toHaveProperty(key)
     }
     expect(dto.seriesTitle).toBe('Akira')
+
+    // It is the title the series goes by, not the name of its folder.
+    await database.db.updateTable('series_metadata').set({ title: 'AKIRA, the series' }).execute()
+    const retitled = await app.inject({ method: 'GET', url: `/api/v1/books/${dto.id}`, headers: admin })
+    expect((retitled.json() as { seriesTitle: string }).seriesTitle).toBe('AKIRA, the series')
     expect(dto.sizeBytes).toBe(1024)
     expect(dto.size).toBe('1 KB')
     expect((dto.media as Record<string, unknown>).mediaProfile).toBe('DIVINA')

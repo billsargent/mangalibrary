@@ -13,7 +13,8 @@ export function useAppReleasesEnriched() {
   const latestRelease = computed(() => data.value?.find((x) => x.latest))
 
   const isLatestVersion = computed(() => {
-    if (buildVersion.value && data.value)
+    // No releases listed - no source of them is set - is not "an update is available".
+    if (buildVersion.value && data.value && data.value.length > 0)
       return data.value?.some((x) => x.latest && x.version == buildVersion.value)
     else return undefined
   })

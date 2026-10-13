@@ -7,6 +7,20 @@
 
     <EmptyStateNetworkError v-else-if="error" />
 
+    <v-alert
+      v-else-if="releases && releases.length === 0"
+      type="info"
+      variant="tonal"
+    >
+      {{
+        $formatMessage({
+          description: 'Updates view: shown when the server lists no releases',
+          defaultMessage: 'This server is not set to look for updates.',
+          id: 'c5nC6I',
+        })
+      }}
+    </v-alert>
+
     <template v-else-if="releases">
       <v-row>
         <v-col>
