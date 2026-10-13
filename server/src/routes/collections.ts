@@ -268,15 +268,17 @@ export async function registerCollectionRoutes(app: FastifyInstance, opts: Route
       const filters = filtersFrom(context, query)
       filters.collectionIds = [req.params.id]
 
-      return seriesPage(
-        db,
-        context,
-        filters,
-        parseSort(query.sort, seriesSorts(context.user.id), SERIES_DEFAULT_SORT),
-        page,
-        size,
-        unpaged,
-      )
+      // Asked for no order, a collection gives its own: the one it was arranged
+      // in when it is ordered by hand, and by title when it is not.
+      const sorts = seriesSorts(context.user.id, req.params.id)
+      const own: SortSpec[] = found.dto.ordered
+        ? [
+            { column: sorts['collection.number']!, direction: 'asc' },
+            { column: 'series.id', direction: 'asc' },
+          ]
+        : SERIES_DEFAULT_SORT
+
+      return seriesPage(db, context, filters, parseSort(query.sort, sorts, own), page, size, unpaged)
     },
   )
 }

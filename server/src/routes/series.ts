@@ -14,7 +14,17 @@ import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { applySeriesMetadataPatch } from './metadata.js'
 import { toCollectionDto, type CollectionDto, type CollectionRow } from './organisation-dto.js'
-import { applySort, booleanParam, isRegex, paging, parseSort, toArray, type SortKey, type SortSpec } from './query.js'
+import {
+  applySort,
+  booleanParam,
+  isRegex,
+  paging,
+  parseSort,
+  requiredValue,
+  toArray,
+  type SortKey,
+  type SortSpec,
+} from './query.js'
 import { seriesCondition, type ConditionFilter } from '../search/condition.js'
 import { INDEXES, matchFilter, relevanceSort } from '../search/fullText.js'
 import { zipStream } from '../zip.js'
@@ -36,8 +46,18 @@ import { zipStream } from '../zip.js'
  * As with books, a name that is missing is not refused but quietly ignored, so
  * this is the reference's whole list.
  */
-export function seriesSorts(userId: string): Record<string, SortKey> {
+export function seriesSorts(userId: string, collectionId?: string): Record<string, SortKey> {
   return {
+    // The place a series was given in a collection, which only means something
+    // when the request is about one collection.
+    ...(collectionId === undefined
+      ? {}
+      : {
+          'collection.number': sql<number>`(
+            select cs_sort.number from collection_series cs_sort
+            where cs_sort.series_id = series.id and cs_sort.collection_id = ${collectionId}
+          )`,
+        }),
     name: 'series.name',
     url: 'series.url',
     created: 'series.created_date',
@@ -483,7 +503,10 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
     // order of their own - which is what the reference does too. A term with nothing
     // searchable in it has nothing to rank by.
     const relevance = filters.search === undefined ? null : relevanceSort(INDEXES.SERIES, filters.search)
-    const allowed = seriesSorts(context.user.id)
+    const allowed = seriesSorts(
+      context.user.id,
+      filters.collectionIds[0] ?? requiredValue(body.condition, 'collectionId'),
+    )
     const sorts = parseSort(
       query.sort,
       relevance === null ? allowed : { ...allowed, relevance },
