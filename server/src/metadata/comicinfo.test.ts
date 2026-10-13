@@ -325,3 +325,15 @@ describe('reading the organisation a ComicInfo describes', () => {
     expect(comicInfoSeriesPatch('<ComicInfo><SeriesGroup> , </SeriesGroup></ComicInfo>').collections).toBeUndefined()
   })
 })
+
+describe('pairing story arcs with their numbers', () => {
+  it('pairs by position, so an arc with no name does not shift the ones after it', () => {
+    const patch = comicInfoBookPatch(
+      '<ComicInfo><StoryArc>First,,Third</StoryArc><StoryArcNumber>1,2,3</StoryArcNumber></ComicInfo>',
+    )
+    expect(patch.readLists).toEqual([
+      { name: 'First', number: 1 },
+      { name: 'Third', number: 3 },
+    ])
+  })
+})

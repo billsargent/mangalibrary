@@ -637,6 +637,24 @@ does. Which characters make a letter of the navigation, and that everything else
 - The web UI keeps the chosen letter in the address as `?nav=`, as the legacy interface
   did.
 
+## Reading metadata
+
+What a book and a series are given from their files follows the reference's rules, read
+file by file (`docs/PARITY.md`, section 3). Where it differs:
+
+- **A book that keeps its place keeps its number.** When a series is renumbered the
+  reference writes every book's place over its number and then re-reads each book. Here
+  only a book that moved is renumbered and re-read. What a library ends up with is the
+  same; a scan that adds a chapter at the end reads no other book again.
+- **A refresh of some fields writes only those fields.** The reference runs every
+  provider that has one of the fields asked for and writes all it read.
+- **A bad date drops the date**, not the whole document.
+- `ComicInfo.xml` is found in any folder of the archive, however it is capitalised.
+- An EPUB creator's role needs no `scheme` attribute, and `urn:isbn:` is an ISBN.
+- Mylar's `series.json` is read for what it has; the reference refuses one with a
+  required field missing.
+- An ISBN read from a barcode is applied before the documents, so a document's wins.
+
 ## Deleting files
 
 Deleting a book's or a series' files does what the reference does: the file, the artwork

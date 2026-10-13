@@ -125,10 +125,8 @@ Convert to CBZ: present since #161 (`media/convert.test.ts`). Repair extensions:
 ### Scanning - `LibraryContentLifecycle`, `FileSystemScanner`
 
 Read rule by rule when the scanner was written; see `SCANNING.md`. Restoring deleted
-books and series by hash: present (#143). **Not examined:** Komga's sidecar table
-(`infrastructure/sidecar`), with which a scan notices that a cover or a metadata file
-beside a book changed without the book changing. Here local artwork is refreshed for
-the series a scan touched, which may miss that case.
+books and series by hash: present (#143). Komga's sidecar table - a scan noticing that a
+cover or a metadata file changed without its book changing - is **missing** (#174).
 
 ### Collections and read lists - `SeriesCollectionLifecycle`, `ReadListLifecycle`, `ReadListMatcher`
 
@@ -136,14 +134,45 @@ Create, update, delete, posters, the ComicRack list match and the removal of emp
 exist and have tests (`organisation.test.ts`). Manual order was not honoured until #148.
 **Not examined** method by method.
 
+### Metadata - `MetadataApplier`, `MetadataAggregator`, `BookMetadataLifecycle`, `SeriesMetadataLifecycle`
+
+**Read** on 2026-10-13, every file, beside `server/src/metadata/`; what was found is #173.
+Tests: `metadata/*.test.ts`, and `metadata/lifecycle.test.ts` for what happens across a
+scan, an analysis and the refreshes that follow.
+
+| Komga                                                                                                                                      | Here                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| A patch replaces a field only when it carries a value and the field is not locked                                                          | Same                                                                                                                   |
+| A series' view of its books: union of credits and tags, earliest date, the first summary by number                                         | Same                                                                                                                   |
+| A series from its books: the most frequent title, publisher, language and direction; the highest age rating and count; the union of genres | Same                                                                                                                   |
+| Each provider's patch is folded and applied on its own, one after another                                                                  | Same since #173; comics and EPUBs were counted together                                                                |
+| Renumbering a series re-reads the number of each book whose number moved                                                                   | Present since #173. **Was a fault**: a number from ComicInfo was replaced by the book's place for good                 |
+| A oneshot's series is its book: title, summary, ended, one book                                                                            | Same rule. **Was a fault** until #173: the series was read before the book had been analysed, and kept the file's name |
+| The book, series, read-list and collection switches of ComicInfo are independent                                                           | Same since #173; read lists and collections needed the other two                                                       |
+| After a book is refreshed, its series is; after a series, its aggregation                                                                  | Same (`handlers.ts`)                                                                                                   |
+| A refresh asked for some fields runs the providers that have them, and writes all they read                                                | **Differs on purpose**: only the fields asked for are written                                                          |
+
+### The metadata providers
+
+**Read** on 2026-10-13, each beside its counterpart.
+
+| Provider                           | State                                                                                                                                                                                                                                                               |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ComicInfo (`comicinfo.ts`)         | Same fields, roles, age ratings and reading direction. Story arcs are paired with their numbers by position since #173. **On purpose**: found in any folder of the archive and whatever its capitalisation; a date that is not one drops the date, not the document |
+| EPUB (`epub.ts`)                   | Same fields and roles. **Was a fault** until #173: a self-closing `<meta/>` before the collection lost the series and the number. **On purpose**: a role needs no `scheme`, and `urn:isbn:` is accepted                                                             |
+| Mylar `series.json` (`sidecar.ts`) | Same title rule, status, summary and age ratings. **On purpose**: read leniently, where Komga refuses a file with a field missing                                                                                                                                   |
+| Oneshot                            | Same                                                                                                                                                                                                                                                                |
+| ISBN barcode (`barcode.ts`)        | Same pages, same format. **On purpose**: applied before the documents, so a document's ISBN wins                                                                                                                                                                    |
+| Local artwork (`localArtwork.ts`)  | Same names, extensions and choice of which is selected                                                                                                                                                                                                              |
+| Language tags                      | **On purpose**: checked for shape, not against a list of languages                                                                                                                                                                                                  |
+
+**Missing:** Komga's sidecar table (`infrastructure/sidecar`), with which a scan notices
+that a cover or a `series.json` changed without its book or folder changing (#174).
+
 ### Not examined at all
 
-- `MetadataApplier` and `MetadataAggregator`: how a patch is applied over locked fields,
-  and how a series' aggregate is built from its books.
-- The metadata providers: ComicInfo, EPUB, Mylar `series.json`, ISBN barcode, oneshot.
-  Each exists here (`server/src/metadata/`); none has been read against Komga's.
 - `SyncPointLifecycle`: sync points exist in the schema and one endpoint deletes them;
-  they serve Kobo sync, which is not implemented.
+  they serve Kobo sync, which is on hold (#167).
 - `TransientBookLifecycle`: the import preview. Present; not compared.
 - `PageHashLifecycle`: present with its API (#82, #85); not compared method by method.
 

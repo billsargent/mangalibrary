@@ -39,6 +39,8 @@ import {
   type PageToRemove,
 } from './media/removePages.js'
 import { refreshBookLocalArtwork, refreshSeriesLocalArtwork } from './metadata/localArtwork.js'
+import { aggregateSeriesMetadata } from './metadata/aggregation.js'
+import { BOOK_METADATA_CAPABILITIES, type BookMetadataCapability } from './metadata/patches.js'
 import { refreshBookMetadata } from './metadata/refresh.js'
 import { refreshSeriesMetadata } from './metadata/series.js'
 import { cleanupEmptySets } from './organisation/cleanup.js'
@@ -75,6 +77,8 @@ interface SeriesPayload {
 }
 interface BookPayload {
   bookId?: unknown
+  /** The parts of the metadata to read again; all of them when left out. */
+  capabilities?: unknown
 }
 interface ThumbnailPayload {
   bookId?: unknown
@@ -462,7 +466,11 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       const bookId = text((job.payload as BookPayload).bookId)
       if (bookId === null) return log.warn({ job: job.id }, 'RefreshBookMetadata without a book')
 
-      const result = await refreshBookMetadata(db, bookId)
+      const asked = (job.payload as BookPayload).capabilities
+      const capabilities = Array.isArray(asked)
+        ? BOOK_METADATA_CAPABILITIES.filter((capability: BookMetadataCapability) => asked.includes(capability))
+        : null
+      const result = await refreshBookMetadata(db, bookId, capabilities === null ? {} : { capabilities })
       log.info({ bookId, status: result.status, changed: result.changed }, 'refreshed a book')
 
       // Reading a book's document changes the book, and a client showing it has to
@@ -476,6 +484,15 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       // reference refreshes that from a task of its own - which the unique key
       // collapses when several books of one series ask for it at once.
       const book = await db.selectFrom('books').select('series_id').where('id', '=', bookId).executeTakeFirst()
+      // Asked only for a book's number, nothing it says about its series was read:
+      // the series' view of its books is brought up to date and that is all.
+      if (book && capabilities !== null) {
+        if (await aggregateSeriesMetadata(db, book.series_id)) {
+          const ref = await seriesRef(db, book.series_id)
+          if (ref) announceSeries(context.events, 'SeriesChanged', ref)
+        }
+        return
+      }
       if (book) {
         await enqueueJob(db, {
           type: 'RefreshSeriesMetadata',
@@ -496,7 +513,7 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
         { seriesId, status: result.status, changed: result.changed, collections: result.collections },
         'refreshed a series',
       )
-      if (result.changed || result.aggregationChanged) {
+      if (result.changed.length > 0 || result.aggregationChanged || result.collections.length > 0) {
         const ref = await seriesRef(db, seriesId)
         if (ref) announceSeries(context.events, 'SeriesChanged', ref)
       }

@@ -2,6 +2,7 @@ import type { Kysely } from 'kysely'
 
 import type { DB } from '../db/schema.js'
 import { aggregateSeriesMetadata } from '../metadata/aggregation.js'
+import { refreshSeriesMetadata } from '../metadata/series.js'
 import { refreshBookMetadata } from '../metadata/refresh.js'
 import { onThread } from '../threads/index.js'
 import type { AnalysisStatus } from './inspect.js'
@@ -121,8 +122,17 @@ export async function analyzeBook(
     // of its own, and also re-reads the series' documents; reading every book of
     // the series again for each of its books analysed would be quadratic, so that
     // part is left to a scan, which does it once per series.
-    const owner = await db.selectFrom('books').select('series_id').where('id', '=', bookId).executeTakeFirst()
-    if (owner) await aggregateSeriesMetadata(db, owner.series_id)
+    const owner = await db
+      .selectFrom('books')
+      .innerJoin('series', 'series.id', 'books.series_id')
+      .select(['books.series_id', 'series.oneshot'])
+      .where('books.id', '=', bookId)
+      .executeTakeFirst()
+    // A oneshot is the exception: its series is its one book, title and summary, so
+    // the series is read again now that the book has said what it is called. That
+    // is one book, not a series' worth.
+    if (owner?.oneshot === 1) await refreshSeriesMetadata(db, owner.series_id)
+    else if (owner) await aggregateSeriesMetadata(db, owner.series_id)
 
     return { status: 'READY', mediaType: inspection.mediaType, pageCount: inspection.pages.length, comment: null }
   }
