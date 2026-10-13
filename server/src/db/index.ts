@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { Kysely, SqliteDialect } from 'kysely'
+import { LongListPlugin, TakeTurnsPlugin } from './plugins.js'
 import type { DB } from './schema.js'
 
 export interface Database {
@@ -69,7 +70,10 @@ export function createDatabase(file: string): Database {
   installRegexp(sqlite)
   installFold(sqlite)
 
-  const db = new Kysely<DB>({ dialect: new SqliteDialect({ database: sqlite }) })
+  const db = new Kysely<DB>({
+    dialect: new SqliteDialect({ database: sqlite }),
+    plugins: [new LongListPlugin(), new TakeTurnsPlugin()],
+  })
 
   return {
     db,

@@ -433,8 +433,12 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       const libraryId = text(payload.libraryId)
       if (libraryId === null) return log.warn({ job: job.id }, 'ScanLibrary without a library')
 
+      const scanStarted = Date.now()
       const summary = await scanLibrary(db, libraryId, { deep: payload.scanDeep === true, events: context.events })
-      log.info({ libraryId, ...summary }, 'scanned a library')
+      log.info(
+        { libraryId, ...summary, seconds: Math.round((Date.now() - scanStarted) / 100) / 10 },
+        'scanned a library',
+      )
       const queued = await analyzeMissingBooks(context, libraryId)
       if (queued > 0) log.info({ libraryId, queued }, 'queued books to analyse')
 

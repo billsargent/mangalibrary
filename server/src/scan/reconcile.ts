@@ -10,7 +10,7 @@ import { refreshSeriesMetadata } from '../metadata/series.js'
 import { cleanupEmptySets } from '../organisation/cleanup.js'
 import { nextTsid } from '../tsid.js'
 import { LibraryScanError, walkLibrary, type ScannedBook, type ScanSettings } from './library.js'
-import { deletedBookFor, restoreBook, type DeletedBook } from './restore.js'
+import { deletedBookFor, deletedBookSizes, restoreBook, type DeletedBook } from './restore.js'
 
 /** What a scan did, so a caller can report it. */
 export interface ScanSummary {
@@ -369,6 +369,10 @@ export async function scanLibrary(
     if (events) later.push(() => announceBook(events, 'BookAdded', { bookId: match.id, seriesId, libraryId }))
   }
 
+  // What is in the trash that a new file could turn out to be, by size. Everything
+  // this scan found gone is in the trash by now.
+  const trashSizes = await deletedBookSizes(db)
+
   for (const scanned of found) {
     const url = pathToFileURL(scanned.path).href
     const current = byUrl.get(url)
@@ -377,7 +381,7 @@ export async function scanLibrary(
       const matches: (DeletedBook | null)[] = []
       const taken = new Set<string>()
       for (const book of scanned.books) {
-        const match = await deletedBookFor(db, book, taken)
+        const match = await deletedBookFor(db, book, taken, trashSizes)
         if (match) taken.add(match.id)
         matches.push(match)
       }
@@ -476,7 +480,7 @@ export async function scanLibrary(
           !taken.has(was.id) &&
           was.file_last_modified === book.fileLastModified.toISOString() &&
           was.file_size === book.fileSize
-        const match = same ? { id: was.id, seriesId: current.id } : await deletedBookFor(db, book, taken)
+        const match = same ? { id: was.id, seriesId: current.id } : await deletedBookFor(db, book, taken, trashSizes)
         if (match) taken.add(match.id)
         arrivals.set(bookUrl, match)
       }

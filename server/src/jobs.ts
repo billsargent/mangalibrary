@@ -69,24 +69,57 @@ export async function enqueueJob(db: Kysely<DB>, options: EnqueueOptions): Promi
       oc.column('unique_key').doUpdateSet({
         last_modified_date: now,
         payload,
+        // Asked for again with more urgency, it takes the urgency: a scan somebody
+        // asks for by hand is not left behind the backlog an earlier one queued.
+        priority: sql<number>`max(priority, excluded.priority)`,
         requeued: sql<number>`case when owner is not null then 1 else requeued end`,
       }),
     )
     .execute()
 }
 
+/** How many jobs are written in one statement, and so in one piece of work. */
+const JOBS_PER_WRITE = 500
+
 /**
- * Record many jobs as one piece of work: all of them or none.
+ * Record many jobs, a few hundred to a statement.
  *
- * A scan asks for a job per book. Queued one by one, a stop part-way leaves some
- * of a library asked for and the rest forgotten, and each is a write of its own;
- * together they are one, which is also far quicker for a large library.
+ * A scan asks for a job per book. One statement per job is a great many writes
+ * for a large library; all of them in one transaction holds the database, and
+ * everybody waiting for it, until the last is in. A few hundred at a time is
+ * quick and lets others in between. Each statement is kept whole or not at all,
+ * and a stop between two leaves the rest to the next scan, which asks again for
+ * whatever a book still needs.
  */
 export async function enqueueJobs(db: Kysely<DB>, jobs: readonly EnqueueOptions[]): Promise<void> {
-  if (jobs.length === 0) return
-  await db.transaction().execute(async (trx) => {
-    for (const job of jobs) await enqueueJob(trx, job)
-  })
+  for (let start = 0; start < jobs.length; start += JOBS_PER_WRITE) {
+    const now = new Date().toISOString()
+    await db
+      .insertInto('jobs')
+      .values(
+        jobs.slice(start, start + JOBS_PER_WRITE).map((job) => ({
+          id: randomBytes(13).toString('hex'),
+          type: job.type,
+          priority: job.priority ?? JOB_PRIORITY.DEFAULT,
+          group_id: job.groupId ?? null,
+          unique_key: job.uniqueKey,
+          payload: JSON.stringify(job.payload ?? {}),
+          owner: null,
+          attempts: 0,
+          created_date: now,
+          last_modified_date: now,
+        })),
+      )
+      .onConflict((oc) =>
+        oc.column('unique_key').doUpdateSet({
+          last_modified_date: now,
+          payload: sql<string>`excluded.payload`,
+          priority: sql<number>`max(priority, excluded.priority)`,
+          requeued: sql<number>`case when owner is not null then 1 else requeued end`,
+        }),
+      )
+      .execute()
+  }
 }
 
 /**

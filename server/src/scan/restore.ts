@@ -35,7 +35,13 @@ export async function deletedBookFor(
   db: Kysely<DB>,
   file: ScannedBook,
   taken: ReadonlySet<string> = new Set(),
+  sizes?: ReadonlySet<number>,
 ): Promise<DeletedBook | null> {
+  // Asked once per new file, so the usual answer - nothing in the trash is this
+  // size - has to cost nothing: a first scan of a large library asks it for
+  // every book there is.
+  if (sizes !== undefined && !sizes.has(file.fileSize)) return null
+
   const candidates = (
     await db
       .selectFrom('books')
@@ -58,6 +64,24 @@ export async function deletedBookFor(
 
   const match = candidates.find((row) => row.file_hash === hash)
   return match ? { id: match.id, seriesId: match.series_id } : null
+}
+
+/**
+ * The sizes of the deleted books that could be matched to a file: those with a
+ * hash to compare. Read once for a scan, after it has put what is gone in the
+ * trash, so that looking for a match is a lookup in memory for every file that
+ * has none.
+ */
+export async function deletedBookSizes(db: Kysely<DB>): Promise<Set<number>> {
+  const rows = await db
+    .selectFrom('books')
+    .select('file_size')
+    .distinct()
+    .where('deleted_date', 'is not', null)
+    .where('file_hash', 'is not', null)
+    .where('file_hash', '!=', '')
+    .execute()
+  return new Set(rows.map((row) => row.file_size))
 }
 
 /**
