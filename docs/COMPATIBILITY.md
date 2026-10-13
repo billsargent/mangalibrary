@@ -636,6 +636,35 @@ interface used, so what was saved there is read here.
 - `webui.oauth2.hide_login` and `webui.oauth2.auto_login` are not offered, because
   this server has no OAuth2 login. Values already stored are left as they are.
 
+## Metrics
+
+`GET /actuator/metrics` lists the metrics and `GET /actuator/metrics/{name}` reads one,
+in the shape the reference's registry gives: `measurements` of a `statistic` and a
+`value`, and `availableTags` to narrow by with `?tag=key:value`. Both are for an
+administrator.
+
+| Name                    | Statistic                                   | Tag       |
+| ----------------------- | ------------------------------------------- | --------- |
+| `komga.series`          | `VALUE`                                     | `library` |
+| `komga.books`           | `VALUE`                                     | `library` |
+| `komga.books.filesize`  | `VALUE`, in bytes                           | `library` |
+| `komga.sidecars`        | `VALUE`                                     | `library` |
+| `komga.collections`     | `VALUE`                                     | -         |
+| `komga.readlists`       | `VALUE`                                     | -         |
+| `komga.tasks.execution` | `COUNT`, `TOTAL_TIME` and `MAX`, in seconds | `type`    |
+
+Where it differs:
+
+- Only these seven exist. The reference's registry also publishes the JVM, HTTP, cache
+  and database-pool metrics of its platform, which have no counterpart here.
+- `komga.sidecars` counts the cover files found beside books and series. The reference
+  also counts metadata files it found beside them, which this server does not track.
+- `komga.tasks.execution` is tagged by this server's job names (`ScanLibrary`,
+  `AnalyzeBook`, ...), and counts from when the server started, as the reference does.
+- What is in the trash is not counted.
+- The web UI draws bars where the legacy interface drew pie charts, with no charting
+  library.
+
 ## Not in scope (yet)
 
 OPDS v1/v2, Kobo sync, KOReader sync, Mihon/Tachiyomi shims, OAuth2/OIDC login,

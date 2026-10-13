@@ -1,6 +1,7 @@
 import { release } from 'node:os'
 import type { FastifyInstance } from 'fastify'
 import { requireAdmin } from '../auth/session.js'
+import { metricNames, parseTags, readMetric } from '../metrics.js'
 import { APP_VERSION } from '../version.js'
 import { requireUser } from './context.js'
 import type { RouteOptions } from './libraries.js'
@@ -105,6 +106,23 @@ export async function registerSystemRoutes(app: FastifyInstance, opts: RouteOpti
       version: release(),
     },
   }))
+
+  // The metrics are an administrator's: they name every library and say how big
+  // each one is, which a reader shut out of a library is not to learn.
+  app.get('/actuator/metrics', { preHandler: requireAdmin }, async () => ({ names: metricNames() }))
+
+  app.get<{ Params: { name: string }; Querystring: { tag?: string | string[] } }>(
+    '/actuator/metrics/:name',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const tags = parseTags(req.query.tag)
+      if (tags === null) return reply.code(400).send({ error: 'Bad Request', message: 'a tag is written key:value' })
+
+      const metric = await readMetric(opts.db, req.params.name, tags)
+      if (metric === null) return reply.code(404).send({ error: 'Not Found', message: 'no such metric' })
+      return metric
+    },
+  )
 
   /** Read the announcements feed, or report that there is none to read. */
   const loadFeed = async (): Promise<Feed | undefined> => {

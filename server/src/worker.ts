@@ -17,6 +17,7 @@ import type { Kysely } from 'kysely'
 import type { DB } from './db/schema.js'
 import { EventBus } from './events.js'
 import { handleJob, type JobContext, type JobLogger } from './handlers.js'
+import { recordTask } from './metrics.js'
 import { JOB_PRIORITY, deleteJob, disownJobs, enqueueJob, takeNextJob, type JobRecord } from './jobs.js'
 import { SETTING_KEYS, getIntSetting } from './settings.js'
 
@@ -86,6 +87,8 @@ export async function startJobWorker(options: WorkerOptions): Promise<JobWorker>
       // schedule or the next scan is what asks for the work again.
       log.error({ type: job.type, job: job.id, err: String(error) }, 'job failed')
     } finally {
+      // Counted whether it worked or not: the time was spent either way.
+      recordTask(job.type, Date.now() - started)
       await deleteJob(db, job.id).catch((error: unknown) => {
         log.error({ job: job.id, err: String(error) }, 'could not remove a finished job')
       })
