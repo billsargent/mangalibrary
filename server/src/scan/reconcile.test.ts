@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { sql } from 'kysely'
 import { describe, expect, it } from 'vitest'
 import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
@@ -34,12 +35,23 @@ async function setup(overrides: Record<string, unknown> = {}): Promise<{ databas
   return { database, root }
 }
 
+// A folder's date is how a scan knows it changed, and a filesystem stamps it in
+// ticks coarser than the time between two steps of a test. So the helper gives
+// each folder it writes into a date of its own, later every time.
+let folderClock = Date.now()
+
 /** Write files, creating the directories they live in. */
 function files(root: string, paths: string[]): void {
+  const folders = new Set<string>()
   for (const path of paths) {
     const full = join(root, path)
     mkdirSync(dirname(full), { recursive: true })
     writeFileSync(full, path)
+    folders.add(dirname(full))
+  }
+  for (const folder of folders) {
+    folderClock += 1000
+    utimesSync(folder, new Date(folderClock), new Date(folderClock))
   }
 }
 
@@ -612,5 +624,117 @@ describe('bringing back what was deleted', () => {
       .where('book_id', '=', extra.id)
       .executeTakeFirst()
     expect(title?.title).toBe('Side Story')
+  })
+})
+
+describe('a scan that is stopped part-way', () => {
+  /**
+   * Make the database refuse one book, which stops the scan where it stands -
+   * as a restart or a drive going away would, at a place a test can choose.
+   */
+  async function refuse(database: Database, bookName: string): Promise<() => Promise<void>> {
+    await sql`
+      create trigger stop_the_scan before insert on books
+      when new.name = ${sql.lit(bookName)}
+      begin select raise(abort, 'the scan was stopped'); end
+    `.execute(database.db)
+    return async () => {
+      await sql`drop trigger stop_the_scan`.execute(database.db)
+    }
+  }
+
+  /** Every series the listings would hide or show wrongly, which should be none. */
+  async function broken(database: Database): Promise<string[]> {
+    const series = await database.db
+      .selectFrom('series')
+      .leftJoin('series_metadata', 'series_metadata.series_id', 'series.id')
+      .select(['series.id', 'series.name', 'series.book_count', 'series_metadata.series_id as metadata'])
+      .where('series.deleted_date', 'is', null)
+      .execute()
+
+    const problems: string[] = []
+    for (const row of series) {
+      if (row.metadata === null) problems.push(`${row.name}: no metadata row`)
+      const books = await database.db
+        .selectFrom('books')
+        .leftJoin('book_metadata', 'book_metadata.book_id', 'books.id')
+        .select(['books.number', 'book_metadata.book_id as metadata'])
+        .where('books.series_id', '=', row.id)
+        .where('books.deleted_date', 'is', null)
+        .orderBy('books.number')
+        .execute()
+      if (books.length !== row.book_count) problems.push(`${row.name}: counts ${row.book_count}, has ${books.length}`)
+      if (books.some((book) => book.metadata === null)) problems.push(`${row.name}: a book with no metadata row`)
+      if (books.some((book, index) => book.number !== index + 1)) problems.push(`${row.name}: books not numbered`)
+    }
+    return problems
+  }
+
+  it('leaves each series whole or absent, and the next scan finishes the library', async () => {
+    const { database, root } = await setup()
+    files(root, [
+      'Akira/Volume 1.cbz',
+      'Akira/Volume 2.cbz',
+      'Berserk/Volume 1.cbz',
+      'Berserk/Volume 2.cbz',
+      'Berserk/Volume 3.cbz',
+      'Claymore/Volume 1.cbz',
+    ])
+    const allow = await refuse(database, 'Volume 3')
+    const events = new EventBus()
+    const seen: string[] = []
+    events.subscribe((event) => seen.push(event.name))
+
+    await expect(scanLibrary(database.db, 'L1', { events })).rejects.toThrow('the scan was stopped')
+
+    // The series reached before the stop is complete. The one being written when
+    // it came is not there at all - not as a series without books, and not as a
+    // series without the row every listing joins to.
+    expect((await seriesRows(database)).map((row) => [row.name, row.book_count])).toEqual([['Akira', 2]])
+    expect(await database.db.selectFrom('books').select('id').execute()).toHaveLength(2)
+    expect(await database.db.selectFrom('series_metadata').select('series_id').execute()).toHaveLength(1)
+    expect(await broken(database)).toEqual([])
+    // Nobody was told of what was then not kept.
+    expect(seen).toEqual(['SeriesAdded', 'BookAdded', 'BookAdded'])
+
+    await allow()
+    const summary = await scanLibrary(database.db, 'L1')
+
+    expect(summary).toMatchObject({ seriesCreated: 2, booksCreated: 4, seriesUpdated: 0 })
+    expect((await seriesRows(database)).map((row) => [row.name, row.book_count])).toEqual([
+      ['Akira', 2],
+      ['Berserk', 3],
+      ['Claymore', 1],
+    ])
+    expect(await broken(database)).toEqual([])
+  })
+
+  it('does not call a series up to date when its new books were not kept', async () => {
+    const { database, root } = await setup()
+    files(root, ['Akira/Volume 1.cbz'])
+    await scanLibrary(database.db, 'L1')
+    const before = (await seriesRows(database))[0]!
+
+    files(root, ['Akira/Volume 2.cbz', 'Akira/Volume 3.cbz'])
+    utimesSync(join(root, 'Akira'), new Date(), new Date('2031-01-01T00:00:00Z'))
+    const allow = await refuse(database, 'Volume 3')
+    await expect(scanLibrary(database.db, 'L1')).rejects.toThrow('the scan was stopped')
+
+    // Volume 2 went in before the stop and came out with it: the series is as it
+    // was, down to the folder date the next scan compares against.
+    const stopped = (await seriesRows(database))[0]!
+    expect(stopped.file_last_modified).toBe(before.file_last_modified)
+    expect(stopped.book_count).toBe(1)
+    expect(await bookRows(database)).toHaveLength(1)
+
+    await allow()
+    const summary = await scanLibrary(database.db, 'L1')
+    expect(summary).toMatchObject({ seriesUpdated: 1, booksCreated: 2 })
+    expect((await bookRows(database)).map((book) => [book.name, book.number])).toEqual([
+      ['Volume 1', 1],
+      ['Volume 2', 2],
+      ['Volume 3', 3],
+    ])
+    expect(await broken(database)).toEqual([])
   })
 })

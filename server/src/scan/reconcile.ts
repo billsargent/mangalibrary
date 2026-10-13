@@ -278,12 +278,18 @@ export async function scanLibrary(
       .where('series_id', 'in', ids)
       .where('deleted_date', 'is', null)
       .execute()
-    await softDeleteBooks(
-      db,
-      books.map((row) => row.id),
-      now,
-    )
-    await db.updateTable('series').set({ deleted_date: now, last_modified_date: now }).where('id', 'in', ids).execute()
+    await db.transaction().execute(async (trx) => {
+      await softDeleteBooks(
+        trx,
+        books.map((row) => row.id),
+        now,
+      )
+      await trx
+        .updateTable('series')
+        .set({ deleted_date: now, last_modified_date: now })
+        .where('id', 'in', ids)
+        .execute()
+    })
     summary.seriesDeleted += ids.length
     summary.booksDeleted += books.length
 
@@ -322,18 +328,45 @@ export async function scanLibrary(
     }
   }
 
+  /**
+   * Everything a scan writes for one series, as one piece of work.
+   *
+   * A scan can be stopped at any moment - a restart, a drive going away. Written
+   * row by row, a stop could leave a series with no metadata row, which every
+   * listing then hides, or a series recorded as up to date with half its books,
+   * which the next scan would see no reason to look at again. Written together,
+   * a series is either as the scan left it or as it was, and what it was is what
+   * the next scan picks up from.
+   *
+   * What is announced waits until the work is kept: nobody is told of a book that
+   * a rolled-back write then never had.
+   */
+  type Later = (() => void)[]
+  const together = async (work: (trx: Kysely<DB>, later: Later) => Promise<void>): Promise<void> => {
+    const later: Later = []
+    await db.transaction().execute((trx) => work(trx, later))
+    for (const announce of later) announce()
+  }
+
   /** Put a file the library did not have into a series: the book it was, or a new one. */
-  const arrive = async (seriesId: string, book: ScannedBook, match: DeletedBook | null): Promise<void> => {
+  const arrive = async (
+    trx: Kysely<DB>,
+    later: Later,
+    seriesId: string,
+    book: ScannedBook,
+    match: DeletedBook | null,
+  ): Promise<void> => {
     if (match === null) {
-      const [bookId] = await addBooks(db, seriesId, libraryId, [book], now)
+      const [bookId] = await addBooks(trx, seriesId, libraryId, [book], now)
       summary.booksCreated += 1
-      if (events && bookId !== undefined) announceBook(events, 'BookAdded', { bookId, seriesId, libraryId })
+      if (events && bookId !== undefined)
+        later.push(() => announceBook(events, 'BookAdded', { bookId, seriesId, libraryId }))
       return
     }
-    await restoreBook(db, match.id, { seriesId, libraryId }, book, now)
+    await restoreBook(trx, match.id, { seriesId, libraryId }, book, now)
     summary.booksRestored += 1
     // A list that dropped the book when it was deleted is told it is back.
-    if (events) announceBook(events, 'BookAdded', { bookId: match.id, seriesId, libraryId })
+    if (events) later.push(() => announceBook(events, 'BookAdded', { bookId: match.id, seriesId, libraryId }))
   }
 
   for (const scanned of found) {
@@ -353,53 +386,63 @@ export async function scanLibrary(
       // that series left over, is that series under a new name or in a new place.
       const returning = await returningSeries(db, matches)
       if (returning !== null) {
-        await db
-          .updateTable('series')
-          .set({
-            library_id: libraryId,
-            name: scanned.name,
-            url,
-            file_last_modified: scanned.fileLastModified.toISOString(),
-            oneshot: scanned.oneshot ? 1 : 0,
-            deleted_date: null,
-            last_modified_date: now,
-          })
-          .where('id', '=', returning)
-          .execute()
-        summary.seriesRestored += 1
-        if (events) announceSeries(events, 'SeriesAdded', { seriesId: returning, libraryId })
-        for (const [index, book] of scanned.books.entries()) await arrive(returning, book, matches[index] ?? null)
+        await together(async (trx, later) => {
+          await trx
+            .updateTable('series')
+            .set({
+              library_id: libraryId,
+              name: scanned.name,
+              url,
+              file_last_modified: scanned.fileLastModified.toISOString(),
+              oneshot: scanned.oneshot ? 1 : 0,
+              deleted_date: null,
+              last_modified_date: now,
+            })
+            .where('id', '=', returning)
+            .execute()
+          summary.seriesRestored += 1
+          if (events) later.push(() => announceSeries(events, 'SeriesAdded', { seriesId: returning, libraryId }))
+          for (const [index, book] of scanned.books.entries()) {
+            await arrive(trx, later, returning, book, matches[index] ?? null)
+          }
+          await sortBooks(trx, returning, now)
+        })
         touched.add(returning)
         continue
       }
 
       const seriesId = nextTsid()
-      await db
-        .insertInto('series')
-        .values({
-          id: seriesId,
-          library_id: libraryId,
-          name: scanned.name,
-          url,
-          file_last_modified: scanned.fileLastModified.toISOString(),
-          oneshot: scanned.oneshot ? 1 : 0,
-          created_date: now,
-          last_modified_date: now,
-        })
-        .execute()
-      await db
-        .insertInto('series_metadata')
-        .values({
-          series_id: seriesId,
-          title: scanned.name,
-          title_sort: scanned.name,
-          created_date: now,
-          last_modified_date: now,
-        })
-        .execute()
-      summary.seriesCreated += 1
-      if (events) announceSeries(events, 'SeriesAdded', { seriesId, libraryId })
-      for (const [index, book] of scanned.books.entries()) await arrive(seriesId, book, matches[index] ?? null)
+      await together(async (trx, later) => {
+        await trx
+          .insertInto('series')
+          .values({
+            id: seriesId,
+            library_id: libraryId,
+            name: scanned.name,
+            url,
+            file_last_modified: scanned.fileLastModified.toISOString(),
+            oneshot: scanned.oneshot ? 1 : 0,
+            created_date: now,
+            last_modified_date: now,
+          })
+          .execute()
+        await trx
+          .insertInto('series_metadata')
+          .values({
+            series_id: seriesId,
+            title: scanned.name,
+            title_sort: scanned.name,
+            created_date: now,
+            last_modified_date: now,
+          })
+          .execute()
+        summary.seriesCreated += 1
+        if (events) later.push(() => announceSeries(events, 'SeriesAdded', { seriesId, libraryId }))
+        for (const [index, book] of scanned.books.entries()) {
+          await arrive(trx, later, seriesId, book, matches[index] ?? null)
+        }
+        await sortBooks(trx, seriesId, now)
+      })
       touched.add(seriesId)
       continue
     }
@@ -416,58 +459,82 @@ export async function scanLibrary(
       current.file_last_modified !== scanned.fileLastModified.toISOString() || current.deleted_date !== null
 
     if (changed || seriesWithLoss.has(current.id) || options.deep === true) {
-      await db
-        .updateTable('series')
-        .set({
-          name: scanned.name,
-          oneshot: scanned.oneshot ? 1 : 0,
-          file_last_modified: scanned.fileLastModified.toISOString(),
-          deleted_date: null,
-          last_modified_date: now,
-        })
-        .where('id', '=', current.id)
-        .execute()
-      summary.seriesUpdated += 1
-
+      // Which deleted book each new file is, found before anything is written:
+      // finding out can mean reading the file, and nothing else can use the
+      // database while a piece of work is being written.
+      const arrivals = new Map<string, DeletedBook | null>()
+      const taken = new Set<string>()
       for (const book of scanned.books) {
         const bookUrl = pathToFileURL(book.path).href
-        const existingBook = liveByUrl.get(bookUrl)
-        const modified = book.fileLastModified.toISOString()
-
-        if (!existingBook) {
-          // A file where a deleted book's file was, of the same size and date, is
-          // unchanged by every measure the scan has, so it is that book without
-          // being read. Anything else has to prove itself by its hash.
-          const was = deletedByUrl.get(bookUrl)
-          const same = was !== undefined && was.file_last_modified === modified && was.file_size === book.fileSize
-          await arrive(current.id, book, same ? { id: was.id, seriesId: current.id } : await deletedBookFor(db, book))
-          continue
-        }
-
-        if (existingBook.file_last_modified === modified) continue
-
-        await db
-          .updateTable('books')
-          .set({ file_last_modified: modified, file_size: book.fileSize, last_modified_date: now })
-          .where('id', '=', existingBook.id)
-          .execute()
-        // What analysis recorded no longer describes the file.
-        await db
-          .updateTable('media')
-          .set({ status: 'OUTDATED', last_modified_date: now })
-          .where('book_id', '=', existingBook.id)
-          .execute()
-        summary.booksUpdated += 1
-        if (events) announceBook(events, 'BookChanged', { bookId: existingBook.id, seriesId: current.id, libraryId })
+        if (liveByUrl.has(bookUrl)) continue
+        // A file where a deleted book's file was, of the same size and date, is
+        // unchanged by every measure the scan has, so it is that book without
+        // being read. Anything else has to prove itself by its hash.
+        const was = deletedByUrl.get(bookUrl)
+        const same =
+          was !== undefined &&
+          !taken.has(was.id) &&
+          was.file_last_modified === book.fileLastModified.toISOString() &&
+          was.file_size === book.fileSize
+        const match = same ? { id: was.id, seriesId: current.id } : await deletedBookFor(db, book, taken)
+        if (match) taken.add(match.id)
+        arrivals.set(bookUrl, match)
       }
 
-      if (events) announceSeries(events, 'SeriesChanged', { seriesId: current.id, libraryId })
+      await together(async (trx, later) => {
+        await trx
+          .updateTable('series')
+          .set({
+            name: scanned.name,
+            oneshot: scanned.oneshot ? 1 : 0,
+            file_last_modified: scanned.fileLastModified.toISOString(),
+            deleted_date: null,
+            last_modified_date: now,
+          })
+          .where('id', '=', current.id)
+          .execute()
+        summary.seriesUpdated += 1
+
+        for (const book of scanned.books) {
+          const bookUrl = pathToFileURL(book.path).href
+          const existingBook = liveByUrl.get(bookUrl)
+          const modified = book.fileLastModified.toISOString()
+
+          if (!existingBook) {
+            await arrive(trx, later, current.id, book, arrivals.get(bookUrl) ?? null)
+            continue
+          }
+
+          if (existingBook.file_last_modified === modified) continue
+
+          await trx
+            .updateTable('books')
+            .set({ file_last_modified: modified, file_size: book.fileSize, last_modified_date: now })
+            .where('id', '=', existingBook.id)
+            .execute()
+          // What analysis recorded no longer describes the file.
+          await trx
+            .updateTable('media')
+            .set({ status: 'OUTDATED', last_modified_date: now })
+            .where('book_id', '=', existingBook.id)
+            .execute()
+          summary.booksUpdated += 1
+          if (events) {
+            later.push(() =>
+              announceBook(events, 'BookChanged', { bookId: existingBook.id, seriesId: current.id, libraryId }),
+            )
+          }
+        }
+
+        await sortBooks(trx, current.id, now)
+        if (events) later.push(() => announceSeries(events, 'SeriesChanged', { seriesId: current.id, libraryId }))
+      })
+
+      // Only a series the scan changed is read again below. One that is as it was
+      // costs a scan nothing more than the look at its folder.
+      touched.add(current.id)
     }
-
-    touched.add(current.id)
   }
-
-  for (const seriesId of touched) await sortBooks(db, seriesId, now)
 
   // A series has no file of its own: what it is called, who published it and what
   // it is about come from its books' metadata documents. So a series the scan

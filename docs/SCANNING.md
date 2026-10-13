@@ -86,6 +86,14 @@ as separate tasks _after_ the walk, never as part of it.
     book and the old one waits in the trash.
   - The trash is emptied after restoring, so a library set to empty its trash after
     every scan still keeps a renamed series.
+- **A scan can be stopped at any point.** Everything written for one series - the
+  series, its metadata row, its books, their numbers and the folder date the next scan
+  compares against - is written together or not at all. A scan cut short by a restart
+  or a drive going away leaves each series either done or untouched, and the next scan
+  carries on from there. Komga writes row by row.
+- **Only a series that changed is read again.** After the folders have been compared,
+  metadata and local artwork are refreshed for the series the scan added or changed and
+  for no others, so a scan over an unchanged library opens no book.
 - **Unsupported content is not a scan failure.** A file with an accepted
   extension whose content is unrecognised still becomes a book; the analysis step
   marks its media unsupported (`ERR_1001`).
