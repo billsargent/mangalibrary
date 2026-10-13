@@ -15,7 +15,7 @@ import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
 import { aggregateSeriesMetadata } from '../metadata/aggregation.js'
 import { buildBookDtos } from './content-data.js'
 import type { BookRow } from './content-dto.js'
-import { contentContext, scopedLibraryIds, type ContentContext } from './context.js'
+import { allowedSeries, contentContext, scopedLibraryIds, type ContentContext } from './context.js'
 import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { applyBookMetadataPatch } from './metadata.js'
@@ -109,7 +109,7 @@ export interface BookQueryFilters {
 }
 
 /** Base query with every join the filters and sorts can need. */
-function bookQuery(db: Kysely<DB>, filters: BookQueryFilters) {
+function bookQuery(db: Kysely<DB>, filters: BookQueryFilters, onlySeries: readonly string[] | null = null) {
   let query = db
     .selectFrom('books')
     .innerJoin('book_metadata', 'book_metadata.book_id', 'books.id')
@@ -118,6 +118,9 @@ function bookQuery(db: Kysely<DB>, filters: BookQueryFilters) {
     .leftJoin('media', 'media.book_id', 'books.id')
 
   query = query.where('books.library_id', 'in', filters.libraryIds)
+  // What a restricted user may see is decided in the query, so the database pages
+  // the result. Decided afterwards, every book had to be fetched to find a page.
+  if (onlySeries !== null) query = query.where('books.series_id', 'in', onlySeries)
   query =
     filters.deleted === true
       ? query.where('books.deleted_date', 'is not', null)
@@ -217,29 +220,26 @@ export async function findBooks(
   if (filters.libraryIds.length === 0) return { rows: [], total: 0 }
 
   const statuses = filters.readStatuses ?? []
-  const needsPostFilter = context.restrictedSeriesIds !== null || statuses.length > 0
+  const needsPostFilter = statuses.length > 0
+  const onlySeries = context.restrictedSeriesIds
 
   if (!needsPostFilter) {
-    const counted = await bookQuery(db, filters)
+    const counted = await bookQuery(db, filters, onlySeries)
       .select((eb) => eb.fn.countAll<number>().as('total'))
       .executeTakeFirstOrThrow()
     const total = Number(counted.total)
 
-    let idsQuery = applySort(bookQuery(db, filters).select('books.id'), sorts).orderBy('books.id')
+    let idsQuery = applySort(bookQuery(db, filters, onlySeries).select('books.id'), sorts).orderBy('books.id')
     if (!unpaged) idsQuery = idsQuery.limit(size).offset(page * size)
     const ids = (await idsQuery.execute()).map((row) => row.id)
     return { rows: await loadBookRows(db, ids), total }
   }
 
-  const ordered = await applySort(bookQuery(db, filters).select(['books.id', 'books.series_id']), sorts)
+  const ordered = await applySort(bookQuery(db, filters, onlySeries).select(['books.id', 'books.series_id']), sorts)
     .orderBy('books.id')
     .execute()
 
   let candidates = ordered
-  if (context.restrictedSeriesIds !== null) {
-    const allowed = new Set(context.restrictedSeriesIds)
-    candidates = candidates.filter((row) => allowed.has(row.series_id))
-  }
 
   if (statuses.length > 0) {
     const status = await loadReadStatus(db, context.user.id)
@@ -274,7 +274,7 @@ export async function bookById(
 
   const book = row as unknown as BookRow
   if (!context.libraryIds.includes(book.library_id)) return { status: 403 }
-  if (context.restrictedSeriesIds !== null && !context.restrictedSeriesIds.includes(book.series_id)) {
+  if (allowedSeries(context)?.has(book.series_id) === false) {
     return { status: 403 }
   }
   return { row: book }
@@ -489,10 +489,8 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
       .execute()
 
     let candidates = rows
-    if (context.restrictedSeriesIds !== null) {
-      const allowed = new Set(context.restrictedSeriesIds)
-      candidates = candidates.filter((row) => allowed.has(row.series_id))
-    }
+    const allowed = allowedSeries(context)
+    if (allowed !== null) candidates = candidates.filter((row) => allowed.has(row.series_id))
 
     const total = candidates.length
     const window = candidates.slice(page * size, page * size + size)
@@ -527,10 +525,8 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
       .execute()
 
     let candidates = rows
-    if (context.restrictedSeriesIds !== null) {
-      const allowed = new Set(context.restrictedSeriesIds)
-      candidates = candidates.filter((row) => allowed.has(row.series_id))
-    }
+    const allowed = allowedSeries(context)
+    if (allowed !== null) candidates = candidates.filter((row) => allowed.has(row.series_id))
 
     const total = candidates.length
     const window = candidates.slice(page * size, page * size + size)
