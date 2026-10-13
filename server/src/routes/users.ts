@@ -358,6 +358,18 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
     const comment = typeof body.comment === 'string' ? body.comment.trim() : ''
     if (!comment) return reply.code(400).send({ message: 'comment is required' })
 
+    // The comment is how a user tells their keys apart, so two of one user's
+    // keys cannot share it. The reference refuses with the same code.
+    const taken = await db
+      .selectFrom('user_api_keys')
+      .select('id')
+      .where('user_id', '=', currentUser(req).id)
+      .where('comment', '=', comment)
+      .executeTakeFirst()
+    if (taken) {
+      return reply.code(400).send({ message: 'ERR_1034', error: 'api key comment already exists for this user' })
+    }
+
     const now = new Date().toISOString()
     const id = nextTsid()
     const key = randomBytes(16).toString('hex')

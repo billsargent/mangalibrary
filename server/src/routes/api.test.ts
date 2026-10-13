@@ -532,6 +532,26 @@ describe('users', () => {
     expect(key.userId).toBe('U1')
     expect(key.key.length).toBeGreaterThan(10)
 
+    // A comment names one key of a user's. Another user may use the same one.
+    const again = await app.inject({
+      method: 'POST',
+      url: '/api/v2/users/me/api-keys',
+      headers: admin,
+      payload: { comment: '  test key ' },
+    })
+    expect(again.statusCode).toBe(400)
+    expect(again.json()).toMatchObject({ message: 'ERR_1034' })
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v2/users/me/api-keys',
+          headers: reader,
+          payload: { comment: 'test key' },
+        })
+      ).statusCode,
+    ).toBe(200)
+
     expect(
       (await app.inject({ method: 'DELETE', url: `/api/v2/users/me/api-keys/${key.id}`, headers: admin })).statusCode,
     ).toBe(204)

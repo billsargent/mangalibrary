@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { buildServer } from '../app.js'
+import { byteRange } from './media.js'
 import { hashPassword } from '../auth/passwords.js'
 import { loadConfig } from '../config.js'
 import { createDatabase, type Database } from '../db/index.js'
@@ -231,6 +232,32 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
   return { app, database }
 }
 
+describe('the part of a file a Range header asks for', () => {
+  it('reads a first-and-last, a from-here-on and a last-so-many', () => {
+    expect(byteRange('bytes=0-99', 1000)).toEqual({ start: 0, end: 99 })
+    expect(byteRange('bytes=500-', 1000)).toEqual({ start: 500, end: 999 })
+    expect(byteRange('bytes=-100', 1000)).toEqual({ start: 900, end: 999 })
+    // An end past the file stops at the file's.
+    expect(byteRange('bytes=900-5000', 1000)).toEqual({ start: 900, end: 999 })
+    expect(byteRange('bytes=-5000', 1000)).toEqual({ start: 0, end: 999 })
+  })
+
+  it('sends everything for what is not one range of bytes', () => {
+    expect(byteRange(undefined, 1000)).toBeNull()
+    expect(byteRange('', 1000)).toBeNull()
+    expect(byteRange('items=0-9', 1000)).toBeNull()
+    expect(byteRange('bytes=0-9,20-29', 1000)).toBeNull()
+    expect(byteRange('bytes=-', 1000)).toBeNull()
+  })
+
+  it('cannot satisfy a range outside the file', () => {
+    expect(byteRange('bytes=1000-', 1000)).toBe('UNSATISFIABLE')
+    expect(byteRange('bytes=20-10', 1000)).toBe('UNSATISFIABLE')
+    expect(byteRange('bytes=-0', 1000)).toBe('UNSATISFIABLE')
+    expect(byteRange('bytes=0-', 0)).toBe('UNSATISFIABLE')
+  })
+})
+
 describe('book page images', () => {
   it('serves the page image with an inline file name', async () => {
     const { app } = await setup()
@@ -318,9 +345,68 @@ describe('book page images', () => {
     expect(unsupported.statusCode).toBe(404)
     expect(unsupported.json()).toEqual({ message: 'Book analysis failed' })
 
-    // A raw page is a PDF extraction this server cannot do, so the path is absent.
-    const raw = await app.inject({ method: 'GET', url: '/api/v1/books/B1/pages/1/raw', headers: reader })
-    expect(raw.statusCode).toBe(404)
+    await app.close()
+  })
+
+  it('gives one page of a PDF as a PDF of that page, and of nothing else', async () => {
+    const { app } = await setup()
+    const get = (url: string) => app.inject({ method: 'GET', url, headers: reader })
+
+    const raw = await get('/api/v1/books/B2/pages/1/raw')
+    expect(raw.statusCode).toBe(200)
+    expect(raw.headers['content-type']).toBe('application/pdf')
+    expect(String(raw.headers['content-disposition'])).toContain('Story-1.pdf')
+    expect(raw.rawPayload.subarray(0, 5).toString()).toBe('%PDF-')
+
+    // What came back is a document, and it has the one page.
+    const { openPdf } = await import('../media/pdf.js')
+    const single = await openPdf(raw.rawPayload)
+    expect(single.pageCount).toBe(1)
+    single.close()
+
+    expect((await get('/api/v1/books/B2/pages/99/raw')).statusCode).toBe(400)
+    // A comic's page is an image already, and has no such form.
+    const comic = await get('/api/v1/books/B1/pages/1/raw')
+    expect(comic.statusCode).toBe(400)
+    expect(comic.json()).toEqual({ message: 'Extractor does not support raw extraction of pages' })
+    expect((await get('/api/v1/books/NOPE/pages/1/raw')).statusCode).toBe(404)
+
+    await app.close()
+  })
+
+  it('sends part of a book file when part is asked for', async () => {
+    const { app } = await setup()
+    const get = (range?: string) =>
+      app.inject({
+        method: 'GET',
+        url: '/api/v1/books/B1/file',
+        headers: range === undefined ? reader : { ...reader, range },
+      })
+
+    const whole = await get()
+    expect(whole.statusCode).toBe(200)
+    expect(whole.headers['accept-ranges']).toBe('bytes')
+    const size = whole.rawPayload.length
+    expect(Number(whole.headers['content-length'])).toBe(size)
+
+    const start = await get('bytes=0-9')
+    expect(start.statusCode).toBe(206)
+    expect(start.headers['content-range']).toBe(`bytes 0-9/${size}`)
+    expect(start.rawPayload.equals(whole.rawPayload.subarray(0, 10))).toBe(true)
+
+    // From a place to the end, which is how a download is picked up again.
+    const rest = await get('bytes=10-')
+    expect(rest.statusCode).toBe(206)
+    expect(rest.headers['content-range']).toBe(`bytes 10-${size - 1}/${size}`)
+    expect(Buffer.concat([start.rawPayload, rest.rawPayload]).equals(whole.rawPayload)).toBe(true)
+
+    // The last bytes, which is where a zip keeps its list of entries.
+    const tail = await get('bytes=-4')
+    expect(tail.rawPayload.equals(whole.rawPayload.subarray(size - 4))).toBe(true)
+
+    const beyond = await get(`bytes=${size}-`)
+    expect(beyond.statusCode).toBe(416)
+    expect(beyond.headers['content-range']).toBe(`bytes */${size}`)
 
     await app.close()
   })

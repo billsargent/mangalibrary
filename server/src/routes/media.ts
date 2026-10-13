@@ -7,8 +7,9 @@ import sharp from 'sharp'
 import { requireAdmin, requireRole } from '../auth/session.js'
 import type { DB } from '../db/schema.js'
 import { JOB_PRIORITY, enqueueJob } from '../jobs.js'
-import { openBook } from '../media/index.js'
+import { containerFor, openBook } from '../media/index.js'
 import { readBookPage } from '../media/pages.js'
+import { onReader } from '../threads/index.js'
 import { mediaTypeFor, profileFor } from '../media/kinds.js'
 import { bookFilePath, findBookRecord, type BookFileRecord } from '../content/files.js'
 import { resizedImage } from '../thumbnails/image.js'
@@ -144,6 +145,33 @@ async function readPage(
     : { code: 400, message: 'Page number does not exist' }
 }
 
+/**
+ * The part of a file a `Range` header asks for.
+ *
+ * `null` is "send it all": no header, a unit other than bytes, or several ranges
+ * at once, which a client is allowed to be answered in full. A single range that
+ * lies outside the file cannot be satisfied.
+ */
+export function byteRange(
+  header: string | undefined,
+  size: number,
+): { start: number; end: number } | 'UNSATISFIABLE' | null {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header?.trim() ?? '')
+  if (!match || (match[1] === '' && match[2] === '')) return null
+
+  if (match[1] === '') {
+    // The last so-many bytes.
+    const length = Number(match[2])
+    if (length === 0) return 'UNSATISFIABLE'
+    return size === 0 ? 'UNSATISFIABLE' : { start: Math.max(0, size - length), end: size - 1 }
+  }
+
+  const start = Number(match[1])
+  const end = match[2] === '' ? size - 1 : Math.min(Number(match[2]), size - 1)
+  if (start >= size || start > end) return 'UNSATISFIABLE'
+  return { start, end }
+}
+
 /** Re-encode an image to JPEG or PNG, or null when it cannot be read. */
 async function convertImage(bytes: Buffer, target: string): Promise<Buffer | null> {
   try {
@@ -240,6 +268,40 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
       .type(type || 'application/octet-stream')
       .send(bytes)
   })
+
+  /**
+   * One page as it is in the book, not as an image of it: for a PDF, a PDF of that
+   * page alone, which a reader that draws PDFs itself asks for. Only a PDF has
+   * such a thing; the reference refuses every other kind the same way.
+   */
+  app.get<{ Params: { bookId: string; pageNumber: string } }>(
+    '/api/v1/books/:bookId/pages/:pageNumber/raw',
+    { preHandler: requireRole('PAGE_STREAMING') },
+    async (req, reply) => {
+      const resolved = await pageFor(db, req, req.params.bookId, req.params.pageNumber, false)
+      if ('code' in resolved) return reply.code(resolved.code).send({ message: resolved.message })
+      const { book, lastModified, pageNumber } = resolved
+      if (isNotModified(req, lastModified)) return reply.headers(cacheHeaders(lastModified)).code(304).send()
+
+      const path = await bookFilePath(book)
+      if (!path) return reply.code(404).send({ message: 'File not found, it may have moved' })
+      if (containerFor(basename(path)) !== 'PDF') {
+        return reply.code(400).send({ message: 'Extractor does not support raw extraction of pages' })
+      }
+
+      const read = await onReader(path, 'readPageRaw', { path, pageNumber })
+      if ('failed' in read) {
+        return read.failed === 'OPEN'
+          ? reply.code(404).send({ message: 'File not found, it may have moved' })
+          : reply.code(400).send({ message: 'Page number does not exist' })
+      }
+      return reply
+        .headers(cacheHeaders(lastModified))
+        .header('content-disposition', contentDisposition('inline', `${book.name}-${pageNumber}.pdf`))
+        .type('application/pdf')
+        .send(Buffer.from(read.bytes.buffer, read.bytes.byteOffset, read.bytes.byteLength))
+    },
+  )
 
   /** The image of one page, resized to a thumbnail, always as JPEG. */
   app.get<{ Params: { bookId: string; pageNumber: string } }>(
@@ -356,12 +418,27 @@ export async function registerMediaRoutes(app: FastifyInstance, opts: RouteOptio
     const info = await stat(path)
 
     const fileName = basename(path)
-    return reply
-      .header('content-length', info.size)
+    reply
+      .header('accept-ranges', 'bytes')
       .header('content-disposition', contentDisposition('attachment', fileName))
       .header('last-modified', info.mtime.toUTCString())
       .type(FILE_MEDIA_TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream')
-      .send(createReadStream(path))
+
+    // Part of the file, when part is asked for: a download that was cut off is
+    // picked up where it stopped, and a reader app can fetch the end of an archive
+    // without the rest of it.
+    const range = byteRange(req.headers.range, info.size)
+    if (range === 'UNSATISFIABLE') {
+      return reply.code(416).header('content-range', `bytes */${info.size}`).send()
+    }
+    if (range !== null) {
+      return reply
+        .code(206)
+        .header('content-range', `bytes ${range.start}-${range.end}/${info.size}`)
+        .header('content-length', range.end - range.start + 1)
+        .send(createReadStream(path, { start: range.start, end: range.end }))
+    }
+    return reply.header('content-length', info.size).send(createReadStream(path))
   }
 
   app.get<{ Params: { bookId: string; '*'?: string } }>(

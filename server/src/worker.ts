@@ -17,6 +17,7 @@ import type { Kysely } from 'kysely'
 import type { DB } from './db/schema.js'
 import { EventBus } from './events.js'
 import { handleJob, type JobContext, type JobLogger } from './handlers.js'
+import { removeOldAuthenticationActivity } from './auth/activity.js'
 import { recordTask } from './metrics.js'
 import {
   JOB_PRIORITY,
@@ -189,11 +190,21 @@ export async function startJobWorker(options: WorkerOptions): Promise<JobWorker>
     for (const id of schedule.keys()) if (!seen.has(id)) schedule.delete(id)
   }
 
+  // Once a day, and at startup: the record of who signed in is kept for a month.
+  let nextCleanupAt = 0
+  const cleanupDue = async (): Promise<void> => {
+    if (Date.now() < nextCleanupAt) return
+    nextCleanupAt = Date.now() + 24 * 60 * 60 * 1000
+    const removed = await removeOldAuthenticationActivity(db)
+    if (removed > 0) log.info({ removed }, 'removed authentication activity older than a month')
+  }
+
   const tick = async (): Promise<void> => {
     if (stopped) return
     try {
       await fill()
       if (options.schedule !== false) await scanDue()
+      if (options.schedule !== false) await cleanupDue()
     } catch (error) {
       // A database that is briefly unreadable - a shutdown, a lock - must not stop
       // the worker for good.

@@ -86,6 +86,8 @@ export interface BookContents {
   files: FileEntry[]
   epub?: EpubInfo
   readPage(pageNumber: number): Promise<Buffer>
+  /** One page as a document of its own, for a container whose pages are not images: a PDF. */
+  readPageRaw?(pageNumber: number): Promise<Buffer>
   readResource(name: string): Promise<Buffer>
   close(): void
 }
