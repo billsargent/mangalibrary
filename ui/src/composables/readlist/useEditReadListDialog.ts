@@ -96,7 +96,7 @@ export function useEditReadListDialog() {
       }
 
       // update read list
-      const updateDto = pick(updatedData.entity, 'name', 'ordered', 'summary')
+      const updateDto = pick(updatedData.entity, 'name', 'ordered', 'summary', 'bookIds')
       mutateUpdate({ readListId: readList.id, data: updateDto })
         .then(() => {
           hideDialog()

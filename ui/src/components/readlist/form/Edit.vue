@@ -27,6 +27,14 @@
       />
     </template>
 
+    <template #[`item.3`]>
+      <ReadlistFormContents
+        v-model="model.entity.bookIds"
+        :read-list-id="model.entity.id"
+        :ordered="model.entity.ordered"
+      />
+    </template>
+
     <template #[`item.2`]>
       <v-sheet class="pa-4">
         <PosterUpload
@@ -63,6 +71,14 @@ const tabs = [
       id: 'gtEH1R',
     }),
     value: 1,
+  },
+  {
+    text: intl.formatMessage({
+      description: 'Form edit read list: Contents',
+      defaultMessage: 'Contents',
+      id: 'E2xpwT',
+    }),
+    value: 3,
   },
   {
     text: intl.formatMessage({

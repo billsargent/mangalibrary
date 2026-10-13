@@ -99,6 +99,10 @@
     "defaultMessage": "Close",
     "description": "Temp drawer: close button"
   },
+  "00hWiT": {
+    "defaultMessage": "Shown by release date. Choose manual ordering under General to set an order.",
+    "description": "Form edit read list: Contents - hint when the read list is ordered by date"
+  },
   "02SRax": {
     "defaultMessage": "Sign in",
     "description": "Login screen: Sign In button"
@@ -847,6 +851,10 @@
     "defaultMessage": "Lock field",
     "description": "Lock icon: tooltip - lock"
   },
+  "DFlexg": {
+    "defaultMessage": "Contents",
+    "description": "Form edit collection: Contents"
+  },
   "DG4tYb": {
     "defaultMessage": "{count, plural, one {# book} other {# books} }",
     "description": "Read list add to: read list item subtitle: count of books"
@@ -902,6 +910,10 @@
   "E1kQun": {
     "defaultMessage": "Browse",
     "description": "Form add/edit library: General - root folder browse button"
+  },
+  "E2xpwT": {
+    "defaultMessage": "Contents",
+    "description": "Form edit read list: Contents"
   },
   "E4ssEg": {
     "defaultMessage": "Convert book",
@@ -1034,6 +1046,10 @@
   "GnHrCd": {
     "defaultMessage": "Use local artwork",
     "description": "Form add/edit library: Metadata - local artwork"
+  },
+  "Gvy6IU": {
+    "defaultMessage": "Add book",
+    "description": "Form edit read list: Contents - button to add a book"
   },
   "Gwmnm6": {
     "defaultMessage": "Series",
@@ -1243,6 +1259,10 @@
     "defaultMessage": "Book",
     "description": "Import books table header: book"
   },
+  "KmmaIc": {
+    "defaultMessage": "Move {title} down",
+    "description": "Contents editor: accessible name of the button moving an item down"
+  },
   "Ku7NJ+": {
     "defaultMessage": "The series files could not be found",
     "description": "Series view: files deleted"
@@ -1286,6 +1306,10 @@
   "M1kkFr": {
     "defaultMessage": "Refresh",
     "description": "Media management pages: button that reloads the table"
+  },
+  "M9zZUl": {
+    "defaultMessage": "Move {title} up",
+    "description": "Contents editor: accessible name of the button moving an item up"
   },
   "MC2JtF": {
     "defaultMessage": "All",
@@ -1479,6 +1503,10 @@
     "defaultMessage": "Background color",
     "description": "Reader settings: background colour"
   },
+  "Q+DbYX": {
+    "defaultMessage": "Drag a book, or use the arrows, to set the order.",
+    "description": "Form edit read list: Contents - hint when the read list is ordered manually"
+  },
   "Q7tJAG": {
     "defaultMessage": "Read list",
     "description": "Container chip, subtitle for read list"
@@ -1506,6 +1534,10 @@
   "QoELLi": {
     "defaultMessage": "Side padding",
     "description": "Reader settings: side padding of the webtoon reader"
+  },
+  "QuzTFt": {
+    "defaultMessage": "Remove {title}",
+    "description": "Contents editor: accessible name of the button removing an item"
   },
   "Qxij/I": {
     "defaultMessage": "Deleted page",
@@ -1606,6 +1638,10 @@
   "SuegoE": {
     "defaultMessage": "Automatic ordering",
     "description": "Read List view: automatic ordering"
+  },
+  "Sz+ZZ5": {
+    "defaultMessage": "Add series",
+    "description": "Form edit collection: Contents - button to add a series"
   },
   "T3Ofay": {
     "defaultMessage": "Read on {readDate}",
@@ -3027,6 +3063,10 @@
     "defaultMessage": "confirm",
     "description": "Confirmation dialog: default validation text"
   },
+  "j89WCe": {
+    "defaultMessage": "Drag a series, or use the arrows, to set the order.",
+    "description": "Form edit collection: Contents - hint when the collection is ordered manually"
+  },
   "jBHrge": {
     "defaultMessage": "{count, plural, one {# item} other {# items}} updated",
     "description": "Snackbar notification shown after several items were edited at once"
@@ -3366,6 +3406,10 @@
   "q7gxLw": {
     "defaultMessage": "The user account will be deleted from this server.<ul><li>The read progress for this user account will be permanently deleted.</li><li>Authentication activity for this user will be permanently deleted.</li></ul><b>This action cannot be undone.</b>",
     "description": "User deletion warning notice"
+  },
+  "q8fOON": {
+    "defaultMessage": "Shown by name. Choose manual ordering under General to set an order.",
+    "description": "Form edit collection: Contents - hint when the collection is ordered by name"
   },
   "qSbZ1n": {
     "defaultMessage": "You are at the beginning of the book.",
