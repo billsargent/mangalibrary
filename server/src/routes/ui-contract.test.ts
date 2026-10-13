@@ -35,14 +35,9 @@ const SDK_FILE = join(UI_SRC, 'generated', 'openapi', 'sdk.gen.ts')
 //
 // A few URLs are built by hand instead of through the client - `ui/src/api/images.ts`,
 // `files.ts`, `links.ts`, `composables/sse.ts` - and this test cannot see them, because
-// what they build is a template string, not a generated function. Two of those are known to
-// be missing: `GET /api/v1/books/{bookId}/pages/{n}/raw` (a single page of a PDF needs a
-// renderer this server does not have, #23) and `GET /api/v1/books/{bookId}/resource/{r}`
-// (the inside of an EPUB, for the EPUB reader, #98).
-const NOT_SERVED: Record<string, string> = {
-  'POST /api/v1/books/import':
-    'Importing books from a path on the server is the import page`s flow, and it is not implemented; the transient-books upload path is what this server offers instead (#23).',
-}
+// what they build is a template string, not a generated function. `api-parity.test.ts`
+// covers those: it asks for every operation of the reference, however the UI reaches it.
+const NOT_SERVED: Record<string, string> = {}
 
 const METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']
 

@@ -755,3 +755,34 @@ describe('users', () => {
     await app.close()
   })
 })
+
+describe('importing books', () => {
+  it('queues a job for each file, for an administrator, and says how to copy must be said', async () => {
+    const { app, database } = await setup()
+    const post = (headers: Record<string, string>, payload: unknown) =>
+      app.inject({ method: 'POST', url: '/api/v1/books/import', headers, payload: payload as never })
+    const batch = {
+      copyMode: 'MOVE',
+      books: [
+        { sourceFile: '/inbox/a.cbz', seriesId: 'S1', destinationName: 'Volume 9', upgradeBookId: 'B1' },
+        { sourceFile: '/inbox/b.cbz', seriesId: 'S1' },
+        { seriesId: 'S1' },
+      ],
+    }
+
+    expect((await post(reader, batch)).statusCode).toBe(403)
+    expect((await post(admin, { ...batch, copyMode: 'TELEPORT' })).statusCode).toBe(400)
+    expect((await post(admin, batch)).statusCode).toBe(202)
+
+    const jobs = await database.db.selectFrom('jobs').select(['type', 'payload']).orderBy('unique_key').execute()
+    expect(jobs.map((job) => job.type)).toEqual(['ImportBook', 'ImportBook'])
+    expect(JSON.parse(jobs[0]!.payload)).toEqual({
+      sourceFile: '/inbox/a.cbz',
+      seriesId: 'S1',
+      copyMode: 'MOVE',
+      destinationName: 'Volume 9',
+      upgradeBookId: 'B1',
+    })
+    await app.close()
+  })
+})

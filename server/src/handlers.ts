@@ -31,6 +31,7 @@ import {
 import { JOB_PRIORITY, enqueueJob, enqueueJobs, type JobRecord } from './jobs.js'
 import { analyzeBook } from './media/analyze.js'
 import { booksToConvert, convertBookToCbz } from './media/convert.js'
+import { COPY_MODES, ImportError, importBook, type CopyMode } from './media/import.js'
 import { insideRootOnDisk } from './media/scan.js'
 import {
   pagesToRemoveAutomatically,
@@ -664,6 +665,54 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
 
     case 'RemoveHashedPages':
       return removePages(context, job)
+
+    case 'ImportBook': {
+      const payload = job.payload as Record<string, unknown>
+      const sourceFile = text(payload.sourceFile)
+      const seriesId = text(payload.seriesId)
+      const copyMode = COPY_MODES.find((mode) => mode === payload.copyMode) as CopyMode | undefined
+      if (sourceFile === null || seriesId === null || copyMode === undefined) {
+        return log.warn({ job: job.id }, 'ImportBook without a file, a series or a way to copy')
+      }
+
+      // Whoever asked is watching for the answer, which is this event either way.
+      const told = (bookId: string | null, message: string | null): void =>
+        context.events.publish({
+          name: 'BookImported',
+          data: { bookId, sourceFile, success: bookId !== null, message },
+        })
+
+      let imported
+      try {
+        imported = await importBook(db, {
+          sourceFile,
+          seriesId,
+          copyMode,
+          destinationName: text(payload.destinationName),
+          upgradeBookId: text(payload.upgradeBookId),
+        })
+      } catch (error) {
+        // Not thrown on: an import that failed for a reason would fail the same
+        // way again, and the person who asked has been told why.
+        const message = error instanceof ImportError ? error.reported : String(error)
+        told(null, message)
+        return log.warn({ sourceFile, seriesId, err: message }, 'could not import a book')
+      }
+
+      await enqueueJob(db, {
+        type: 'AnalyzeBook',
+        uniqueKey: `ANALYZE_BOOK_${imported.bookId}`,
+        priority: job.priority + 1,
+        groupId: seriesId,
+        payload: { bookId: imported.bookId },
+      })
+      const ref = await bookRef(db, imported.bookId)
+      if (ref) announceBook(context.events, imported.upgraded ? 'BookChanged' : 'BookAdded', ref)
+      const series = await seriesRef(db, seriesId)
+      if (series) announceSeries(context.events, 'SeriesChanged', series)
+      told(imported.bookId, null)
+      return log.info({ sourceFile, bookId: imported.bookId, upgraded: imported.upgraded }, 'imported a book')
+    }
 
     case 'ConvertBook': {
       const bookId = text((job.payload as { bookId?: unknown }).bookId)

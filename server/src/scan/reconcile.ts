@@ -86,7 +86,7 @@ async function scanSettings(
 }
 
 /** Add books to a series, with the metadata row each one needs. Returns their ids. */
-async function addBooks(
+export async function addBooks(
   db: Kysely<DB>,
   seriesId: string,
   libraryId: string,
@@ -125,7 +125,7 @@ async function addBooks(
  * The book row's number drives ordering; the metadata's number and sort key are
  * kept in step unless they are locked, which is the user saying they know better.
  */
-async function sortBooks(db: Kysely<DB>, seriesId: string, now: string): Promise<void> {
+export async function sortBooks(db: Kysely<DB>, seriesId: string, now: string): Promise<void> {
   const books = await db
     .selectFrom('books')
     .select(['id', 'name'])

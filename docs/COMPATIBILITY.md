@@ -637,6 +637,22 @@ does. Which characters make a letter of the navigation, and that everything else
 - The web UI keeps the chosen letter in the address as `?nav=`, as the legacy interface
   did.
 
+## Importing books
+
+`POST /api/v1/books/import` queues one job a file, as the reference does, and each file
+is answered for by a `BookImported` event. The file is moved, copied or hard-linked into
+the series' folder (a hard link that the disk cannot make becomes a copy), artwork named
+after the file comes with it, and the refusals carry the reference's codes
+(`ERR_1018` to `ERR_1022`).
+
+- **An upgrade keeps the book.** The reference makes a new book and carries the old
+  one's media, metadata, posters, read progress and read-list places across to it. Here
+  the book that is upgraded stays the book it was - same id - and is pointed at the new
+  file, so there is nothing to carry. A client that remembered the old id still has the
+  book.
+- The event names the source file as a path, not as a `file:` URL.
+- A file whose extension is not a book's is refused before anything is copied.
+
 ## Converting CBR to CBZ
 
 A library's "Automatically convert CBR to CBZ" is carried out as the reference carries
