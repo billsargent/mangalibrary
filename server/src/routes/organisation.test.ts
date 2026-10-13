@@ -9,6 +9,7 @@ import { loadConfig } from '../config.js'
 import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
+import { requiredValue } from './query.js'
 
 const ADMIN_KEY = 'admin-key'
 const READER_KEY = 'reader-key'
@@ -526,5 +527,73 @@ describe('read lists', () => {
       (await app.inject({ method: 'POST', url: '/api/v1/readlists/match/comicrack', headers: admin })).statusCode,
     ).toBe(400)
     await app.close()
+  })
+})
+
+describe('the order somebody gave', () => {
+  const ids = (res: { json: () => unknown }) => (res.json() as { content: { id: string }[] }).content.map((it) => it.id)
+
+  it('lists a collection in its own order: by hand when ordered, by title when not', async () => {
+    const { app, database } = await setup()
+    const get = (url: string) => app.inject({ method: 'GET', url, headers: admin })
+
+    // The fixture put Berserk before Akira by hand.
+    expect(ids(await get('/api/v1/collections/C1/series'))).toEqual(['S2', 'S1'])
+    // An order the caller asks for is the caller's.
+    expect(ids(await get('/api/v1/collections/C1/series?sort=metadata.titleSort,asc'))).toEqual(['S1', 'S2'])
+    expect(ids(await get('/api/v1/collections/C1/series?sort=collection.number,desc'))).toEqual(['S1', 'S2'])
+
+    await database.db.updateTable('collections').set({ ordered: 0 }).where('id', '=', 'C1').execute()
+    expect(ids(await get('/api/v1/collections/C1/series'))).toEqual(['S1', 'S2'])
+
+    await app.close()
+  })
+
+  it('sorts a series search by place in the collection it is narrowed to', async () => {
+    const { app } = await setup()
+    const list = (sort: string, condition: unknown) =>
+      app.inject({ method: 'POST', url: `/api/v1/series/list?sort=${sort}`, headers: admin, payload: { condition } })
+    const inCollection = { collectionId: { operator: 'is', value: 'C1' } }
+
+    expect(ids(await list('collection.number,asc', inCollection))).toEqual(['S2', 'S1'])
+    expect(ids(await list('collection.number,desc', inCollection))).toEqual(['S1', 'S2'])
+    // The web interface wraps what it filters by.
+    expect(ids(await list('collection.number,asc', { allOf: [{ anyOf: [inCollection] }] }))).toEqual(['S2', 'S1'])
+    // With no collection named there is no place to sort by, and the usual order stands.
+    expect(ids(await list('collection.number,asc', undefined))).toEqual(['S1', 'S2'])
+
+    const legacy = await app.inject({
+      method: 'GET',
+      url: '/api/v1/series?collection_id=C1&sort=collection.number,asc',
+      headers: admin,
+    })
+    expect(ids(legacy)).toEqual(['S2', 'S1'])
+
+    await app.close()
+  })
+
+  it('sorts a book search by place in the read list it is narrowed to', async () => {
+    const { app } = await setup()
+    const list = (sort: string, condition: unknown) =>
+      app.inject({ method: 'POST', url: `/api/v1/books/list?sort=${sort}`, headers: admin, payload: { condition } })
+    const inList = { readListId: { operator: 'is', value: 'RL1' } }
+
+    expect(ids(await list('readList.number,asc', { allOf: [inList] }))).toEqual(['B2', 'B1'])
+    expect(ids(await list('readList.number,desc', { allOf: [inList] }))).toEqual(['B1', 'B2'])
+
+    await app.close()
+  })
+
+  it('finds the collection or read list a condition names', () => {
+    const named = { collectionId: { operator: 'is', value: 'C1' } }
+    expect(requiredValue(named, 'collectionId')).toBe('C1')
+    expect(
+      requiredValue({ allOf: [{ libraryId: { operator: 'is', value: 'L1' } }, { anyOf: [named] }] }, 'collectionId'),
+    ).toBe('C1')
+    // "Not in this collection" names no collection to order by.
+    expect(requiredValue({ collectionId: { operator: 'isNot', value: 'C1' } }, 'collectionId')).toBeUndefined()
+    expect(requiredValue(named, 'readListId')).toBeUndefined()
+    expect(requiredValue(undefined, 'collectionId')).toBeUndefined()
+    expect(requiredValue('nonsense', 'collectionId')).toBeUndefined()
   })
 })

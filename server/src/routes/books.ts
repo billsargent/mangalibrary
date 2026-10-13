@@ -20,7 +20,16 @@ import { springPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { applyBookMetadataPatch } from './metadata.js'
 import { toReadListDto, type ReadListRow } from './organisation-dto.js'
-import { applySort, booleanParam, paging, parseSort, toArray, type SortKey, type SortSpec } from './query.js'
+import {
+  applySort,
+  booleanParam,
+  paging,
+  parseSort,
+  requiredValue,
+  toArray,
+  type SortKey,
+  type SortSpec,
+} from './query.js'
 import { bookCondition, type ConditionFilter } from '../search/condition.js'
 import { INDEXES, matchFilter, relevanceSort } from '../search/fullText.js'
 
@@ -40,7 +49,7 @@ import { INDEXES, matchFilter, relevanceSort } from '../search/fullText.js'
  * not refused: the listing comes back in its default order, which looks like the
  * sort was ignored, so the list is the reference's whole list.
  */
-export function bookSorts(userId: string): Record<string, SortKey> {
+export function bookSorts(userId: string, readListId?: string): Record<string, SortKey> {
   // Progress belongs to whoever is asking, so sorting by it is theirs too.
   const progress = (column: 'read_date' | 'last_modified_date') => sql<string>`(
     select rp_sort.${sql.ref(column)} from read_progress rp_sort
@@ -48,6 +57,16 @@ export function bookSorts(userId: string): Record<string, SortKey> {
   )`
 
   return {
+    // The place a book was given in a read list, which only means something when
+    // the request is about one read list.
+    ...(readListId === undefined
+      ? {}
+      : {
+          'readList.number': sql<number>`(
+            select rb_sort.number from readlist_book rb_sort
+            where rb_sort.book_id = books.id and rb_sort.readlist_id = ${readListId}
+          )`,
+        }),
     name: 'books.name',
     number: 'books.number',
     series: 'series_metadata.title_sort',
@@ -363,7 +382,7 @@ export async function registerBookRoutes(app: FastifyInstance, opts: RouteOption
     // order of their own - which is what the reference does too. A term with nothing
     // searchable in it has nothing to rank by.
     const relevance = term === undefined ? null : relevanceSort(INDEXES.BOOKS, term)
-    const allowed = bookSorts(context.user.id)
+    const allowed = bookSorts(context.user.id, requiredValue(body.condition, 'readListId'))
     const sorts = parseSort(
       query.sort,
       relevance === null ? allowed : { ...allowed, relevance },

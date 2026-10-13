@@ -73,6 +73,33 @@ export function parseSort(raw: unknown, allowed: Record<string, SortKey>, fallba
 }
 
 /**
+ * The value a search condition requires a field to be, wherever in the condition
+ * that is said: `{ field: { operator: 'is', value } }`.
+ *
+ * Sorting by a position in a collection or a read list needs to know which one,
+ * and a client names it in the condition it filters by. The first one found is
+ * the one meant; a condition naming two has no single order to give.
+ */
+export function requiredValue(condition: unknown, field: string): string | undefined {
+  if (Array.isArray(condition)) {
+    for (const entry of condition) {
+      const found = requiredValue(entry, field)
+      if (found !== undefined) return found
+    }
+    return undefined
+  }
+  if (condition === null || typeof condition !== 'object') return undefined
+
+  const node = condition as Record<string, unknown>
+  const own = node[field]
+  if (own !== null && typeof own === 'object') {
+    const { operator, value } = own as Record<string, unknown>
+    if (operator === 'is' && typeof value === 'string') return value
+  }
+  return requiredValue(node.allOf, field) ?? requiredValue(node.anyOf, field)
+}
+
+/**
  * Apply sort criteria to a query builder.
  *
  * The cast is deliberate: `column` has already been resolved through an
