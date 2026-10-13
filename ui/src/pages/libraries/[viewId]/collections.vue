@@ -30,7 +30,6 @@
   >
     <template #default="{ item, isSelected, preSelect, toggleSelect }">
       <CollectionCard
-        stretch-poster
         :collection="item"
         :selected="isSelected"
         :pre-select="preSelect"

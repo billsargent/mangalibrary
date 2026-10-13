@@ -153,7 +153,6 @@
     <template #default="{ item, isSelected, preSelect, toggleSelect }">
       <BookCard
         show-series
-        stretch-poster
         :book="item"
         :selected="isSelected"
         :pre-select="preSelect"

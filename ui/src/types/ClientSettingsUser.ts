@@ -4,6 +4,9 @@ import * as v from 'valibot'
 export const ClientSettingUser = {
   NextUILibraries: 'komga.nextui.libraries',
   NextUIOverviewSections: 'komga.nextui.overview',
+  // The two below keep the keys and values of the previous web interface.
+  PosterStretch: 'webui.poster.stretch',
+  PosterBlurUnread: 'webui.poster.blur_unread',
 } as const
 
 export type ClientSettingUser = (typeof ClientSettingUser)[keyof typeof ClientSettingUser]
@@ -31,6 +34,8 @@ export const ClientSettingUserSchemas = {
     v.record(v.string(), v.array(SchemaClientSettingUserOverviewSection)),
     {},
   ),
+  [ClientSettingUser.PosterStretch]: v.fallback(v.optional(v.boolean(), true), true),
+  [ClientSettingUser.PosterBlurUnread]: v.fallback(v.optional(v.boolean(), false), false),
 } as const satisfies Record<ClientSettingUser, v.GenericSchema>
 
 export type ClientSettingUserSettings = {

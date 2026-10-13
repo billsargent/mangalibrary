@@ -115,6 +115,10 @@
     "defaultMessage": "Collapse sidebar",
     "description": "Sidebar button: tooltip collapse"
   },
+  "0LxDVu": {
+    "defaultMessage": "Blur poster for unread books and series",
+    "description": "Account UI settings: switch to blur posters of unread items"
+  },
   "0MePSx": {
     "defaultMessage": "Drag here to pin a library",
     "description": "Reorder library drawer: placeholder if no libraries are pinned"
@@ -583,6 +587,10 @@
     "defaultMessage": "add library",
     "description": "Add library button: aria label"
   },
+  "9CcdgO": {
+    "defaultMessage": "Stretch poster to fit card",
+    "description": "Account UI settings: switch to stretch posters"
+  },
   "9GaR82": {
     "defaultMessage": "General",
     "description": "Book Details: General"
@@ -626,6 +634,10 @@
   "A+cB93": {
     "defaultMessage": "Show or hide toolbars",
     "description": "Reader shortcut: show or hide the toolbars"
+  },
+  "A2V2dy": {
+    "defaultMessage": "The groups series are filed under when browsing a library by first character. Applies to everyone.",
+    "description": "Server UI settings: hint under the series grouping choice"
   },
   "AEaKHC": {
     "defaultMessage": "Find book thumbnails to regenerate",
@@ -754,6 +766,10 @@
   "CPMLrI": {
     "defaultMessage": "Book needs to be analyzed first",
     "description": "Import books: status message: book needs to be analyzed first"
+  },
+  "CPpA//": {
+    "defaultMessage": "Setting saved",
+    "description": "Snackbar notification shown when an interface setting is saved"
   },
   "CUxhzL": {
     "defaultMessage": "Roles",
@@ -1250,6 +1266,10 @@
   "MUl132": {
     "defaultMessage": "Welcome to Manga Library",
     "description": "No libraries view: title"
+  },
+  "MWHayq": {
+    "defaultMessage": "Setting saved for everyone",
+    "description": "Snackbar notification shown when a server interface setting is saved"
   },
   "MYYgTv": {
     "defaultMessage": "Unknown file size",
@@ -1823,6 +1843,10 @@
     "defaultMessage": "Action",
     "description": "Known Duplicate Page Table header: action"
   },
+  "XQgUTB": {
+    "defaultMessage": "Alphabetical",
+    "description": "Server UI settings: series grouping by the Latin alphabet"
+  },
   "XR+P68": {
     "defaultMessage": "Language",
     "description": "Locale selector button: tooltip"
@@ -2202,6 +2226,10 @@
   "aqD5OX": {
     "defaultMessage": "Next page",
     "description": "EPUB reader: next page button"
+  },
+  "aueqJd": {
+    "defaultMessage": "Gojūon (Japanese)",
+    "description": "Server UI settings: series grouping by the Japanese syllabary"
   },
   "ay4mgr": {
     "defaultMessage": "Scale type",
@@ -2823,6 +2851,10 @@
     "defaultMessage": "Sharing label",
     "description": "Filter panel: Sharing label"
   },
+  "hH1IX3": {
+    "defaultMessage": "Series grouping",
+    "description": "Server UI settings: label of the series grouping choice"
+  },
   "hJEc5M": {
     "defaultMessage": "libraries menu",
     "description": "Libraries menu button: aria label"
@@ -2930,6 +2962,10 @@
   "ixQlWv": {
     "defaultMessage": "Something went wrong",
     "description": "Common message: an error happened while loading data"
+  },
+  "iyAi4V": {
+    "defaultMessage": "A book is unread until you open it; a series until you open one of its books.",
+    "description": "Account UI settings: hint under the blur posters switch"
   },
   "iylxeo": {
     "defaultMessage": "Yes (all books)",
@@ -3334,6 +3370,10 @@
   "rRFQKU": {
     "defaultMessage": "Kobo Sync",
     "description": "Server settings: section header for Kobo Sync"
+  },
+  "rgdFdd": {
+    "defaultMessage": "When off, the whole poster is shown, with space around it if it is not the shape of the card.",
+    "description": "Account UI settings: hint under the stretch posters switch"
   },
   "rhtmLf": {
     "defaultMessage": "Order",

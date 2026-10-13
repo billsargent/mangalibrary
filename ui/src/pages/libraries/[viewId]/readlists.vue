@@ -30,7 +30,6 @@
   >
     <template #default="{ item, isSelected, preSelect, toggleSelect }">
       <ReadlistCard
-        stretch-poster
         :read-list="item"
         :selected="isSelected"
         :pre-select="preSelect"

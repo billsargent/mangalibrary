@@ -12,6 +12,7 @@
     :menu-icon="menuIcon"
     :menu-props="menuProps"
     :card-to="linkTo"
+    :blur-poster="blurUnread && untouched"
     v-bind="propsLeft"
     @selection="(val, event) => emit('selection', val, event)"
     @click-quick-action="showEditMetadataDialog()"
@@ -36,6 +37,8 @@ import { useEditSeriesMetadataDialog } from '@/composables/series/useEditSeriesM
 import { useBooks } from '@/composables/book/useBooks'
 import { useSeries } from '@/composables/series/useSeries'
 import type { SeriesDto } from '@/generated/openapi'
+import { useClientSettingsUser } from '@/colada/client-settings'
+import { ClientSettingUser } from '@/types/ClientSettingsUser'
 import { useImageCacheStore } from '@/stores/image-cache'
 import { BrowsingContextKey, formatBrowsingContextAsQueryParam } from '@/functions/browsing-context'
 import type { RouteLocationObject } from '@/types/route'
@@ -63,6 +66,13 @@ const propsLeft = computed(() => {
 })
 
 const { isRead, unreadCount, canRead } = useSeries(series)
+
+const { userSettings } = useClientSettingsUser()
+const blurUnread = computed(() => userSettings.value[ClientSettingUser.PosterBlurUnread])
+// Not one of its books has been opened.
+const untouched = computed(
+  () => series.value.booksReadCount === 0 && series.value.booksInProgressCount === 0,
+)
 
 const title = computed<ItemCardTitle>(() => ({
   text: series.value.metadata.title,

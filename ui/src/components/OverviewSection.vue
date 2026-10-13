@@ -13,7 +13,6 @@
         <SeriesCard
           v-if="kind === 'series'"
           :series="item as SeriesDto"
-          stretch-poster
           :selected="isSelected"
           :pre-select="preSelect"
           :width="cardWidth"
@@ -23,7 +22,6 @@
         <BookCard
           v-else
           :book="item as BookDto"
-          stretch-poster
           show-series
           :selected="isSelected"
           :pre-select="preSelect"

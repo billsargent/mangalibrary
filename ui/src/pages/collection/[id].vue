@@ -236,7 +236,6 @@
         <template #default="{ item, isSelected, preSelect, toggleSelect }">
           <SeriesCard
             v-if="presentationModeEffective === 'grid'"
-            stretch-poster
             :series="item"
             :selected="isSelected"
             :pre-select="preSelect"
@@ -246,7 +245,6 @@
 
           <SeriesCardWide
             v-if="presentationModeEffective === 'list'"
-            stretch-poster
             :series="item"
             :selected="isSelected"
             :pre-select="preSelect"

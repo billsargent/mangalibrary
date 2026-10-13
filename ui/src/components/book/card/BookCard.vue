@@ -12,6 +12,7 @@
     :menu-icon="menuIcon"
     :menu-props="menuProps"
     :card-to="linkTo"
+    :blur-poster="blurUnread && !book.readProgress"
     v-bind="propsLeft"
     @selection="(val, event) => emit('selection', val, event)"
     @click-quick-action="showEditMetadataDialog()"
@@ -31,6 +32,8 @@ import { bookPosterUrl } from '@/api/images'
 import { useIntl } from 'vue-intl'
 import type { ItemCardEmits, ItemCardLine, ItemCardProps, ItemCardTitle } from '@/types/ItemCard'
 import { useCurrentUser } from '@/colada/users'
+import { useClientSettingsUser } from '@/colada/client-settings'
+import { ClientSettingUser } from '@/types/ClientSettingsUser'
 import { MediaStatus, mediaStatusMessages } from '@/types/MediaStatus'
 import { useBookReadProgress } from '@/composables/book/useBookReadProgress'
 import { useEditBookMetadataDialog } from '@/composables/book/useEditBookMetadataDialog'
@@ -66,6 +69,9 @@ const propsLeft = computed(() => {
   return rest
 })
 const { isRead, progressPercent } = useBookReadProgress(book)
+
+const { userSettings } = useClientSettingsUser()
+const blurUnread = computed(() => userSettings.value[ClientSettingUser.PosterBlurUnread])
 
 const excludedKeys = ['series', 'metadata.numberSort', 'metadata.title', 'pagesCount'] as const
 type SortKeysSupported = Exclude<SortKeysBook, (typeof excludedKeys)[number]>

@@ -8,10 +8,14 @@ import {
 } from '@pinia/colada'
 import { type ClientSettingUserSettings } from '@/types/ClientSettingsUser'
 import {
+  type ClientSettingGlobalUpdateDto,
   type ClientSettingUserUpdateDto,
+  komgaGetGlobalSettings,
   komgaGetUserSettings,
+  komgaSaveGlobalSetting,
   komgaSaveUserSetting,
 } from '@/generated/openapi'
+import { parseSeriesGroups } from '@/functions/series-groups'
 import { parseUserSettings } from '@/functions/user-settings'
 import { STALE_TIME } from '@/types/time'
 
@@ -54,6 +58,36 @@ export const useUpdateClientSettingsUser = defineMutation(() => {
     },
     onSuccess: () => {
       void queryCache.invalidateQueries({ key: QUERY_KEYS_CLIENT_SETTINGS.user() })
+    },
+  })
+})
+
+export const clientSettingsGlobalQuery = defineQueryOptions({
+  key: QUERY_KEYS_CLIENT_SETTINGS.global(),
+  query: () => komgaGetGlobalSettings(),
+  staleTime: STALE_TIME.LONG,
+  gcTime: false,
+})
+
+export const useClientSettingsGlobal = defineQuery(() => {
+  const { data, ...rest } = useQuery(clientSettingsGlobalQuery)
+
+  const seriesGroups = computed(() => parseSeriesGroups(data.value))
+
+  return {
+    data,
+    ...rest,
+    seriesGroups,
+  }
+})
+
+export const useUpdateClientSettingsGlobal = defineMutation(() => {
+  const queryCache = useQueryCache()
+  return useMutation({
+    mutation: (body: Record<string, ClientSettingGlobalUpdateDto>) =>
+      komgaSaveGlobalSetting({ body }),
+    onSuccess: () => {
+      void queryCache.invalidateQueries({ key: QUERY_KEYS_CLIENT_SETTINGS.global() })
     },
   })
 })

@@ -27,7 +27,6 @@
           <div class="py-2 px-1">
             <SeriesCard
               :series="item as SeriesDto"
-              stretch-poster
               :width="cardWidth"
             />
           </div>
@@ -46,7 +45,6 @@
           <div class="py-2 px-1">
             <BookCard
               :book="item as BookDto"
-              stretch-poster
               show-series
               :width="cardWidth"
             />
@@ -66,7 +64,6 @@
           <div class="py-2 px-1">
             <CollectionCard
               :collection="item as CollectionDto"
-              stretch-poster
               :width="cardWidth"
             />
           </div>
@@ -85,7 +82,6 @@
           <div class="py-2 px-1">
             <ReadlistCard
               :read-list="item as ReadListDto"
-              stretch-poster
               :width="cardWidth"
             />
           </div>
