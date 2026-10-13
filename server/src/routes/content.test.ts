@@ -1043,6 +1043,155 @@ describe('books', () => {
     await app.close()
   })
 
+  it('sorts books by the names the reference gives its sorts', async () => {
+    const { app, database } = await setup()
+    const ids = async (sort: string, headers = admin) => {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/v1/books/list?sort=${sort}`,
+        headers,
+        payload: {},
+      })
+      expect(response.statusCode).toBe(200)
+      return (response.json() as { content: { id: string }[] }).content.map((book) => book.id)
+    }
+
+    // Both spellings of the same thing, in both directions.
+    expect(await ids('createdDate,desc')).toEqual(['B3', 'B2', 'B1'])
+    expect(await ids('created,asc')).toEqual(['B1', 'B2', 'B3'])
+    expect(await ids('fileSize,desc')).toEqual(['B3', 'B2', 'B1'])
+    expect(await ids('size,asc')).toEqual(['B1', 'B2', 'B3'])
+
+    // What the media says about a book.
+    const now = new Date().toISOString()
+    await database.db.deleteFrom('media').execute()
+    await database.db
+      .insertInto('media')
+      .values([
+        {
+          book_id: 'B1',
+          status: 'READY',
+          media_type: 'application/zip',
+          page_count: 30,
+          created_date: now,
+          last_modified_date: now,
+        },
+        {
+          book_id: 'B2',
+          status: 'ERROR',
+          media_type: 'application/pdf',
+          page_count: 0,
+          created_date: now,
+          last_modified_date: now,
+        },
+        {
+          book_id: 'B3',
+          status: 'UNSUPPORTED',
+          media_type: 'application/x-rar',
+          page_count: 10,
+          created_date: now,
+          last_modified_date: now,
+        },
+      ])
+      .execute()
+    expect(await ids('media.status,asc')).toEqual(['B2', 'B1', 'B3'])
+    expect(await ids('media.pagesCount,desc')).toEqual(['B1', 'B3', 'B2'])
+    expect(await ids('media.mediaType,asc')).toEqual(['B2', 'B3', 'B1'])
+
+    // When the caller last read each book: theirs, not somebody else's.
+    await database.db.deleteFrom('read_progress').execute()
+    await database.db
+      .insertInto('read_progress')
+      .values([
+        {
+          user_id: 'U2',
+          book_id: 'B1',
+          page: 1,
+          completed: 0,
+          read_date: '2024-05-01T00:00:00.000Z',
+          created_date: now,
+          last_modified_date: now,
+        },
+        {
+          user_id: 'U2',
+          book_id: 'B2',
+          page: 1,
+          completed: 0,
+          read_date: '2024-06-01T00:00:00.000Z',
+          created_date: now,
+          last_modified_date: now,
+        },
+        {
+          user_id: 'U1',
+          book_id: 'B1',
+          page: 1,
+          completed: 0,
+          read_date: '2024-07-01T00:00:00.000Z',
+          created_date: now,
+          last_modified_date: now,
+        },
+      ])
+      .execute()
+    expect((await ids('readProgress.readDate,desc', reader)).slice(0, 2)).toEqual(['B2', 'B1'])
+    expect((await ids('readProgress.readDate,desc')).at(0)).toBe('B1')
+
+    await app.close()
+  })
+
+  it('sorts series by the names the reference gives its sorts', async () => {
+    const { app, database } = await setup()
+    const ids = async (sort: string) => {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/v1/series/list?sort=${sort}`,
+        headers: admin,
+        payload: {},
+      })
+      expect(response.statusCode).toBe(200)
+      // The two series of the main library; the administrator sees others besides.
+      return (response.json() as { content: { id: string }[] }).content
+        .map((series) => series.id)
+        .filter((id) => id === 'S1' || id === 'S2')
+    }
+
+    await database.db
+      .updateTable('series')
+      .set({ created_date: '2023-01-01T00:00:00.000Z', book_count: 2 })
+      .where('id', '=', 'S1')
+      .execute()
+    await database.db
+      .updateTable('series')
+      .set({ created_date: '2023-06-01T00:00:00.000Z', book_count: 1 })
+      .where('id', '=', 'S2')
+      .execute()
+
+    expect(await ids('createdDate,desc')).toEqual(['S2', 'S1'])
+    expect(await ids('created,asc')).toEqual(['S1', 'S2'])
+    expect(await ids('booksCount,desc')).toEqual(['S1', 'S2'])
+    expect(await ids('booksCount,asc')).toEqual(['S2', 'S1'])
+
+    // The administrator reads a book of the second series and none of the first.
+    const now = new Date().toISOString()
+    await database.db
+      .insertInto('read_progress')
+      .values({
+        user_id: 'U1',
+        book_id: 'B3',
+        page: 1,
+        completed: 0,
+        read_date: now,
+        created_date: now,
+        last_modified_date: now,
+      })
+      .execute()
+    expect(await ids('readDate,desc')).toEqual(['S2', 'S1'])
+
+    // A random order is still every series, once each.
+    expect((await ids('random')).sort()).toEqual(['S1', 'S2'])
+
+    await app.close()
+  })
+
   it('suggests the next book to read', async () => {
     const { app } = await setup()
     const ondeck = await app.inject({ method: 'GET', url: '/api/v1/books/ondeck', headers: reader })
