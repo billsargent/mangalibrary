@@ -1,10 +1,57 @@
 <template>
+  <v-app-bar
+    v-if="term !== ''"
+    class="bg-background px-2"
+  >
+    <template #append>
+      <PosterSizeSlider />
+    </template>
+  </v-app-bar>
+
   <div class="pa-4 d-flex flex-column ga-6">
     <div
       v-if="term !== ''"
       class="text-title-large"
     >
       {{ $formatMessage(valueMessages.resultsFor, { term }) }}
+    </div>
+
+    <div
+      v-if="term !== ''"
+      class="d-flex flex-wrap ga-3"
+    >
+      <v-select
+        v-model="library"
+        :items="libraryItems"
+        :label="$formatMessage(messages.library)"
+        density="compact"
+        hide-details
+        max-width="260"
+      />
+      <v-select
+        v-model="readStatus"
+        :items="readStatusItems"
+        :label="$formatMessage(messages.readStatus)"
+        density="compact"
+        hide-details
+        max-width="220"
+      />
+      <v-select
+        v-model="seriesSort"
+        :items="seriesSortItems"
+        :label="$formatMessage(messages.seriesSort)"
+        density="compact"
+        hide-details
+        max-width="240"
+      />
+      <v-select
+        v-model="booksSort"
+        :items="booksSortItems"
+        :label="$formatMessage(messages.booksSort)"
+        density="compact"
+        hide-details
+        max-width="240"
+      />
     </div>
 
     <v-empty-state
@@ -114,7 +161,11 @@
  * address, so a result page can be reloaded, bookmarked and sent to somebody.
  */
 import { useInfiniteQuery } from '@pinia/colada'
-import { defineMessages, type MessageDescriptor } from 'vue-intl'
+import { defineMessages, type MessageDescriptor, useIntl } from 'vue-intl'
+import PosterSizeSlider from '@/components/PosterSizeSlider.vue'
+import { useLibraries } from '@/colada/libraries'
+import { sortBooks, sortSeries } from '@/types/sort'
+import type { Sort } from '@/types/PageRequest'
 import { useDisplay } from 'vuetify'
 import { bookListQueryInfinite } from '@/colada/books'
 import { collectionsListQueryInfinite } from '@/colada/collections'
@@ -125,6 +176,8 @@ import type { BookDto, CollectionDto, ReadListDto, SeriesDto } from '@/generated
 import { useAppStore } from '@/stores/app'
 
 const route = useRoute('/search')
+const router = useRouter()
+const intl = useIntl()
 const display = useDisplay()
 const appStore = useAppStore()
 
@@ -155,17 +208,94 @@ function results<T>(options: () => unknown) {
   }
 }
 
-// A search term orders by relevance unless told otherwise, so no sort is given.
+/*
+ * What narrows and orders the results lives in the address beside the term, so a
+ * narrowed search can be reloaded and shared like any other.
+ */
+const ANY = 'any'
+const RELEVANCE = 'relevance'
+const queryText = (value: unknown, fallback: string): string =>
+  typeof value === 'string' && value !== '' ? value : fallback
+const fromQuery = (name: 'library' | 'read' | 'seriesSort' | 'booksSort', fallback: string) =>
+  computed({
+    get: () => queryText(route.query[name], fallback),
+    set: (value: string) =>
+      void router.replace({
+        query: { ...route.query, [name]: value === fallback ? undefined : value },
+      }),
+  })
+const library = fromQuery('library', ANY)
+const readStatus = fromQuery('read', ANY)
+const seriesSort = fromQuery('seriesSort', RELEVANCE)
+const booksSort = fromQuery('booksSort', RELEVANCE)
+
+const { data: libraries } = useLibraries()
+const libraryItems = computed(() => [
+  { title: intl.formatMessage(messages.allLibraries), value: ANY },
+  ...(libraries.value ?? []).map((entry) => ({ title: entry.name, value: entry.id })),
+])
+const readStatusItems = computed(() => [
+  { title: intl.formatMessage(messages.anyReadStatus), value: ANY },
+  { title: intl.formatMessage(messages.unread), value: 'UNREAD' },
+  { title: intl.formatMessage(messages.inProgress), value: 'IN_PROGRESS' },
+  { title: intl.formatMessage(messages.read), value: 'READ' },
+])
+
+/** The sorts a kind of result can take: relevance, then the listings' own, each way. */
+function sortItems(
+  options: readonly { key: string; message: MessageDescriptor; invertible?: boolean }[],
+) {
+  return [
+    { title: intl.formatMessage(messages.relevance), value: RELEVANCE },
+    ...options
+      .filter((option) => option.key !== 'random')
+      .flatMap((option) => [
+        { title: `${intl.formatMessage(option.message)} ↑`, value: `${option.key},asc` },
+        ...(option.invertible
+          ? [{ title: `${intl.formatMessage(option.message)} ↓`, value: `${option.key},desc` }]
+          : []),
+      ]),
+  ]
+}
+const seriesSortItems = computed(() => sortItems(sortSeries))
+const booksSortItems = computed(() => sortItems(sortBooks))
+
+/** No sort is relevance: a search term orders by it unless told otherwise. */
+const sortOf = (value: string): Sort[] | undefined => {
+  if (value === RELEVANCE) return undefined
+  const [key, order] = value.split(',')
+  return [{ key: key!, order: order === 'desc' ? 'desc' : 'asc' }]
+}
+
+/** The narrowing both series and books take: a library, and how far the reader has got. */
+const condition = computed(() => {
+  const allOf: object[] = []
+  if (library.value !== ANY) allOf.push({ libraryId: { operator: 'is', value: library.value } })
+  if (readStatus.value !== ANY)
+    allOf.push({ readStatus: { operator: 'is', value: readStatus.value } })
+  return allOf.length === 0 ? undefined : { allOf }
+})
+const libraryIds = computed(() => (library.value === ANY ? undefined : [library.value]))
+
 const series = results<SeriesDto>(() =>
-  seriesListQueryInfinite({ search: { fullTextSearch: term.value } }),
+  seriesListQueryInfinite({
+    search: { fullTextSearch: term.value, condition: condition.value } as never,
+    sort: sortOf(seriesSort.value),
+  }),
 )
 const books = results<BookDto>(() =>
-  bookListQueryInfinite({ search: { fullTextSearch: term.value } }),
+  bookListQueryInfinite({
+    search: { fullTextSearch: term.value, condition: condition.value } as never,
+    sort: sortOf(booksSort.value),
+  }),
 )
+// Collections and read lists have no read status, but they are in libraries.
 const collections = results<CollectionDto>(() =>
-  collectionsListQueryInfinite({ search: term.value }),
+  collectionsListQueryInfinite({ search: term.value, libraryIds: libraryIds.value }),
 )
-const readLists = results<ReadListDto>(() => readListsListQueryInfinite({ search: term.value }))
+const readLists = results<ReadListDto>(() =>
+  readListsListQueryInfinite({ search: term.value, libraryIds: libraryIds.value }),
+)
 
 const all = [series, books, collections, readLists]
 const searching = computed(() => all.some((kind) => kind.isPending.value))
@@ -212,6 +342,56 @@ const messages = defineMessages({
     description: 'Search page: heading of the read lists that match',
     defaultMessage: 'Read lists',
     id: 'ELbS/T',
+  },
+  library: {
+    description: 'Search page: label of the library filter',
+    defaultMessage: 'Library',
+    id: '0HQ8Yq',
+  },
+  allLibraries: {
+    description: 'Search page: the library filter choice that searches every library',
+    defaultMessage: 'All libraries',
+    id: '4nmlVr',
+  },
+  readStatus: {
+    description: 'Search page: label of the read status filter',
+    defaultMessage: 'Read status',
+    id: 'gLaEaD',
+  },
+  anyReadStatus: {
+    description: 'Search page: the read status filter choice that keeps everything',
+    defaultMessage: 'Any',
+    id: 'Ia2u4L',
+  },
+  unread: {
+    description: 'Search page: read status filter choice',
+    defaultMessage: 'Unread',
+    id: 'z4V0fT',
+  },
+  inProgress: {
+    description: 'Search page: read status filter choice',
+    defaultMessage: 'In progress',
+    id: 'VuVpcn',
+  },
+  read: {
+    description: 'Search page: read status filter choice',
+    defaultMessage: 'Read',
+    id: '3qH+Nl',
+  },
+  seriesSort: {
+    description: 'Search page: label of the order the series are listed in',
+    defaultMessage: 'Order series by',
+    id: 'cE+8r6',
+  },
+  booksSort: {
+    description: 'Search page: label of the order the books are listed in',
+    defaultMessage: 'Order books by',
+    id: 'r0WTKl',
+  },
+  relevance: {
+    description: 'Search page: the order that puts the best matches first',
+    defaultMessage: 'Relevance',
+    id: 'MFpe/e',
   },
 })
 
