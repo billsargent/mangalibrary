@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "install:all": "npm install && npm --prefix server install && npm --prefix importer install && npm --prefix ui install",
+    "install:all": "npm ci && npm --prefix server ci && npm --prefix importer ci && npm --prefix ui ci",
     "build": "npm run build:server && npm run build:ui",
     "build:server": "npm --prefix server run build",
     "build:ui": "npm --prefix ui run build:with-i18n",
