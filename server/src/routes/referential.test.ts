@@ -170,6 +170,17 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
       .execute()
     await db.insertInto('book_metadata_tag').values({ book_id: row.id, tag: row.tag }).execute()
     await db.insertInto('book_metadata_author').values({ book_id: row.id, name: row.author, role: row.role }).execute()
+    // What analysis keeps of a series' books, as it would have.
+    await db
+      .insertInto('book_metadata_aggregation_tag')
+      .values({ series_id: row.series, tag: row.tag })
+      .onConflict((conflict) => conflict.doNothing())
+      .execute()
+    await db
+      .insertInto('book_metadata_aggregation_author')
+      .values({ series_id: row.series, name: row.author, role: row.role })
+      .onConflict((conflict) => conflict.doNothing())
+      .execute()
   }
 
   await db
@@ -390,6 +401,7 @@ describe('the tag cloud', () => {
         { series_id: 'S3', tag: 'Élan' },
         { series_id: 'S3', tag: '9 lives' },
       ])
+      .onConflict((conflict) => conflict.doNothing())
       .execute()
   }
 
