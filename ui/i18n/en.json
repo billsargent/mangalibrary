@@ -115,6 +115,10 @@
     "defaultMessage": "IETF BCP 47 language tag",
     "description": "Form edit series: General - language, hint"
   },
+  "0HQ8Yq": {
+    "defaultMessage": "Library",
+    "description": "Search page: label of the library filter"
+  },
   "0ILHru": {
     "defaultMessage": "OK",
     "description": "Import reading list table filter: OK"
@@ -319,6 +323,10 @@
     "defaultMessage": "Collection",
     "description": "Browsing context: collection"
   },
+  "3qH+Nl": {
+    "defaultMessage": "Read",
+    "description": "Search page: read status filter choice"
+  },
   "3qQjnw": {
     "defaultMessage": "Language",
     "description": "Filter panel: Language"
@@ -394,6 +402,10 @@
   "4k3t1s": {
     "defaultMessage": "Theme",
     "description": "EPUB reader settings: colour theme"
+  },
+  "4nmlVr": {
+    "defaultMessage": "All libraries",
+    "description": "Search page: the library filter choice that searches every library"
   },
   "4uqafX": {
     "defaultMessage": "One-shot",
@@ -1187,6 +1199,10 @@
     "defaultMessage": "Duplicate page",
     "description": "Unknown Duplicate Page Table: alt description for thumbnail"
   },
+  "Ia2u4L": {
+    "defaultMessage": "Any",
+    "description": "Search page: the read status filter choice that keeps everything"
+  },
   "Icqm5y": {
     "defaultMessage": "Page number",
     "description": "Page comparison table: table header - page number"
@@ -1334,6 +1350,10 @@
   "MEWT0D": {
     "defaultMessage": "Summary from book {number}:",
     "description": "Series view: summary from book label"
+  },
+  "MFpe/e": {
+    "defaultMessage": "Relevance",
+    "description": "Search page: the order that puts the best matches first"
   },
   "MKs9N+": {
     "defaultMessage": "Overview",
@@ -1743,6 +1763,10 @@
     "defaultMessage": "Analyze again",
     "description": "Media analysis page: button that analyses a book again"
   },
+  "URRCbG": {
+    "defaultMessage": "{count, plural, one {# book} other {# books}}",
+    "description": "App bar search box: how many books a series offered while typing has"
+  },
   "URZj/U": {
     "defaultMessage": "The API key will be deleted from this server.<ul><li>Any application or scripts using this API key will no longer be able to access the API.</li><li>Authentication activity for this API key will be permanently deleted.</li></ul><b>This action cannot be undone.</b>",
     "description": "API Key deletion warning notice"
@@ -1819,6 +1843,10 @@
     "defaultMessage": "ISBN",
     "description": "Book view table: ISBN header"
   },
+  "VWMRsE": {
+    "defaultMessage": "All results for \"{term}\"",
+    "description": "App bar search box: the last choice, which opens every result"
+  },
   "VcueWO": {
     "defaultMessage": "The 'SeriesGroup' element will be used",
     "description": "Form add/edit library: Metadata - Comicinfo.xml collections - information tooltip"
@@ -1846,6 +1874,10 @@
   "VtC7Ce": {
     "defaultMessage": "Editor",
     "description": "Author role: editor"
+  },
+  "VuVpcn": {
+    "defaultMessage": "In progress",
+    "description": "Search page: read status filter choice"
   },
   "VvjZEl": {
     "defaultMessage": "No books found",
@@ -2423,6 +2455,10 @@
     "defaultMessage": "Duplicate Pages",
     "description": "Drawer menu for Media > Duplicate Pages"
   },
+  "cE+8r6": {
+    "defaultMessage": "Order series by",
+    "description": "Search page: label of the order the series are listed in"
+  },
   "cGE5EN": {
     "defaultMessage": "Books",
     "description": "Search page: heading of the books that match"
@@ -2927,6 +2963,10 @@
     "defaultMessage": "Series metadata updated: {series}",
     "description": "Snackbar notification shown upon successful series metadata update"
   },
+  "gLaEaD": {
+    "defaultMessage": "Read status",
+    "description": "Search page: label of the read status filter"
+  },
   "gNiEAF": {
     "defaultMessage": "Comment",
     "description": "API Key table header: key comment"
@@ -3419,6 +3459,10 @@
     "defaultMessage": "{count, plural, one {# item} other {# items}}",
     "description": "Bulk edit metadata dialog: subtitle, how many items are being edited"
   },
+  "pPYhpn": {
+    "defaultMessage": "Books",
+    "description": "App bar search box: heading of the books offered while typing"
+  },
   "pR3VdQ": {
     "defaultMessage": "Series",
     "description": "History Table table header: Series"
@@ -3474,6 +3518,10 @@
   "r/G7j0": {
     "defaultMessage": "Number",
     "description": "Sort label: metadata.numberSort"
+  },
+  "r0WTKl": {
+    "defaultMessage": "Order books by",
+    "description": "Search page: label of the order the books are listed in"
   },
   "r5Jb1E": {
     "defaultMessage": "File hash",
@@ -3903,6 +3951,10 @@
     "defaultMessage": "Cycle page margin",
     "description": "Reader shortcut: cycle page margin"
   },
+  "yltosv": {
+    "defaultMessage": "Series",
+    "description": "App bar search box: heading of the series offered while typing"
+  },
   "yo9gG5": {
     "defaultMessage": "Tasks",
     "description": "Metrics page: heading of the section about background tasks"
@@ -3914,6 +3966,10 @@
   "yyAGH1": {
     "defaultMessage": "w: {width}, h: {height}",
     "description": "Page comparison: file dimensions"
+  },
+  "z4V0fT": {
+    "defaultMessage": "Unread",
+    "description": "Search page: read status filter choice"
   },
   "z5sjUM": {
     "defaultMessage": "Hash book file",
