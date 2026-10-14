@@ -30,8 +30,6 @@ const SPEC_FILE = join(HERE, '..', '..', 'spec', 'komga-openapi.json')
 
 /** Operations of the reference this server does not serve, and why. */
 const NOT_SERVED: Record<string, string> = {
-  'GET /api/v1/oauth2/providers': 'There is no OAuth2 or OIDC login.',
-  'PUT /api/v1/libraries/{libraryId}': 'Deprecated in the reference in favour of PATCH, which is served.',
   'GET /api/v1/readlists/{id}/read-progress/tachiyomi': 'The Mihon (Tachiyomi) progress endpoints are not implemented.',
   'PUT /api/v1/readlists/{id}/read-progress/tachiyomi': 'The Mihon (Tachiyomi) progress endpoints are not implemented.',
   'GET /api/v2/series/{seriesId}/read-progress/tachiyomi':

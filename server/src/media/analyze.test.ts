@@ -163,6 +163,29 @@ describe('archive books', () => {
 })
 
 describe('rar books', () => {
+  it('reads a RAR named .cbz, and a ZIP named .cbr, by what they are', async () => {
+    const db = await database()
+    const rarNamedZip = writeBook('renamed.cbz', writeRar([{ name: 'page 1.jpg', data: await jpeg(10, 20) }]))
+    const zipNamedRar = writeBook('renamed.cbr', writeZip([{ name: 'page 1.jpg', data: await jpeg(10, 20) }]))
+
+    expect((await analyzeBook(db.db, 'B1', rarNamedZip, { analyzeDimensions: true })).status).toBe('READY')
+    const media = await db.db
+      .selectFrom('media')
+      .select('media_type')
+      .where('book_id', '=', 'B1')
+      .executeTakeFirstOrThrow()
+    expect(media.media_type).toContain('rar')
+
+    for (const path of [rarNamedZip, zipNamedRar]) {
+      const book = await openBook(path)
+      try {
+        expect((await sharp(await book.readPage(1)).metadata()).width).toBe(10)
+      } finally {
+        book.close()
+      }
+    }
+  })
+
   it('lists and measures the pages of a CBR, in reading order', async () => {
     const db = await database()
     const path = writeBook(

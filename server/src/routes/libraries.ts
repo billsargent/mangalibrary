@@ -212,10 +212,13 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
     },
   )
 
-  app.patch<{ Params: { libraryId: string } }>(
-    '/api/v1/libraries/:libraryId',
-    { preHandler: requireAdmin },
-    async (req, reply) => {
+  // PUT is the reference's older form of the same change, deprecated there in favour of
+  // PATCH and kept for the clients that still send it.
+  app.route<{ Params: { libraryId: string } }>({
+    method: ['PATCH', 'PUT'],
+    url: '/api/v1/libraries/:libraryId',
+    preHandler: requireAdmin,
+    handler: async (req, reply) => {
       const existing = await db
         .selectFrom('libraries')
         .selectAll()
@@ -260,7 +263,7 @@ export async function registerLibraryRoutes(app: FastifyInstance, opts: RouteOpt
       }
       return reply.code(204).send()
     },
-  )
+  })
 
   app.delete<{ Params: { libraryId: string } }>(
     '/api/v1/libraries/:libraryId',

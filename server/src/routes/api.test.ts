@@ -863,3 +863,54 @@ describe('changing a password', () => {
     await app.close()
   })
 })
+
+describe('small departures from the reference, closed', () => {
+  it('pages the sign-in record', async () => {
+    const { app } = await setup()
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/login',
+        payload: { email: 'admin@example.com', password: 'wrong' },
+      })
+    }
+    const page = await app.inject({
+      method: 'GET',
+      url: '/api/v2/users/authentication-activity?page=1&size=2',
+      headers: admin,
+    })
+    expect(page.json()).toMatchObject({ number: 1, size: 2, totalElements: 3, numberOfElements: 1 })
+    await app.close()
+  })
+
+  it('offers no OAuth2 providers, and updates a library by PUT as by PATCH', async () => {
+    const { app } = await setup()
+    expect((await app.inject({ method: 'GET', url: '/api/v1/oauth2/providers' })).json()).toEqual([])
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/libraries/L1',
+      headers: admin,
+      payload: { name: 'Renamed' },
+    })
+    expect(put.statusCode).toBe(204)
+    expect((await app.inject({ method: 'GET', url: '/api/v1/libraries/L1', headers: admin })).json().name).toBe(
+      'Renamed',
+    )
+    await app.close()
+  })
+
+  it('says how to sign in on a 401, except to a page of the web UI', async () => {
+    const { app } = await setup()
+    const plain = await app.inject({ method: 'GET', url: '/api/v1/libraries' })
+    expect(plain.statusCode).toBe(401)
+    expect(plain.headers['www-authenticate']).toBe('Basic realm="Realm"')
+    const fromPage = await app.inject({
+      method: 'GET',
+      url: '/api/v1/libraries',
+      headers: { 'x-requested-with': 'XMLHttpRequest' },
+    })
+    expect(fromPage.statusCode).toBe(401)
+    expect(fromPage.headers['www-authenticate']).toBeUndefined()
+    await app.close()
+  })
+})

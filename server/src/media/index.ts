@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { open, readFile } from 'node:fs/promises'
 import { basename } from 'node:path'
 
 import { openEpub } from './epub.js'
@@ -47,8 +47,34 @@ function allFiles(container: Container): FileEntry[] {
  * CBR and a PDF are: the libraries that read them want the whole file, so those
  * two still cost their size in memory while they are open.
  */
+/**
+ * The container a file is, by its name - and, where the name says ZIP or RAR, by its
+ * first bytes, because the two are often named for each other: a RAR renamed `.cbz`
+ * is common, and read as a ZIP it fails. The reference looks at the content the same
+ * way. A PDF or an EPUB is taken at its name.
+ */
+export async function containerOf(path: string): Promise<ContainerKind | null> {
+  const named = containerFor(basename(path))
+  if (named !== 'ZIP' && named !== 'RAR') return named
+  let handle
+  try {
+    handle = await open(path, 'r')
+    const head = Buffer.alloc(8)
+    const { bytesRead } = await handle.read(head, 0, 8, 0)
+    const start = head.subarray(0, bytesRead)
+    if (start.subarray(0, 2).toString('latin1') === 'PK') return 'ZIP'
+    if (start.subarray(0, 4).toString('latin1') === 'Rar!') return 'RAR'
+    if (start.subarray(0, 4).toString('latin1') === '%PDF') return 'PDF'
+    return named
+  } catch {
+    return named
+  } finally {
+    await handle?.close()
+  }
+}
+
 export async function openBook(path: string, stated?: ContainerKind): Promise<BookContents> {
-  const kind = stated ?? containerFor(basename(path))
+  const kind = stated ?? (await containerOf(path))
   if (kind === null) throw new Error(`${basename(path)} is not a book container this server reads`)
 
   if (kind === 'PDF') {
