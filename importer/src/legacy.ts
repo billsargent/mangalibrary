@@ -2,6 +2,13 @@ import BetterSqlite3 from 'better-sqlite3'
 
 export type LegacyRow = Record<string, unknown>
 
+/** A row with its column names upper-cased, as the legacy schema spells them in one place and not another. */
+function normalised(row: Record<string, unknown>): LegacyRow {
+  const out: LegacyRow = {}
+  for (const [key, value] of Object.entries(row)) out[key.toUpperCase()] = value
+  return out
+}
+
 /**
  * Read-only access to a legacy Komga database.
  *
@@ -43,15 +50,33 @@ export class LegacyDatabase {
     return columns.every((column) => available.has(column.toUpperCase()))
   }
 
-  /** Rows of a table (empty when the table is absent), with upper-cased keys. */
+  /** How many rows a table has (none when it is absent). */
+  count(table: string): number {
+    if (!this.hasTable(table)) return 0
+    const row = this.db.prepare(`select count(*) as n from "${table.replaceAll('"', '""')}"`).get() as { n: number }
+    return row.n
+  }
+
+  /**
+   * The rows of a table one at a time (none when the table is absent).
+   *
+   * A real Komga database holds millions of page rows and gigabytes of covers, so
+   * nothing reads a table whole: each row is gone before the next is read.
+   */
+  *iterate(table: string): Generator<LegacyRow> {
+    if (!this.hasTable(table)) return
+    const statement = this.db.prepare(`select * from "${table.replaceAll('"', '""')}"`)
+    for (const row of statement.iterate() as Iterable<Record<string, unknown>>) yield normalised(row)
+  }
+
+  /** Every row of a table, for the small ones: users, libraries, settings. */
   rows(table: string): LegacyRow[] {
-    if (!this.hasTable(table)) return []
-    const raw = this.db.prepare(`select * from "${table.replaceAll('"', '""')}"`).all() as Record<string, unknown>[]
-    return raw.map((row) => {
-      const normalised: LegacyRow = {}
-      for (const [key, value] of Object.entries(row)) normalised[key.toUpperCase()] = value
-      return normalised
-    })
+    return [...this.iterate(table)]
+  }
+
+  /** The answer to a query of the caller's own, for counts and other small summaries. */
+  query(sql: string): LegacyRow[] {
+    return (this.db.prepare(sql).all() as Record<string, unknown>[]).map(normalised)
   }
 
   close(): void {
