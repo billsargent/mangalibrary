@@ -8,6 +8,7 @@
  */
 
 import { onReader } from '../threads/index.js'
+import { unpackPage } from '../threads/page-bytes.js'
 import { containerOf, openBook } from './index.js'
 
 /** A page's bytes, or why there are none: the file would not open, or has no such page. */
@@ -17,12 +18,8 @@ export async function readBookPage(path: string, pageNumber: number): Promise<Pa
   const kind = await containerOf(path)
   if (kind === 'RAR' || kind === 'PDF') {
     const read = await onReader(path, 'readPage', { path, pageNumber })
-    if ('failed' in read) return read
-    // Bytes arrive from a thread as a plain array of them.
-    return {
-      bytes: Buffer.from(read.bytes.buffer, read.bytes.byteOffset, read.bytes.byteLength),
-      mediaType: read.mediaType,
-    }
+    if (!(read instanceof ArrayBuffer)) return read
+    return unpackPage(read)
   }
 
   let book

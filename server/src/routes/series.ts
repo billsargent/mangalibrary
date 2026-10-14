@@ -26,7 +26,7 @@ import {
   type SortSpec,
 } from './query.js'
 import { seriesCondition, type ConditionFilter } from '../search/condition.js'
-import { INDEXES, matchFilter, relevanceSort } from '../search/fullText.js'
+import { INDEXES, matchFilter, relevanceSort, withRelevance } from '../search/fullText.js'
 import { zipStream } from '../zip.js'
 
 /**
@@ -339,14 +339,17 @@ export async function findSeries(
       .executeTakeFirstOrThrow()
     const total = Number(counted.total)
 
-    let idsQuery = applySort(seriesQuery(db, filters, onlySeries).select('series.id'), sorts).orderBy('series.id')
+    let idsQuery = applySort(
+      withRelevance(seriesQuery(db, filters, onlySeries), sorts).select('series.id'),
+      sorts,
+    ).orderBy('series.id')
     if (!unpaged) idsQuery = idsQuery.limit(size).offset(page * size)
     const ids = (await idsQuery.execute()).map((row) => row.id)
     return { rows: await loadSeriesRows(db, ids), total }
   }
 
   const ordered = (
-    await applySort(seriesQuery(db, filters, onlySeries).select('series.id'), sorts)
+    await applySort(withRelevance(seriesQuery(db, filters, onlySeries), sorts).select('series.id'), sorts)
       .orderBy('series.id')
       .execute()
   ).map((row) => row.id)
