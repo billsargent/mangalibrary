@@ -7,13 +7,18 @@ on:
 
 jobs:
   server:
-    name: Server & importer
+    name: Server & importer (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    # The native database module is built for each Node version, so both are tried.
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
           cache: npm
           cache-dependency-path: |
             server/package-lock.json
@@ -67,13 +72,17 @@ jobs:
   # the README's own steps, then a library scanned and a page read from the built
   # server through the machine's network address.
   install:
-    name: Install, build and run
+    name: Install, build and run (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
       - run: npm run install:all
       - run: npm run build
       - run: npm run smoke

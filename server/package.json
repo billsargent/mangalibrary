@@ -28,7 +28,7 @@
     "@zxing/library": "^0.21.3",
     "7z-wasm": "^1.2.0",
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.5.0",
+    "better-sqlite3": "^12.11.1",
     "fastify": "^5.1.0",
     "file-type": "^19.6.0",
     "hash-wasm": "^4.12.0",
@@ -54,7 +54,7 @@
     "vitest": "^2.1.5"
   },
   "allowScripts": {
-    "better-sqlite3@11.10.0": true,
+    "better-sqlite3@12.11.1": true,
     "sharp@0.33.5": true,
     "esbuild@0.28.2": true,
     "esbuild@0.21.5": true
