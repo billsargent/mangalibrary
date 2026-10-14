@@ -55,6 +55,10 @@
     "defaultMessage": "Server listening port",
     "description": "Server settings: input field for server port"
   },
+  "+x0NgM": {
+    "defaultMessage": "Normal",
+    "description": "EPUB reader margins: normal"
+  },
   "+xj+4o": {
     "defaultMessage": "Click or press next again to exit the reader.",
     "description": "Reader: how to leave after the last book"
@@ -422,6 +426,10 @@
   "4yDvPA": {
     "defaultMessage": "Clear filters",
     "description": "Filter empty state: button"
+  },
+  "51vncs": {
+    "defaultMessage": "Automatic",
+    "description": "EPUB reader pages: two side by side when the window is wide enough"
   },
   "5AAGkA": {
     "defaultMessage": "Password",
@@ -943,6 +951,10 @@
     "defaultMessage": "Start of the book",
     "description": "EPUB reader keyboard shortcuts: go to the start of the book"
   },
+  "Drky16": {
+    "defaultMessage": "Pages side by side",
+    "description": "EPUB reader settings: how many pages are shown at once"
+  },
   "DwDa04": {
     "defaultMessage": "Scan interval",
     "description": "Form add/edit library: Scanner - scan interval"
@@ -1026,6 +1038,10 @@
   "EzOmuX": {
     "defaultMessage": "Created",
     "description": "Known Duplicate Page Table header: creation date"
+  },
+  "EzS8jc": {
+    "defaultMessage": "One",
+    "description": "EPUB reader pages: one at a time"
   },
   "FBGnzt": {
     "defaultMessage": "A read list with that name already exists",
@@ -2187,6 +2203,10 @@
     "defaultMessage": "Incognito mode: read progress will not be marked",
     "description": "Reader: tooltip of the incognito icon"
   },
+  "Zlrbsh": {
+    "defaultMessage": "Narrow",
+    "description": "EPUB reader margins: narrow"
+  },
   "ZnjyI3": {
     "defaultMessage": "Show less",
     "description": "Expendable text: show less"
@@ -2650,6 +2670,10 @@
   "efspoY": {
     "defaultMessage": "Table",
     "description": "Presentation mode: table"
+  },
+  "egpxJ/": {
+    "defaultMessage": "Margins",
+    "description": "EPUB reader settings: space at the sides of the text"
   },
   "egrxd6": {
     "defaultMessage": "User created: {email}",
@@ -3443,6 +3467,10 @@
     "defaultMessage": "File name",
     "description": "Duplicate Page Hash Matches Table header: File name"
   },
+  "o0dO+H": {
+    "defaultMessage": "Line spacing",
+    "description": "EPUB reader settings: space between lines"
+  },
   "o1XnPU": {
     "defaultMessage": "API Key",
     "description": "Authentication Activity table header: API Key"
@@ -3779,6 +3807,10 @@
     "defaultMessage": "Click or press next again to move to the next book.",
     "description": "EPUB reader: how to go to the next book"
   },
+  "u0Z3t1": {
+    "defaultMessage": "Wide",
+    "description": "EPUB reader margins: wide"
+  },
   "u23YLt": {
     "defaultMessage": "Undo",
     "description": "Poster card: action - undo"
@@ -3890,6 +3922,10 @@
   "wJaip6": {
     "defaultMessage": "Compute hash for files",
     "description": "Form add/edit library: Options - hash files"
+  },
+  "wMv5xR": {
+    "defaultMessage": "Two",
+    "description": "EPUB reader pages: two side by side"
   },
   "wRjFWz": {
     "defaultMessage": "Automatic ordering",

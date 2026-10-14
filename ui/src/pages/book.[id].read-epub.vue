@@ -65,7 +65,7 @@
         <iframe
           ref="frame"
           class="chapter"
-          :class="{ 'chapter--hidden': !laidOut }"
+          :class="{ 'chapter--hidden': !laidOut, 'chapter--spread': paginated && columns === 2 }"
           :src="chapterUrl"
           :title="title"
           sandbox="allow-same-origin"
@@ -229,6 +229,60 @@
               </v-btn-toggle>
             </div>
 
+            <div v-if="paginated">
+              <div class="text-label-large mb-1">{{ $formatMessage(messages.spread) }}</div>
+              <v-btn-toggle
+                v-model="store.spread"
+                mandatory
+                density="comfortable"
+                variant="outlined"
+                divided
+              >
+                <v-btn
+                  v-for="value in EpubSpreadValues"
+                  :key="value"
+                  :value="value"
+                  :text="$formatMessage(spreadMessages[value])"
+                />
+              </v-btn-toggle>
+            </div>
+
+            <div>
+              <div class="text-label-large mb-1">{{ $formatMessage(messages.margins) }}</div>
+              <v-btn-toggle
+                v-model="store.margins"
+                mandatory
+                density="comfortable"
+                variant="outlined"
+                divided
+              >
+                <v-btn
+                  v-for="value in EpubMarginValues"
+                  :key="value"
+                  :value="value"
+                  :text="$formatMessage(marginMessages[value])"
+                />
+              </v-btn-toggle>
+            </div>
+
+            <div>
+              <div class="text-label-large mb-1">{{ $formatMessage(messages.lineHeight) }}</div>
+              <v-btn-toggle
+                v-model="store.lineHeight"
+                mandatory
+                density="comfortable"
+                variant="outlined"
+                divided
+              >
+                <v-btn
+                  v-for="value in EpubLineHeightValues"
+                  :key="value"
+                  :value="value"
+                  :text="value === 0 ? $formatMessage(fontMessages.publisher) : String(value)"
+                />
+              </v-btn-toggle>
+            </div>
+
             <v-slider
               v-model="store.fontSize"
               :label="$formatMessage(messages.fontSize)"
@@ -262,7 +316,7 @@
 import { useQuery } from '@pinia/colada'
 import type { ShortcutGroup } from '@/components/reader/ShortcutsHelp.vue'
 import type { ReaderContext } from '@/types/reader'
-import { useDebounceFn, useEventListener, useFullscreen } from '@vueuse/core'
+import { useDebounceFn, useEventListener, useFullscreen, useWindowSize } from '@vueuse/core'
 import { defineMessages, type MessageDescriptor, useIntl } from 'vue-intl'
 import { bookDetailQuery, QUERY_KEYS_BOOKS } from '@/colada/books'
 import {
@@ -276,7 +330,7 @@ import {
   resourcePath,
   type EpubPosition,
 } from '@/functions/epub'
-import { EPUB_THEMES, epubStyle } from '@/functions/epub-style'
+import { EPUB_THEMES, epubStyle, wideEnoughForTwo } from '@/functions/epub-style'
 import {
   type BookDto,
   komgaGetBookPositions,
@@ -292,10 +346,15 @@ import {
   EPUB_FONT_SIZE,
   EpubFontValues,
   EpubLayoutValues,
+  EpubLineHeightValues,
+  EpubMarginValues,
+  EpubSpreadValues,
   EpubThemeValues,
   useEpubReaderStore,
   type EpubFont,
   type EpubLayout,
+  type EpubMargins,
+  type EpubSpread,
   type EpubTheme,
 } from '@/stores/epub-reader'
 
@@ -436,6 +495,14 @@ const place = computed(() =>
 )
 
 const paginated = computed(() => store.layout === 'paginated')
+
+/** Two pages side by side when asked for, or when left to choose and the window is wide. */
+const windowSize = useWindowSize()
+const columns = computed<1 | 2>(() => {
+  if (store.spread === 'double') return 2
+  if (store.spread === 'single') return 1
+  return wideEnoughForTwo(windowSize.width.value, windowSize.height.value) ? 2 : 1
+})
 const atStart = computed(() => chapter.value === 0 && (paginated.value ? page.value === 0 : true))
 
 // Open the book where it was left, once everything about it is known.
@@ -510,6 +577,9 @@ function applyStyle() {
     layout: store.layout,
     font: store.font,
     fontSize: store.fontSize,
+    columns: columns.value,
+    margins: store.margins,
+    lineHeight: store.lineHeight,
   })
 }
 
@@ -634,7 +704,16 @@ function listen(document: Document, window: Window) {
 
 // A change of setting lays the same chapter out again, at the same place.
 watch(
-  () => [store.theme, store.layout, store.font, store.fontSize] as const,
+  () =>
+    [
+      store.theme,
+      store.layout,
+      store.font,
+      store.fontSize,
+      columns.value,
+      store.margins,
+      store.lineHeight,
+    ] as const,
   () => {
     if (!laidOut.value) return
     target = { progression: progression.value }
@@ -1009,6 +1088,21 @@ const messages = defineMessages({
     defaultMessage: 'Font',
     id: '0P3HV6',
   },
+  spread: {
+    description: 'EPUB reader settings: how many pages are shown at once',
+    defaultMessage: 'Pages side by side',
+    id: 'Drky16',
+  },
+  margins: {
+    description: 'EPUB reader settings: space at the sides of the text',
+    defaultMessage: 'Margins',
+    id: 'egpxJ/',
+  },
+  lineHeight: {
+    description: 'EPUB reader settings: space between lines',
+    defaultMessage: 'Line spacing',
+    id: 'o0dO+H',
+  },
   fontSize: {
     description: 'EPUB reader settings: text size',
     defaultMessage: 'Text size',
@@ -1055,6 +1149,42 @@ const layoutMessages: Record<EpubLayout, MessageDescriptor> = defineMessages({
   },
 })
 
+const spreadMessages: Record<EpubSpread, MessageDescriptor> = defineMessages({
+  auto: {
+    description: 'EPUB reader pages: two side by side when the window is wide enough',
+    defaultMessage: 'Automatic',
+    id: '51vncs',
+  },
+  single: {
+    description: 'EPUB reader pages: one at a time',
+    defaultMessage: 'One',
+    id: 'EzS8jc',
+  },
+  double: {
+    description: 'EPUB reader pages: two side by side',
+    defaultMessage: 'Two',
+    id: 'wMv5xR',
+  },
+})
+
+const marginMessages: Record<EpubMargins, MessageDescriptor> = defineMessages({
+  narrow: {
+    description: 'EPUB reader margins: narrow',
+    defaultMessage: 'Narrow',
+    id: 'Zlrbsh',
+  },
+  normal: {
+    description: 'EPUB reader margins: normal',
+    defaultMessage: 'Normal',
+    id: '+x0NgM',
+  },
+  wide: {
+    description: 'EPUB reader margins: wide',
+    defaultMessage: 'Wide',
+    id: 'u0Z3t1',
+  },
+})
+
 const fontMessages: Record<EpubFont, MessageDescriptor> = defineMessages({
   publisher: {
     description: "EPUB reader font: the book's own",
@@ -1096,6 +1226,11 @@ const fontMessages: Record<EpubFont, MessageDescriptor> = defineMessages({
   width: 100%;
   max-width: 820px;
   height: 100%;
+}
+
+/* Two pages side by side, each as wide as one alone. */
+.chapter--spread {
+  max-width: 1640px;
 }
 
 /* Hidden while it is being laid out, so the reader never sees a chapter jump to its place. */
