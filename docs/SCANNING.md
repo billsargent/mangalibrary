@@ -156,6 +156,33 @@ library where nothing changed still opens no file.
 The first scan after this was added sees every such file as new. That costs a look at
 each series' covers, and a re-read of each series that has a `series.json`.
 
+## When a book is read again
+
+A scan knows a file changed by its time: the later of its creation and modification
+times, stored in UTC. A time that differs from the stored one means the book changed.
+
+What happens then depends on what changed:
+
+- **An analysed CBZ** has its time updated and stays readable, and a `CheckBook` job,
+  behind everything else, looks at the directory at the end of the archive - a few
+  kilobytes, not the book. If it lists the same entries, with every page at the size
+  analysis stored, the book keeps its analysis and only its metadata is read again,
+  because a tagging tool rewriting ComicInfo.xml changes the time and not the pages.
+  Otherwise it is marked OUTDATED and analysed. The scan does not look itself: over a
+  network that is about a tenth of a second a book, which for a library copied whole
+  would hold the scan, and everything queued behind it, for an hour. The summary
+  counts these as `booksToCheck`.
+- **Anything else** - pages added, removed or resized, a PDF, an EPUB, a RAR, or an
+  analysis without page sizes (an import from an old Komga) - is marked OUTDATED and
+  analysed again.
+
+Copying a library, restoring it from a backup or touching its files therefore costs a
+look at each archive's directory, where the reference hashes each whole file.
+
+Times are kept in UTC, so a change of time zone - a container started without `TZ`, a
+machine moved, summer time - changes nothing. The reference keeps them as the server's
+local time, so for it such a change makes every book look changed.
+
 ## What a first scan costs, and in what order
 
 A scan records what is on disk and then stops. Everything that opens a book is a job of

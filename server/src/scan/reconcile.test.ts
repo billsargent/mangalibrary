@@ -12,6 +12,7 @@ import { EventBus } from '../events.js'
 import { SETTING_KEYS, setSetting } from '../settings.js'
 import { writeZip } from '../testing/zip.js'
 import { scanLibrary } from './reconcile.js'
+import { checkTouchedBook } from './unchanged.js'
 
 async function setup(overrides: Record<string, unknown> = {}): Promise<{ database: Database; root: string }> {
   const root = mkdtempSync(join(tmpdir(), 'ml-reconcile-'))
@@ -124,6 +125,7 @@ describe('scanning a library', () => {
       seriesDeleted: 0,
       booksCreated: 0,
       booksUpdated: 0,
+      booksToCheck: 0,
       booksDeleted: 0,
       seriesRestored: 0,
       booksRestored: 0,
@@ -388,7 +390,7 @@ describe('announcing what a scan did', () => {
     bookWithDocument(root, 'Folder A/Volume 1.cbz', { Series: 'Titled by its book' })
     bookWithDocument(root, 'Folder B/Volume 1.cbz', { Series: 'Another' })
 
-    const handed: { metadata: string[]; artwork: string[] }[] = []
+    const handed: { metadata: string[]; artwork: string[]; check: string[] }[] = []
     await scanLibrary(database.db, 'L1', { readLater: async (work) => void handed.push(work) })
 
     const series = await seriesRows(database)
@@ -403,7 +405,7 @@ describe('announcing what a scan did', () => {
     // A scan that changes nothing has nothing to hand over.
     handed.length = 0
     await scanLibrary(database.db, 'L1', { readLater: async (work) => void handed.push(work) })
-    expect(handed).toEqual([{ metadata: [], artwork: [] }])
+    expect(handed).toEqual([{ metadata: [], artwork: [], check: [] }])
   })
 
   it('names what it found, with what it belongs to', async () => {
@@ -759,5 +761,117 @@ describe('a scan that is stopped part-way', () => {
       ['Volume 3', 3],
     ])
     expect(await broken(database)).toEqual([])
+  })
+})
+
+describe('a book whose file was touched', () => {
+  /** A CBZ of two pages and a ComicInfo, analysed, as a library holds it. */
+  async function analysed(pages: { name: string; data: string }[], series = 'One') {
+    const { database, root } = await setup()
+    const path = join(root, 'Akira', 'Volume 1.cbz')
+    mkdirSync(dirname(path), { recursive: true })
+    const write = (entries: { name: string; data: string }[], comicInfo = series) =>
+      writeFileSync(
+        path,
+        writeZip([
+          ...entries.map((entry) => ({ name: entry.name, data: Buffer.from(entry.data, 'latin1') })),
+          { name: 'ComicInfo.xml', data: Buffer.from(`<ComicInfo><Title>${comicInfo}</Title></ComicInfo>`) },
+        ]),
+      )
+    write(pages)
+    await scanLibrary(database.db, 'L1')
+    const book = (await bookRows(database))[0]!
+    // A real cover, so analysis can read the first page.
+    expect((await analyzeBook(database.db, book.id, path)).status).toBe('READY')
+    return { database, root, path, book, write }
+  }
+
+  /** Move the file's time past its creation, as copying or touching it does. */
+  const touch = (path: string, when = '2031-01-01T00:00:00Z') => utimesSync(path, new Date(), new Date(when))
+  const status = async (database: Database, bookId: string) =>
+    (await database.db.selectFrom('media').select('status').where('book_id', '=', bookId).executeTakeFirstOrThrow())
+      .status
+
+  async function realPages() {
+    const sharp = (await import('sharp')).default
+    const png = async (shade: number) =>
+      (
+        await sharp({ create: { width: 4, height: 6, channels: 3, background: { r: shade, g: shade, b: shade } } })
+          .png()
+          .toBuffer()
+      ).toString('latin1')
+    return [
+      { name: '01.png', data: await png(10) },
+      { name: '02.png', data: await png(200) },
+    ]
+  }
+
+  it('keeps its analysis when the pages are the same, and reads its metadata again', async () => {
+    const pages = await realPages()
+    const { database, path, book } = await analysed(pages)
+    touch(path)
+
+    const handed: { check: string[] }[] = []
+    const summary = await scanLibrary(database.db, 'L1', {
+      deep: true,
+      readLater: async (work) => void handed.push(work),
+    })
+    expect(summary).toMatchObject({ booksUpdated: 1, booksToCheck: 1 })
+    expect(await status(database, book.id)).toBe('READY')
+    // Left readable for a check that a queue runs later.
+    expect(handed[0]?.check).toEqual([book.id])
+    expect(await checkTouchedBook(database.db, book.id)).toBe('KEPT')
+    expect(await status(database, book.id)).toBe('READY')
+    // The time is the file's now, so the next scan sees nothing to do.
+    const again = await scanLibrary(database.db, 'L1', { deep: true })
+    expect(again).toMatchObject({ booksUpdated: 0, booksToCheck: 0 })
+  })
+
+  it('keeps the pages when only the ComicInfo was rewritten, and reads the new metadata', async () => {
+    const pages = await realPages()
+    const { database, path, book, write } = await analysed(pages, 'Old title')
+    write(pages, 'A much longer new title')
+    touch(path)
+
+    const summary = await scanLibrary(database.db, 'L1', { deep: true })
+    expect(summary).toMatchObject({ booksUpdated: 1, booksToCheck: 1 })
+    expect(await status(database, book.id)).toBe('READY')
+    const metadata = await database.db
+      .selectFrom('book_metadata')
+      .select('title')
+      .where('book_id', '=', book.id)
+      .executeTakeFirstOrThrow()
+    expect(metadata.title).toBe('A much longer new title')
+  })
+
+  it('is read again when a page was added', async () => {
+    const pages = await realPages()
+    const { database, path, book, write } = await analysed(pages)
+    write([...pages, { name: '03.png', data: pages[0]!.data }])
+    touch(path)
+
+    expect(await scanLibrary(database.db, 'L1', { deep: true })).toMatchObject({ booksUpdated: 1, booksToCheck: 1 })
+    expect(await status(database, book.id)).toBe('OUTDATED')
+  })
+
+  it('is read again when a page changed size', async () => {
+    const pages = await realPages()
+    const { database, path, book, write } = await analysed(pages)
+    write([pages[0]!, { name: '02.png', data: pages[1]!.data + 'x' }])
+    touch(path)
+
+    expect(await scanLibrary(database.db, 'L1', { deep: true })).toMatchObject({ booksUpdated: 1, booksToCheck: 1 })
+    expect(await status(database, book.id)).toBe('OUTDATED')
+  })
+
+  it('is read again when what analysis stored has no page sizes to compare', async () => {
+    const pages = await realPages()
+    const { database, path, book } = await analysed(pages)
+    // As an import from an old Komga can leave it.
+    await database.db.updateTable('media_page').set({ file_size: null }).where('book_id', '=', book.id).execute()
+    touch(path)
+
+    expect(await scanLibrary(database.db, 'L1', { deep: true })).toMatchObject({ booksToCheck: 1 })
+    expect(await status(database, book.id)).toBe('OUTDATED')
   })
 })

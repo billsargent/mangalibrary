@@ -5,6 +5,7 @@ import type { DB } from '../db/schema.js'
 import { announceBook, announceSeries, bookRef } from '../content-events.js'
 import type { EventBus } from '../events.js'
 import { enqueueJobs } from '../jobs.js'
+import { MEDIA_TYPES } from '../media/index.js'
 import { naturalCompare } from '../media/kinds.js'
 import { refreshSeriesLocalArtwork } from '../metadata/localArtwork.js'
 import { refreshSeriesMetadata } from '../metadata/series.js'
@@ -12,6 +13,7 @@ import { cleanupEmptySets } from '../organisation/cleanup.js'
 import { nextTsid } from '../tsid.js'
 import { LibraryScanError, walkLibrary, type ScannedBook, type ScannedSeries, type ScanSettings } from './library.js'
 import { deletedBookFor, deletedBookSizes, restoreBook, type DeletedBook } from './restore.js'
+import { checkTouchedBook } from './unchanged.js'
 
 /**
  * The series a scan leaves to be read: those whose books or metadata file changed,
@@ -20,6 +22,14 @@ import { deletedBookFor, deletedBookSizes, restoreBook, type DeletedBook } from 
 export interface SeriesToRead {
   metadata: string[]
   artwork: string[]
+  /**
+   * Books whose file time moved, which may have been touched and not changed: they
+   * stay readable until a look at the archive's list of entries says whether their
+   * pages are as analysed (`checkTouchedBook`). That look is a read of the file,
+   * which on a large library over a network is minutes of work, so it is not done
+   * by the scan.
+   */
+  check: string[]
 }
 
 /** What a scan did, so a caller can report it. */
@@ -29,6 +39,8 @@ export interface ScanSummary {
   seriesDeleted: number
   booksCreated: number
   booksUpdated: number
+  /** Of the books updated, the CBZs left readable until a check of their pages. */
+  booksToCheck: number
   booksDeleted: number
   /** Series and books that were in the trash and came back with their files. */
   seriesRestored: number
@@ -422,6 +434,7 @@ export async function scanLibrary(
     seriesDeleted: 0,
     booksCreated: 0,
     booksUpdated: 0,
+    booksToCheck: 0,
     booksDeleted: 0,
     seriesRestored: 0,
     booksRestored: 0,
@@ -433,6 +446,7 @@ export async function scanLibrary(
   const byUrl = new Map(existing.map((row) => [row.url, row]))
   const scannedUrls = new Set(found.map((series) => pathToFileURL(series.path).href))
   const touched = new Set<string>()
+  const toCheck: string[] = []
 
   // Whatever is no longer on disk is soft-deleted first, so the trash bin sees it.
   // A scan that found nothing at all soft-deletes everything: an empty library is
@@ -653,6 +667,30 @@ export async function scanLibrary(
         arrivals.set(bookUrl, match)
       }
 
+      // Of the books whose time moved, the analysed CBZs: those can be checked by
+      // their list of entries, and stay readable until they have been.
+      const moved = scanned.books
+        .map((book) => liveByUrl.get(pathToFileURL(book.path).href))
+        .filter((existingBook) => existingBook !== undefined)
+        .filter(
+          (existingBook, index) =>
+            existingBook.file_last_modified !== scanned.books[index]?.fileLastModified.toISOString(),
+        )
+        .map((existingBook) => existingBook.id)
+      const checkable = new Set(
+        moved.length === 0
+          ? []
+          : (
+              await db
+                .selectFrom('media')
+                .select('book_id')
+                .where('book_id', 'in', moved)
+                .where('status', '=', 'READY')
+                .where('media_type', '=', MEDIA_TYPES.ZIP)
+                .execute()
+            ).map((row) => row.book_id),
+      )
+
       await together(async (trx, later) => {
         await trx
           .updateTable('series')
@@ -684,12 +722,18 @@ export async function scanLibrary(
             .set({ file_last_modified: modified, file_size: book.fileSize, last_modified_date: now })
             .where('id', '=', existingBook.id)
             .execute()
-          // What analysis recorded no longer describes the file.
-          await trx
-            .updateTable('media')
-            .set({ status: 'OUTDATED', last_modified_date: now })
-            .where('book_id', '=', existingBook.id)
-            .execute()
+          if (checkable.has(existingBook.id)) {
+            // Likely the same pages; whether they are is looked at later.
+            summary.booksToCheck += 1
+            toCheck.push(existingBook.id)
+          } else {
+            // What analysis recorded no longer describes the file.
+            await trx
+              .updateTable('media')
+              .set({ status: 'OUTDATED', last_modified_date: now })
+              .where('book_id', '=', existingBook.id)
+              .execute()
+          }
           summary.booksUpdated += 1
           if (events) {
             later.push(() =>
@@ -726,8 +770,9 @@ export async function scanLibrary(
   // a series. Read here only for a caller without one.
   const artworkOnly = sidecars.artwork.filter((seriesId) => !touched.has(seriesId))
   if (options.readLater) {
-    await options.readLater({ metadata: [...touched], artwork: artworkOnly })
+    await options.readLater({ metadata: [...touched], artwork: artworkOnly, check: toCheck })
   } else {
+    for (const bookId of toCheck) await checkTouchedBook(db, bookId)
     for (const seriesId of touched) {
       await refreshSeriesMetadata(db, seriesId)
       await refreshSeriesLocalArtwork(db, seriesId)
