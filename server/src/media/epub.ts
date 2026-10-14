@@ -47,6 +47,19 @@ function resolveHref(base: string, href: string): string {
   return resolved.join('/')
 }
 
+/**
+ * Resolve a table of contents link against the document that holds it, keeping what
+ * follows the `#`: an entry can point into the middle of a chapter. A bare
+ * `#fragment` points into that document itself.
+ */
+function resolveTocHref(document: string, href: string): string {
+  const at = href.indexOf('#')
+  const path = at < 0 ? href : href.slice(0, at)
+  const fragment = at < 0 ? '' : href.slice(at)
+  const resolved = path === '' ? document : resolveHref(directoryOf(document), path)
+  return fragment.length > 1 ? `${resolved}${fragment}` : resolved
+}
+
 function directoryOf(path: string): string {
   const index = path.lastIndexOf('/')
   return index < 0 ? '' : path.slice(0, index)
@@ -100,13 +113,13 @@ async function readToc(container: Container, pkg: EpubPackage): Promise<{ toc: T
   const nav = [...pkg.manifest.values()].find((item) => item.properties.split(/\s+/).includes('nav'))
   if (nav) {
     const markup = await readTextOrNull(container, nav.href)
-    if (markup !== null) return { toc: readNavToc(markup, directoryOf(nav.href)), unreadable: false }
+    if (markup !== null) return { toc: readNavToc(markup, nav.href), unreadable: false }
   }
 
   const ncx = pkg.tocId === null ? undefined : pkg.manifest.get(pkg.tocId)
   if (ncx) {
     const markup = await readTextOrNull(container, ncx.href)
-    if (markup !== null) return { toc: readNcxToc(markup, directoryOf(ncx.href)), unreadable: false }
+    if (markup !== null) return { toc: readNcxToc(markup, ncx.href), unreadable: false }
   }
 
   return { toc: [], unreadable: nav !== undefined || ncx !== undefined }
@@ -121,47 +134,86 @@ async function readTextOrNull(container: Container, name: string): Promise<strin
 }
 
 /** `<nav epub:type="toc">` holds nested `<ol>` lists of links. */
-function readNavToc(xml: string, base: string): TocEntry[] {
+function readNavToc(xml: string, document: string): TocEntry[] {
   const navStart = /<nav\b[^>]*epub:type\s*=\s*"toc"[^>]*>/i.exec(xml)
   const from = navStart ? navStart.index + navStart[0].length : 0
   const to = navStart ? xml.indexOf('</nav>', from) : xml.length
   const section = xml.slice(from, to < 0 ? xml.length : to)
 
-  return entriesFromMarkup(section, base)
+  // Each `<li>` is an entry: its title the link in it, or a heading (`<span>`) when it
+  // only groups others; an `<ol>` inside it holds its children.
+  const roots: Draft[] = []
+  const open: Draft[] = []
+  const token = /<(\/?)(li|a|span)\b[^>]*>/gi
+  let match: RegExpExecArray | null
+  while ((match = token.exec(section)) !== null) {
+    const closing = match[1] === '/'
+    const name = (match[2] ?? '').toLowerCase()
+    const current = open.at(-1)
+    if (name === 'li') {
+      if (closing) open.pop()
+      else {
+        const entry: Draft = { title: '', href: null, children: [] }
+        ;(current ? current.children : roots).push(entry)
+        open.push(entry)
+      }
+    } else if (!closing && current && current.title === '') {
+      const close = section.indexOf(`</${name}`, token.lastIndex)
+      current.title = stripTags(section.slice(token.lastIndex, close < 0 ? undefined : close))
+      const href = name === 'a' ? attribute(match[0], 'href') : null
+      if (href !== null) current.href = resolveTocHref(document, href)
+    }
+  }
+  return finish(roots)
 }
 
-function entriesFromMarkup(markup: string, base: string): TocEntry[] {
-  const entries: TocEntry[] = []
-  const link = /<a\b[^>]*href\s*=\s*"([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi
-
+/** An NCX holds `navPoint` elements, nested, with `navLabel/text` and `content/src`. */
+function readNcxToc(xml: string, document: string): TocEntry[] {
+  const roots: Draft[] = []
+  const open: Draft[] = []
+  const token = /<(\/?)(navPoint|text|content)\b([^>]*)>/gi
   let match: RegExpExecArray | null
-  while ((match = link.exec(markup)) !== null) {
-    const href = match[1]
-    const title = stripTags(match[2] ?? '')
-    if (href === undefined || title === '') continue
-    entries.push({ title, href: resolveHref(base, href), children: [] })
+  while ((match = token.exec(xml)) !== null) {
+    const closing = match[1] === '/'
+    const name = (match[2] ?? '').toLowerCase()
+    const current = open.at(-1)
+    if (name === 'navpoint') {
+      if (closing) open.pop()
+      else {
+        const entry: Draft = { title: '', href: null, children: [] }
+        ;(current ? current.children : roots).push(entry)
+        open.push(entry)
+      }
+    } else if (closing || !current) continue
+    else if (name === 'text' && current.title === '') {
+      const close = xml.indexOf('</text', token.lastIndex)
+      current.title = stripTags(xml.slice(token.lastIndex, close < 0 ? undefined : close))
+    } else if (name === 'content' && current.href === null) {
+      const src = attribute(match[0], 'src')
+      if (src !== null) current.href = resolveTocHref(document, src)
+    }
   }
-
-  return entries
+  return finish(roots)
 }
 
-/** An NCX holds `navPoint` elements with `navLabel/text` and `content/src`. */
-function readNcxToc(xml: string, base: string): TocEntry[] {
-  const entries: TocEntry[] = []
-  const navPoint = /<navPoint\b[\s\S]*?<\/navPoint>/gi
+/** An entry as it is read, before it is known whether it links anywhere. */
+interface Draft {
+  title: string
+  href: string | null
+  children: Draft[]
+}
 
-  let match: RegExpExecArray | null
-  while ((match = navPoint.exec(xml)) !== null) {
-    const label = /<text\b[^>]*>([\s\S]*?)<\/text>/i.exec(match[0])
-    const content = /<content\b[^>]*src\s*=\s*"([^"]+)"/i.exec(match[0])
-    if (!label || !content) continue
-    const title = stripTags(label[1] ?? '')
-    const href = content[1]
-    if (title === '' || href === undefined) continue
-    entries.push({ title, href: resolveHref(base, href), children: [] })
-  }
-
-  return entries
+/**
+ * Entries as they are kept. One without a title is dropped, its children taking its
+ * place; a heading without a link opens where its first child does.
+ */
+function finish(drafts: Draft[]): TocEntry[] {
+  return drafts.flatMap((draft): TocEntry[] => {
+    const children = finish(draft.children)
+    const href = draft.href ?? children[0]?.href
+    if (draft.title === '' || href === undefined) return children
+    return [{ title: draft.title, href, children }]
+  })
 }
 
 function stripTags(value: string): string {
