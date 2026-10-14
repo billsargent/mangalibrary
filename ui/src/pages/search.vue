@@ -4,9 +4,167 @@
     class="bg-background px-2"
   >
     <template #append>
-      <PosterSizeSlider />
+      <div class="d-flex ga-2">
+        <PosterSizeSlider />
+        <FilterButton
+          :count="filterCount"
+          @click="filterDrawer = true"
+        />
+      </div>
     </template>
   </v-app-bar>
+
+  <TempDrawer v-model="filterDrawer">
+    <v-list>
+      <v-list-subheader>
+        <div class="d-flex ga-2 align-center mb-1">
+          <span>{{ $formatMessage(commonMessages.filterPanelHeader) }}</span>
+          <FilterChipCount
+            :count="filterCount"
+            @clear="clearFilters()"
+          />
+        </div>
+      </v-list-subheader>
+
+      <v-list class="py-0">
+        <FilterByOneShot v-model="filters.oneshot.filter" />
+      </v-list>
+
+      <v-expansion-panels
+        v-model="filterExpansionPanels"
+        variant="accordion"
+        class="no-padding"
+        flat
+        tile
+      >
+        <FilterExpansionPanel
+          :title="$formatMessage(commonMessages.filterPanelTag)"
+          :count="filters.tag.count"
+          @clear="filters.tag.clear()"
+        >
+          <FilterByTag
+            v-model="filters.tag.filter.v"
+            v-model:mode="filters.tag.filter.m"
+          />
+        </FilterExpansionPanel>
+      </v-expansion-panels>
+
+      <v-divider
+        ><span class="text-body-medium text-medium-emphasis">{{
+          $formatMessage(commonMessages.filterPanelContributors)
+        }}</span></v-divider
+      >
+      <v-expansion-panels
+        v-model="filterExpansionPanels"
+        variant="accordion"
+        class="no-padding"
+        flat
+        tile
+      >
+        <FilterExpansionPanel
+          v-for="(filterAuthor, role) in filterContributors"
+          :key="role"
+          :title="
+            contributorsRolesMessages?.[role]
+              ? $formatMessage(contributorsRolesMessages?.[role])
+              : role
+          "
+          :count="countFilter(filterAuthor)"
+          @clear="filterContributorsClear(role)"
+        >
+          <FilterByAuthor
+            v-model="filterAuthor.v"
+            v-model:mode="filterAuthor.m"
+            :role="role"
+          />
+        </FilterExpansionPanel>
+      </v-expansion-panels>
+
+      <v-divider
+        ><span class="text-body-medium text-medium-emphasis">{{
+          $formatMessage(messages.seriesOnly)
+        }}</span></v-divider
+      >
+      <v-list class="py-0">
+        <FilterByComplete v-model="filters.complete.filter" />
+      </v-list>
+      <v-expansion-panels
+        v-model="filterExpansionPanels"
+        variant="accordion"
+        class="no-padding"
+        flat
+        tile
+      >
+        <FilterExpansionPanel
+          :title="$formatMessage(commonMessages.filterPanelSeriesStatus)"
+          :count="filters.seriesStatus.count"
+          @clear="filters.seriesStatus.clear()"
+        >
+          <FilterBySeriesStatus v-model="filters.seriesStatus.filter.v" />
+        </FilterExpansionPanel>
+
+        <FilterExpansionPanel
+          :title="$formatMessage(commonMessages.filterPanelGenre)"
+          :count="filters.genre.count"
+          @clear="filters.genre.clear()"
+        >
+          <FilterByGenre
+            v-model="filters.genre.filter.v"
+            v-model:mode="filters.genre.filter.m"
+          />
+        </FilterExpansionPanel>
+
+        <FilterExpansionPanel
+          :title="$formatMessage(commonMessages.filterPanelPublisher)"
+          :count="filters.publisher.count"
+          @clear="filters.publisher.clear()"
+        >
+          <FilterByPublisher
+            v-model="filters.publisher.filter.v"
+            v-model:mode="filters.publisher.filter.m"
+          />
+        </FilterExpansionPanel>
+
+        <FilterExpansionPanel
+          :title="$formatMessage(commonMessages.filterPanelReleaseYear)"
+          :count="filters.year.count"
+          @clear="filters.year.clear()"
+        >
+          <FilterByReleaseYear v-model="filters.year.filter" />
+        </FilterExpansionPanel>
+
+        <FilterExpansionPanel
+          :title="$formatMessage(commonMessages.filterPanelAgeRating)"
+          :count="filters.age.count"
+          @clear="filters.age.clear()"
+        >
+          <FilterByAgeRating v-model="filters.age.filter" />
+        </FilterExpansionPanel>
+
+        <FilterExpansionPanel
+          :title="$formatMessage(commonMessages.filterPanelLanguage)"
+          :count="filters.language.count"
+          @clear="filters.language.clear()"
+        >
+          <FilterByLanguage
+            v-model="filters.language.filter.v"
+            v-model:mode="filters.language.filter.m"
+          />
+        </FilterExpansionPanel>
+
+        <FilterExpansionPanel
+          :title="$formatMessage(commonMessages.filterPanelSharingLabel)"
+          :count="filters.sharingLabel.count"
+          @clear="filters.sharingLabel.clear()"
+        >
+          <FilterBySharingLabel
+            v-model="filters.sharingLabel.filter.v"
+            v-model:mode="filters.sharingLabel.filter.m"
+          />
+        </FilterExpansionPanel>
+      </v-expansion-panels>
+    </v-list>
+  </TempDrawer>
 
   <div class="pa-4 d-flex flex-column ga-6">
     <div
@@ -70,11 +228,14 @@
         class="with-gap"
         @load-next-page="series.loadNextPage()"
       >
-        <template #default="{ item }">
+        <template #default="{ item, isSelected, preSelect, toggleSelect }">
           <div class="py-2 px-1">
             <SeriesCard
               :series="item as SeriesDto"
+              :selected="isSelected"
+              :pre-select="preSelect"
               :width="cardWidth"
+              @selection="toggleSelect()"
             />
           </div>
         </template>
@@ -88,12 +249,15 @@
         class="with-gap"
         @load-next-page="books.loadNextPage()"
       >
-        <template #default="{ item }">
+        <template #default="{ item, isSelected, preSelect, toggleSelect }">
           <div class="py-2 px-1">
             <BookCard
               :book="item as BookDto"
+              :selected="isSelected"
+              :pre-select="preSelect"
               show-series
               :width="cardWidth"
+              @selection="toggleSelect()"
             />
           </div>
         </template>
@@ -107,11 +271,14 @@
         class="with-gap"
         @load-next-page="collections.loadNextPage()"
       >
-        <template #default="{ item }">
+        <template #default="{ item, isSelected, preSelect, toggleSelect }">
           <div class="py-2 px-1">
             <CollectionCard
               :collection="item as CollectionDto"
+              :selected="isSelected"
+              :pre-select="preSelect"
               :width="cardWidth"
+              @selection="toggleSelect()"
             />
           </div>
         </template>
@@ -125,11 +292,14 @@
         class="with-gap"
         @load-next-page="readLists.loadNextPage()"
       >
-        <template #default="{ item }">
+        <template #default="{ item, isSelected, preSelect, toggleSelect }">
           <div class="py-2 px-1">
             <ReadlistCard
               :read-list="item as ReadListDto"
+              :selected="isSelected"
+              :pre-select="preSelect"
               :width="cardWidth"
+              @selection="toggleSelect()"
             />
           </div>
         </template>
@@ -163,6 +333,21 @@
 import { useInfiniteQuery } from '@pinia/colada'
 import { defineMessages, type MessageDescriptor, useIntl } from 'vue-intl'
 import PosterSizeSlider from '@/components/PosterSizeSlider.vue'
+import FilterButton from '@/components/filter/FilterButton.vue'
+import { useFilterContributors, useFilters } from '@/composables/filter'
+import {
+  countFilter,
+  schemaFilterAgeRatingToConditions,
+  schemaFilterAuthorsToConditions,
+  schemaFilterIncludeExcludeToConditions,
+  schemaFilterReleaseYearToConditions,
+  schemaFilterStringToConditions,
+  valuesToConditions,
+} from '@/functions/filter'
+import { filterKeys } from '@/types/filter'
+import { contributorsRolesMessages } from '@/types/referential'
+import { commonMessages } from '@/utils/i18n/common-messages'
+import { useSelectionStore } from '@/stores/selection'
 import { useLibraries } from '@/colada/libraries'
 import { sortBooks, sortSeries } from '@/types/sort'
 import type { Sort } from '@/types/PageRequest'
@@ -277,15 +462,85 @@ const condition = computed(() => {
 })
 const libraryIds = computed(() => (library.value === ANY ? undefined : [library.value]))
 
+// The pick lists of the filter panel offer what the chosen library holds.
+provide(
+  filterKeys.context,
+  computed(() => (libraryIds.value ? { library_id: libraryIds.value } : {})),
+)
+
+/*
+ * The filter panel. Tags, contributors and one-shots narrow series and books both;
+ * the rest are series' metadata, and narrow the series only. The keys in the address
+ * are the library pages' own, so a filter reads the same in either.
+ */
+const filterDrawer = ref(false)
+// One model for all the expansion panels, so that one is open at a time.
+const filterExpansionPanels = ref()
+const {
+  filters,
+  clearAll: filtersClearAll,
+  countAll: filtersCountAll,
+} = useFilters([
+  'seriesStatus',
+  'genre',
+  'tag',
+  'publisher',
+  'sharingLabel',
+  'language',
+  'year',
+  'age',
+  'complete',
+  'oneshot',
+])
+const {
+  filter: filterContributors,
+  countAll: filterContributorsCount,
+  clearAll: filterContributorsClearAll,
+  clear: filterContributorsClear,
+} = useFilterContributors()
+const filterCount = computed(() => filtersCountAll.value + filterContributorsCount.value)
+function clearFilters() {
+  filtersClearAll()
+  filterContributorsClearAll()
+}
+
+const sharedConditions = computed(() => [
+  schemaFilterIncludeExcludeToConditions(filters.value.oneshot.filter, 'oneShot'),
+  schemaFilterStringToConditions(filters.value.tag.filter, 'tag', true),
+  ...Object.entries(filterContributors.value).map(([role, filter]) =>
+    schemaFilterAuthorsToConditions(filter, role),
+  ),
+])
+const seriesConditions = computed(() => [
+  schemaFilterIncludeExcludeToConditions(filters.value.complete.filter, 'complete'),
+  valuesToConditions(filters.value.seriesStatus.filter.v, 'seriesStatus'),
+  schemaFilterStringToConditions(filters.value.genre.filter, 'genre', true),
+  schemaFilterStringToConditions(filters.value.publisher.filter, 'publisher', false),
+  schemaFilterStringToConditions(filters.value.sharingLabel.filter, 'sharingLabel', true),
+  schemaFilterStringToConditions(filters.value.language.filter, 'language', false),
+  schemaFilterReleaseYearToConditions(filters.value.year.filter),
+  schemaFilterAgeRatingToConditions(filters.value.age.filter),
+])
+const allOf = (conditions: unknown[]) => {
+  const present = conditions.filter(Boolean)
+  return present.length === 0 ? undefined : { allOf: present }
+}
+const seriesCondition = computed(() =>
+  allOf([...(condition.value?.allOf ?? []), ...sharedConditions.value, ...seriesConditions.value]),
+)
+const booksCondition = computed(() =>
+  allOf([...(condition.value?.allOf ?? []), ...sharedConditions.value]),
+)
+
 const series = results<SeriesDto>(() =>
   seriesListQueryInfinite({
-    search: { fullTextSearch: term.value, condition: condition.value } as never,
+    search: { fullTextSearch: term.value, condition: seriesCondition.value } as never,
     sort: sortOf(seriesSort.value),
   }),
 )
 const books = results<BookDto>(() =>
   bookListQueryInfinite({
-    search: { fullTextSearch: term.value, condition: condition.value } as never,
+    search: { fullTextSearch: term.value, condition: booksCondition.value } as never,
     sort: sortOf(booksSort.value),
   }),
 )
@@ -298,6 +553,21 @@ const readLists = results<ReadListDto>(() =>
 )
 
 const all = [series, books, collections, readLists]
+
+// A selection is of the results it was made among: another search starts afresh.
+const selectionStore = useSelectionStore()
+watch(
+  () =>
+    JSON.stringify([
+      term.value,
+      seriesCondition.value,
+      booksCondition.value,
+      libraryIds.value,
+      seriesSort.value,
+      booksSort.value,
+    ]),
+  () => selectionStore.clear(),
+)
 const searching = computed(() => all.some((kind) => kind.isPending.value))
 const nothingFound = computed(() => all.every((kind) => kind.items.value.length === 0))
 
@@ -387,6 +657,11 @@ const messages = defineMessages({
     description: 'Search page: label of the order the books are listed in',
     defaultMessage: 'Order books by',
     id: 'r0WTKl',
+  },
+  seriesOnly: {
+    description: 'Search page: heading of the filters that narrow only the series, not the books',
+    defaultMessage: 'Series only',
+    id: 'Bv2GhH',
   },
   relevance: {
     description: 'Search page: the order that puts the best matches first',

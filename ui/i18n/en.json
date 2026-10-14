@@ -763,6 +763,10 @@
     "defaultMessage": "Overwrite",
     "description": "Import reading list: bottom bar: overwrite button"
   },
+  "Bv2GhH": {
+    "defaultMessage": "Series only",
+    "description": "Search page: heading of the filters that narrow only the series, not the books"
+  },
   "ByRsV9": {
     "defaultMessage": "Required for the WebReader to detect landscape pages",
     "description": "Form add/edit library: Options - analyze page dimensions - information tooltip"
