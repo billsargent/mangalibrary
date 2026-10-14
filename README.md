@@ -70,6 +70,9 @@ scan and analyse the first time; it can be used while that goes on.
   `npm rebuild better-sqlite3 --prefix server`, and the same for `importer`). An
   install from before October 2026 crashed under Node 24 ("Assertion failed ...
   Aborted"); `git pull` and `npm run install:all` fix it.
+- **`package-lock.json` files** are part of the code: they pin exactly what is tested.
+  `npm run install:all` only reads them. If `git pull` refuses because they changed (an
+  older `install:all` rewrote them), `git checkout -- '*package-lock.json'` and pull again.
 - **Keeping it running.** The start script runs until it is stopped. To have it start
   with the machine, run it from a systemd unit or a `tmux`/`screen` session.
 
