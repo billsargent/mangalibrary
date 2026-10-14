@@ -2,7 +2,7 @@ import { hashApiKey } from '../auth/users.js'
 import { sql } from 'kysely'
 import { describe, expect, it } from 'vitest'
 import { createDatabase } from './index.js'
-import { migrate } from './migrate.js'
+import { migrate, type Migration } from './migrate.js'
 import { migrations } from './migrations/index.js'
 
 function expectedMigrationIds(): string[] {
@@ -107,6 +107,7 @@ describe('migrate', () => {
       '0023_listing_indexes',
       '0024_referential_indexes',
       '0025_hashed_api_keys',
+      '0026_schema_repairs',
     ])
 
     // One row per hash, keeping the largest size and the highest delete count, and
@@ -174,6 +175,114 @@ describe('API keys kept as hashes', () => {
       { id: 'K1', key: hashApiKey('plain-key') },
       { id: 'K2', key: already },
     ])
+    await database.close()
+  })
+})
+
+describe('a migration stopped part-way', () => {
+  it('leaves nothing behind, and the next start runs it again from the beginning', async () => {
+    const database = createDatabase(':memory:')
+    await migrate(database.db, migrations)
+
+    let fail = true
+    const halfway: Migration = {
+      id: '9999_halfway',
+      up: async (db) => {
+        await sql`create table made_halfway (id text primary key)`.execute(db)
+        await sql`alter table made_halfway add column extra text`.execute(db)
+        if (fail) throw new Error('the server was stopped')
+      },
+    }
+
+    await expect(migrate(database.db, [...migrations, halfway])).rejects.toThrow(/stopped/)
+    // Neither the table nor the record of the migration: as if it had not begun.
+    const tables = await sql<{ name: string }>`select name from sqlite_master where name = 'made_halfway'`.execute(
+      database.db,
+    )
+    expect(tables.rows).toEqual([])
+    const recorded = await database.db
+      .selectFrom('schema_migrations')
+      .select('id')
+      .where('id', '=', '9999_halfway')
+      .execute()
+    expect(recorded).toEqual([])
+
+    // The next start: no "already exists", no "duplicate column".
+    fail = false
+    expect((await migrate(database.db, [...migrations, halfway])).applied).toEqual(['9999_halfway'])
+    await database.close()
+  })
+})
+
+describe('the schema repairs', () => {
+  it('takes a cover with its owner, removes the ones left behind, and dates page hashes like the rest', async () => {
+    const database = createDatabase(':memory:')
+    await migrate(
+      database.db,
+      migrations.filter((migration) => migration.id < '0026_schema_repairs'),
+    )
+    const now = '2026-01-01T00:00:00.000Z'
+    const db = database.db
+    await db
+      .insertInto('libraries')
+      .values({ id: 'L1', name: 'L', root: '/l', created_date: now, last_modified_date: now })
+      .execute()
+    await db
+      .insertInto('series')
+      .values({
+        id: 'S1',
+        library_id: 'L1',
+        name: 'S',
+        url: 'file:///l/s',
+        file_last_modified: now,
+        created_date: now,
+        last_modified_date: now,
+      })
+      .execute()
+    const cover = (id: string, ownerType: string, ownerId: string) => ({
+      id,
+      owner_type: ownerType,
+      owner_id: ownerId,
+      type: 'GENERATED',
+      page: 1,
+      selected: 1,
+      media_type: 'image/jpeg',
+      width: 1,
+      height: 1,
+      file_size: 1,
+      thumbnail: Buffer.from([1]),
+      created_date: now,
+      last_modified_date: now,
+    })
+    await db
+      .insertInto('thumbnails')
+      .values([cover('T1', 'SERIES', 'S1'), cover('T2', 'BOOK', 'gone')] as never)
+      .execute()
+    await sql`insert into page_hash (hash, size, action, delete_count, created_date, last_modified_date)
+      values ('h', 1, 'IGNORE', 0, '2026-10-14 10:00:00', '2026-10-14 10:00:00')`.execute(db)
+
+    await migrate(db, migrations)
+
+    // The cover of a book that is gone, gone; the series' cover kept until the series goes.
+    expect((await db.selectFrom('thumbnails').select('id').execute()).map((row) => row.id)).toEqual(['T1'])
+    await db.deleteFrom('series').where('id', '=', 'S1').execute()
+    expect(await db.selectFrom('thumbnails').select('id').execute()).toEqual([])
+
+    expect(await db.selectFrom('page_hash').select(['created_date', 'last_modified_date']).execute()).toEqual([
+      { created_date: '2026-10-14T10:00:00.000Z', last_modified_date: '2026-10-14T10:00:00.000Z' },
+    ])
+
+    const indexes = (
+      await sql<{ name: string }>`select name from sqlite_master where type = 'index'`.execute(db)
+    ).rows.map((row) => row.name)
+    expect(indexes).toEqual(
+      expect.arrayContaining([
+        'idx__read_progress__book_id',
+        'idx__read_progress_series__series_id',
+        'idx__user_library_sharing__library_id',
+      ]),
+    )
+    expect(indexes).not.toContain('idx__thumbnails__owner')
     await database.close()
   })
 })

@@ -24,6 +24,12 @@ export interface MigrateResult {
  * Apply pending migrations in id order, recording each in `schema_migrations`.
  *
  * Safe to run repeatedly: already-applied migrations are skipped.
+ *
+ * Each migration and the row that records it are one transaction. A migration
+ * stopped part-way - the server killed, the disk full - leaves nothing behind, so
+ * the next start runs it again from the beginning rather than meeting a table it
+ * half made. And whether it has run is asked again inside that transaction, so
+ * two servers started on one database at once do not both run it.
  */
 export async function migrate(
   db: Kysely<DB>,
@@ -48,11 +54,21 @@ export async function migrate(
   const applied: string[] = []
   for (const migration of pending) {
     const started = performance.now()
-    await migration.up(db)
-    await db
-      .insertInto('schema_migrations')
-      .values({ id: migration.id, applied_at: new Date().toISOString() })
-      .execute()
+    const ran = await db.transaction().execute(async (trx) => {
+      const already = await trx
+        .selectFrom('schema_migrations')
+        .select('id')
+        .where('id', '=', migration.id)
+        .executeTakeFirst()
+      if (already) return false
+      await migration.up(trx)
+      await trx
+        .insertInto('schema_migrations')
+        .values({ id: migration.id, applied_at: new Date().toISOString() })
+        .execute()
+      return true
+    })
+    if (!ran) continue
     applied.push(migration.id)
     progress.onStep?.(migration.id, performance.now() - started)
   }
