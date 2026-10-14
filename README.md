@@ -30,7 +30,7 @@ See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the full policy.
 
 ## Install and run
 
-You need **Node.js 22** and npm, and `git` to fetch it. On Linux:
+You need **Node.js 22 or 24** and npm, and `git` to fetch it. On Linux:
 
 ```bash
 git clone https://github.com/billsargent/mangalibrary.git
@@ -64,12 +64,12 @@ scan and analyse the first time; it can be used while that goes on.
   everything this server knows - users, read progress, metadata, posters. Your books
   are only ever read where they are. To back up, stop the server and copy that folder. Keep the database on a local disk,
   not a network share.
-- **Node.js 22, not newer.** The database module ships ready-made for Node 22. Under
-  Node 24 or later it is compiled on the spot and then crashes at start ("Assertion
-  failed ... Aborted") - seen on a real install, and not yet caught by the start script
-  (#140). If your system's Node is newer, install 22 beside it and reinstall under it:
-  `nvm install 22`, then `rm -rf server/node_modules importer/node_modules` and
-  `npm run install:all` again.
+- **Node.js 22 or 24.** Both are tested on every change. The database module comes
+  ready-made for the Node version it was installed under, so after switching Node -
+  an upgrade, `nvm use` - run `npm run install:all` again (or
+  `npm rebuild better-sqlite3 --prefix server`, and the same for `importer`). An
+  install from before October 2026 crashed under Node 24 ("Assertion failed ...
+  Aborted"); `git pull` and `npm run install:all` fix it.
 - **Keeping it running.** The start script runs until it is stopped. To have it start
   with the machine, run it from a systemd unit or a `tmux`/`screen` session.
 

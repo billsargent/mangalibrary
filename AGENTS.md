@@ -8,7 +8,7 @@
 
 ## Tech stack
 
-- Backend: Node.js >= 22, TypeScript, Fastify, Kysely, better-sqlite3, piscina, sharp
+- Backend: Node.js 22 or 24 (both in CI), TypeScript, Fastify, Kysely, better-sqlite3, piscina, sharp
 - Frontend: Vue 3, Vite, Vuetify, Pinia Colada, Valibot
 
 ## Quality gates
