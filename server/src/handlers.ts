@@ -32,6 +32,7 @@ import {
 import { JOB_PRIORITY, enqueueJob, enqueueJobs, type JobRecord } from './jobs.js'
 import { analyzeBook } from './media/analyze.js'
 import { booksToConvert, convertBookToCbz } from './media/convert.js'
+import { checkTouchedBook } from './scan/unchanged.js'
 import { COPY_MODES, ImportError, importBook, type CopyMode } from './media/import.js'
 import {
   pagesToRemoveAutomatically,
@@ -402,7 +403,18 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       const summary = await scanLibrary(db, libraryId, {
         deep: payload.scanDeep === true,
         events: context.events,
-        readLater: async ({ metadata, artwork }) => {
+        readLater: async ({ metadata, artwork, check }) => {
+          // A book whose file was touched is looked at behind everything else: it
+          // stays readable meanwhile, and most such books turn out unchanged.
+          await enqueueJobs(
+            db,
+            check.map((bookId) => ({
+              type: 'CheckBook',
+              uniqueKey: `CHECK_BOOK_${bookId}`,
+              priority: JOB_PRIORITY.LOW,
+              payload: { bookId },
+            })),
+          )
           await enqueueJobs(
             db,
             metadata.map((seriesId) => ({
@@ -508,6 +520,28 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       // is a job of its own - which is also how the reference arranges it.
       if (analysed) await queueThumbnail(context, bookId, job.priority + 1)
       return
+    }
+
+    case 'CheckBook': {
+      const bookId = text((job.payload as BookPayload).bookId)
+      if (bookId === null) return log.warn({ job: job.id }, 'CheckBook without a book')
+
+      const outcome = await checkTouchedBook(db, bookId)
+      if (outcome === 'OUTDATED') {
+        const book = await db.selectFrom('books').select('series_id').where('id', '=', bookId).executeTakeFirst()
+        await enqueueJob(db, {
+          type: 'AnalyzeBook',
+          uniqueKey: `ANALYZE_BOOK_${bookId}`,
+          priority: JOB_PRIORITY.HIGH,
+          groupId: book?.series_id ?? null,
+          payload: { bookId },
+        })
+      }
+      if (outcome === 'KEPT') {
+        const ref = await bookRef(db, bookId)
+        if (ref) announceBook(context.events, 'BookChanged', ref)
+      }
+      return log.debug({ bookId, outcome }, 'checked a book whose file was touched')
     }
 
     case 'RefreshBookMetadata': {
