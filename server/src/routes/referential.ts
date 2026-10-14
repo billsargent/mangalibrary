@@ -1,191 +1,278 @@
-import { sql, type Kysely } from 'kysely'
-import type { FastifyInstance, FastifyRequest } from 'fastify'
-import { visibleLibraryIds } from '../auth/access.js'
-import { allLibraryIds } from '../auth/users.js'
+import { sql, type Kysely, type SelectQueryBuilder } from 'kysely'
+import type { FastifyInstance } from 'fastify'
 import { requireAuth } from '../auth/session.js'
+import { allLibraryIds } from '../auth/users.js'
 import type { DB } from '../db/schema.js'
+import { contentContext, scopedLibraryIds, type ContentContext } from './context.js'
 import { springPage, type SpringPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
+import { booleanParam, paging, toArray } from './query.js'
+
+/**
+ * The lists a filter is picked from: every tag, genre, publisher, author and so on
+ * that the caller could meet where they are looking.
+ *
+ * "Where they are looking" is the whole of it. A panel opened in one library offers
+ * that library's values, one opened on a collection that collection's, and a reader
+ * kept from some series by age or label is not offered what only those series have.
+ * So each list is the distinct values of a table, for the series - or the books -
+ * a request is about, and that is asked of the database as a subquery: a list of
+ * ids would be one parameter for every series, and SQLite stops at 32,766.
+ *
+ * When a request is about everything there is, nothing is checked against it, and
+ * the values are read straight off an index that starts with them (migration 0024):
+ * that costs by how many tags there are and not by how many books have them.
+ */
 
 interface AuthorDto {
   name: string
   role: string
 }
 
-interface PageParams {
-  page?: number
-  size?: number
-  unpaged?: boolean
+type Query = Record<string, unknown>
+type Ids = SelectQueryBuilder<DB, never, { id: string }>
+
+interface Scope {
+  /** The series a request is about. */
+  series: Ids
+  /** Their books; or, asked by read list, the books on it. */
+  books: Ids
+  /** Whether that is every series and every book, so that nothing needs checking against it. */
+  everything: boolean
 }
 
-function pageParams(query: unknown): { page: number; size: number; paged: boolean } {
-  const params = (query ?? {}) as PageParams
-  const page = Number.isFinite(params.page) ? Number(params.page) : 0
-  const size = Number.isFinite(params.size) ? Number(params.size) : 20
-  return { page, size, paged: params.unpaged !== true }
-}
+/** A list of ids as one parameter, however long it is. */
+const idList = (ids: readonly string[]) => sql<string>`(select value from json_each(${JSON.stringify(ids)}))`
 
-/** Either a plain array (v1) or a Spring page (v2). */
-function paginated<T>(items: T[], query: unknown, usePage: boolean): T[] | SpringPage<T> {
-  if (!usePage) return items
-  const { page, size } = pageParams(query)
-  return springPage(items.slice(page * size, page * size + size), page, size, items.length)
-}
+/**
+ * The series and books a request is about, or `null` when that is none at all.
+ *
+ * A request narrows by one thing: the first of library, collection, series and read
+ * list that it names, in that order, as the reference does.
+ */
+function scopeOf(db: Kysely<DB>, context: ContentContext, query: Query, libraryCount: number): Scope | null {
+  const libraries = toArray(query.library_id)
+  const collections = toArray(query.collection_id)
+  const seriesIds = toArray(query.series_id)
+  const readLists = toArray(query.readlist_id)
 
-async function seriesIdsFor(db: Kysely<DB>, req: FastifyRequest): Promise<string[]> {
-  const user = req.user
-  if (!user) return []
-  const libraryIds = visibleLibraryIds(user, await allLibraryIds(db))
-  if (libraryIds.length === 0) return []
-  const rows = await db.selectFrom('series').select('id').where('library_id', 'in', libraryIds).execute()
-  return rows.map((row) => row.id)
-}
+  const libraryIds = scopedLibraryIds(context, libraries)
+  if (libraryIds.length === 0) return null
 
-async function distinctStrings(rows: { value: string | null }[]): Promise<string[]> {
-  const seen = new Set<string>()
-  for (const row of rows) {
-    const value = row.value?.trim()
-    if (value) seen.add(value)
+  const restricted = context.restrictedSeriesIds
+  let series = db.selectFrom('series').select('series.id').where('series.library_id', 'in', libraryIds)
+  if (restricted !== null) series = series.where('series.id', 'in', idList(restricted))
+
+  let narrowed = false
+  let listed: SelectQueryBuilder<DB, 'readlist_book', { book_id: string }> | null = null
+  if (libraries.length > 0) {
+    // Already narrowed, above.
+  } else if (collections.length > 0) {
+    narrowed = true
+    series = series.where(
+      'series.id',
+      'in',
+      db
+        .selectFrom('collection_series')
+        .select('collection_series.series_id')
+        .where('collection_series.collection_id', 'in', collections),
+    )
+  } else if (seriesIds.length > 0) {
+    narrowed = true
+    series = series.where('series.id', 'in', seriesIds)
+  } else if (readLists.length > 0) {
+    narrowed = true
+    listed = db
+      .selectFrom('readlist_book')
+      .select('readlist_book.book_id')
+      .where('readlist_book.readlist_id', 'in', readLists)
   }
-  return [...seen].sort((a, b) => a.localeCompare(b))
+
+  // A book knows its library, so whole libraries of books are found without going
+  // by way of their series - which, for a large library, halves the work.
+  let books = db.selectFrom('books').select('books.id')
+  books =
+    restricted === null && !narrowed
+      ? books.where('books.library_id', 'in', libraryIds)
+      : books.where('books.series_id', 'in', series)
+  if (listed !== null) {
+    books = books.where('books.id', 'in', listed)
+    series = series.where(
+      'series.id',
+      'in',
+      db.selectFrom('books').select('books.series_id').where('books.id', 'in', listed),
+    )
+  }
+  return {
+    series: series as unknown as Ids,
+    books: books as unknown as Ids,
+    everything: restricted === null && !narrowed && libraryIds.length === libraryCount,
+  }
+}
+
+/** Where a list's values are kept: a table, the column, and whose rows they are. */
+interface Source {
+  table: string
+  column: string
+  of: 'series' | 'books'
+}
+
+const SERIES_TAGS: Source = { table: 'series_metadata_tag', column: 'tag', of: 'series' }
+const BOOK_TAGS: Source = { table: 'book_metadata_tag', column: 'tag', of: 'books' }
+const GENRES: Source = { table: 'series_metadata_genre', column: 'genre', of: 'series' }
+const SHARING_LABELS: Source = { table: 'series_metadata_sharing', column: 'label', of: 'series' }
+const PUBLISHERS: Source = { table: 'series_metadata', column: 'publisher', of: 'series' }
+const LANGUAGES: Source = { table: 'series_metadata', column: 'language', of: 'series' }
+
+/** Whether a value contains what is searched for, whatever the case of either. */
+const matcher = (search: string | undefined): ((value: string) => boolean) => {
+  if (!search) return () => true
+  const wanted = search.toLowerCase()
+  return (value) => value.toLowerCase().includes(wanted)
+}
+
+/**
+ * The distinct values of the sources, in the scope, containing what is searched for.
+ *
+ * The searching is done here and not by the database: there are few distinct values
+ * however many rows hold them, and asking the database to compare every row would
+ * stop it from reading them off an index.
+ */
+async function valuesOf(
+  db: Kysely<DB>,
+  scope: Scope,
+  sources: readonly Source[],
+  search: string | undefined,
+): Promise<string[]> {
+  const matches = matcher(search)
+  const seen = new Set<string>()
+  for (const source of sources) {
+    // The table and its columns are constants of this file, never a request's words.
+    let query = db
+      .selectFrom(source.table as 'series_metadata_tag')
+      .select(sql<string | null>`${sql.ref(source.column)}`.as('value'))
+      .distinct()
+    if (!scope.everything) {
+      query = query.where(sql.ref(source.of === 'series' ? 'series_id' : 'book_id'), 'in', scope[source.of])
+    }
+    for (const row of await query.execute()) {
+      const value = row.value?.trim()
+      if (value && matches(value)) seen.add(value)
+    }
+  }
+  return [...seen].sort((left, right) => left.localeCompare(right))
+}
+
+/** Who made the books and series in the scope, by name and what they did. */
+async function authorsOf(
+  db: Kysely<DB>,
+  scope: Scope,
+  search: string | undefined,
+  role: string | undefined,
+): Promise<AuthorDto[]> {
+  const matches = matcher(search)
+  const unique = new Map<string, AuthorDto>()
+  for (const of of ['series', 'books'] as const) {
+    let query = db
+      .selectFrom((of === 'series' ? 'series_metadata_author' : 'book_metadata_author') as 'series_metadata_author')
+      .select(['role', 'name'])
+      .distinct()
+    if (role) query = query.where('role', '=', role)
+    if (!scope.everything) query = query.where(sql.ref(of === 'series' ? 'series_id' : 'book_id'), 'in', scope[of])
+    for (const author of await query.execute()) {
+      if (matches(author.name)) {
+        unique.set(`${author.name}\u0000${author.role}`, { name: author.name, role: author.role })
+      }
+    }
+  }
+  return [...unique.values()].sort(
+    (left, right) => left.name.localeCompare(right.name) || left.role.localeCompare(right.role),
+  )
+}
+
+const SERIES_ROLES: Source = { table: 'series_metadata_author', column: 'role', of: 'series' }
+const BOOK_ROLES: Source = { table: 'book_metadata_author', column: 'role', of: 'books' }
+
+const distinct = (values: readonly string[]): string[] =>
+  [...new Set(values)].sort((left, right) => left.localeCompare(right))
+
+const text = (value: unknown): string | undefined => (typeof value === 'string' && value !== '' ? value : undefined)
+
+/** Which tags a request means: a series' own, its books', or - unless it says - both. */
+function tagSources(include: unknown): Source[] {
+  const wanted = String(include ?? 'BOTH').toUpperCase()
+  if (wanted === 'SERIES') return [SERIES_TAGS]
+  if (wanted === 'BOOK') return [BOOK_TAGS]
+  return [SERIES_TAGS, BOOK_TAGS]
+}
+
+/** Either a plain array (v1) or a Spring page (v2) of the part of it asked for. */
+function paginated<T>(items: T[], query: Query, usePage: boolean): T[] | SpringPage<T> {
+  if (!usePage) return items
+  if (booleanParam(query.unpaged) === true) return springPage(items, 0, items.length, items.length)
+  const { page, size } = paging(query)
+  return springPage(items.slice(page * size, page * size + size), page, size, items.length)
 }
 
 export async function registerReferentialRoutes(app: FastifyInstance, opts: RouteOptions): Promise<void> {
   const { db } = opts
 
-  const register = (paths: string[], usePage: boolean) => {
-    for (const path of paths) {
-      // Authors -----------------------------------------------------------------
-      app.get(`${path}/authors`, { preHandler: requireAuth }, async (req) => {
-        const query = (req.query ?? {}) as { role?: string; search?: string }
-        const seriesIds = await seriesIdsFor(db, req)
-        if (seriesIds.length === 0) return paginated<AuthorDto>([], req.query, usePage)
-
-        const seriesAuthors = await db
-          .selectFrom('series_metadata_author')
-          .select(['name', 'role'])
-          .where('series_id', 'in', seriesIds)
-          .execute()
-        const bookAuthors = await db
-          .selectFrom('book_metadata_author')
-          .select(['name', 'role'])
-          .where('book_id', 'in', db.selectFrom('books').select('id').where('series_id', 'in', seriesIds))
-          .execute()
-
-        const unique = new Map<string, AuthorDto>()
-        for (const author of [...seriesAuthors, ...bookAuthors]) {
-          if (query.role && author.role !== query.role) continue
-          if (query.search && !author.name.toLowerCase().includes(query.search.toLowerCase())) continue
-          unique.set(`${author.name}\u0000${author.role}`, { name: author.name, role: author.role })
-        }
-        const authors = [...unique.values()].sort(
-          (a, b) => a.name.localeCompare(b.name) || a.role.localeCompare(b.role),
-        )
-        return paginated(authors, req.query, usePage)
-      })
-
-      app.get(`${path}/authors/names`, { preHandler: requireAuth }, async (req) => {
-        const seriesIds = await seriesIdsFor(db, req)
-        if (seriesIds.length === 0) return paginated<string>([], req.query, usePage)
-        const rows = await db
-          .selectFrom('series_metadata_author')
-          .select('name as value')
-          .where('series_id', 'in', seriesIds)
-          .union(db.selectFrom('book_metadata_author').select('name as value'))
-          .execute()
-        return paginated(await distinctStrings(rows), req.query, usePage)
-      })
-
-      app.get(`${path}/authors/roles`, { preHandler: requireAuth }, async (req) => {
-        const seriesIds = await seriesIdsFor(db, req)
-        if (seriesIds.length === 0) return paginated<string>([], req.query, usePage)
-        const rows = await db
-          .selectFrom('series_metadata_author')
-          .select('role as value')
-          .where('series_id', 'in', seriesIds)
-          .union(db.selectFrom('book_metadata_author').select('role as value'))
-          .execute()
-        return paginated(await distinctStrings(rows), req.query, usePage)
-      })
-
-      // Simple string referentials -------------------------------------------------
-      const simple = async (
-        request: FastifyRequest,
-        column: 'tag' | 'genre' | null,
-        table: 'series_metadata_tag' | 'series_metadata_genre' | 'series_metadata_sharing',
-      ) => {
-        const seriesIds = await seriesIdsFor(db, request)
-        if (seriesIds.length === 0) return paginated<string>([], request.query, usePage)
-        const rows = await db
-          .selectFrom(table)
-          .select(column ? (`${column} as value` as const) : ('label as value' as const))
-          .distinct()
-          .where('series_id', 'in', seriesIds)
-          .execute()
-        return paginated(await distinctStrings(rows as { value: string | null }[]), request.query, usePage)
-      }
-
-      app.get(`${path}/genres`, { preHandler: requireAuth }, async (req) =>
-        simple(req, 'genre', 'series_metadata_genre'),
-      )
-      app.get(`${path}/tags`, { preHandler: requireAuth }, async (req) => simple(req, 'tag', 'series_metadata_tag'))
-      app.get(`${path}/tags/series`, { preHandler: requireAuth }, async (req) =>
-        simple(req, 'tag', 'series_metadata_tag'),
-      )
-      app.get(`${path}/sharing-labels`, { preHandler: requireAuth }, async (req) =>
-        simple(req, null, 'series_metadata_sharing'),
-      )
-
-      app.get(`${path}/tags/book`, { preHandler: requireAuth }, async (req) => {
-        const seriesIds = await seriesIdsFor(db, req)
-        if (seriesIds.length === 0) return paginated<string>([], req.query, usePage)
-        const rows = await db
-          .selectFrom('book_metadata_tag')
-          .select('tag as value')
-          .distinct()
-          .where('book_id', 'in', db.selectFrom('books').select('id').where('series_id', 'in', seriesIds))
-          .execute()
-        return paginated(await distinctStrings(rows), req.query, usePage)
-      })
-
-      // Metadata columns -----------------------------------------------------------
-      const fromMetadata = async (request: FastifyRequest, column: 'publisher' | 'language') => {
-        const seriesIds = await seriesIdsFor(db, request)
-        if (seriesIds.length === 0) return paginated<string>([], request.query, usePage)
-        const rows = await db
-          .selectFrom('series_metadata')
-          .select(`${column} as value`)
-          .distinct()
-          .where('series_id', 'in', seriesIds)
-          .where(column, '!=', '')
-          .execute()
-        return paginated(await distinctStrings(rows as { value: string | null }[]), request.query, usePage)
-      }
-
-      app.get(`${path}/publishers`, { preHandler: requireAuth }, async (req) => fromMetadata(req, 'publisher'))
-      app.get(`${path}/languages`, { preHandler: requireAuth }, async (req) => fromMetadata(req, 'language'))
-
-      // Age ratings ----------------------------------------------------------------
-      app.get(`${path}/age-ratings`, { preHandler: requireAuth }, async (req) => {
-        const seriesIds = await seriesIdsFor(db, req)
-        if (seriesIds.length === 0) return paginated<string>([], req.query, usePage)
-        const rows = await db
-          .selectFrom('series_metadata')
-          .select(sql<string>`cast(age_rating as text)`.as('value'))
-          .distinct()
-          .where('series_id', 'in', seriesIds)
-          .where('age_rating', 'is not', null)
-          .execute()
-        const values = await distinctStrings(rows)
-        return paginated(
-          values.sort((a, b) => Number(a) - Number(b)),
-          req.query,
-          usePage,
-        )
+  const register = (path: string, usePage: boolean) => {
+    /** A route that answers with a list drawn from the scope of its request. */
+    const list = <T>(route: string, read: (scope: Scope, query: Query) => Promise<T[]>) => {
+      app.get(`${path}/${route}`, { preHandler: requireAuth }, async (req) => {
+        const query = (req.query ?? {}) as Query
+        const scope = scopeOf(db, await contentContext(db, req), query, (await allLibraryIds(db)).length)
+        return paginated(scope === null ? [] : await read(scope, query), query, usePage)
       })
     }
+    const strings = (route: string, sources: (query: Query) => Source[]) =>
+      list(route, (scope, query) => valuesOf(db, scope, sources(query), text(query.search)))
+
+    list('authors', (scope, query) => authorsOf(db, scope, text(query.search), text(query.role)))
+    list('authors/names', async (scope, query) =>
+      distinct((await authorsOf(db, scope, text(query.search), text(query.role))).map((author) => author.name)),
+    )
+    strings('authors/roles', () => [SERIES_ROLES, BOOK_ROLES])
+
+    strings('genres', () => [GENRES])
+    strings('sharing-labels', () => [SHARING_LABELS])
+    strings('publishers', () => [PUBLISHERS])
+    strings('languages', () => [LANGUAGES])
+    strings('tags', (query) => tagSources(query.include))
+    strings('tags/series', () => [SERIES_TAGS])
+    strings('tags/book', () => [BOOK_TAGS])
+
+    // Numbers, lowest first; the older API gave them as text.
+    list<string | number>('age-ratings', async (scope) => {
+      const rows = await db
+        .selectFrom('series_metadata')
+        .select('age_rating')
+        .distinct()
+        .where('age_rating', 'is not', null)
+        .where('series_id', 'in', scope.series)
+        .orderBy('age_rating')
+        .execute()
+      const ratings = rows.map((row) => Number(row.age_rating))
+      return usePage ? ratings : ratings.map(String)
+    })
+
+    // The years the series came out in, newest first: a series is dated by its books.
+    list(usePage ? 'series/release-years' : 'series/release-dates', async (scope) => {
+      const rows = await db
+        .selectFrom('book_metadata_aggregation')
+        .select(sql<string>`substr(release_date, 1, 4)`.as('year'))
+        .distinct()
+        .where('release_date', 'is not', null)
+        .where('series_id', 'in', scope.series)
+        .execute()
+      return rows
+        .map((row) => row.year)
+        .filter((year) => /^\d{4}$/.test(year))
+        .sort((left, right) => Number(right) - Number(left))
+    })
   }
 
-  register(['/api/v1'], false)
-  register(['/api/v2'], true)
+  register('/api/v1', false)
+  register('/api/v2', true)
 }
