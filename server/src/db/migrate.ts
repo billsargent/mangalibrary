@@ -7,6 +7,14 @@ export interface Migration {
   up(db: Kysely<DB>): Promise<void>
 }
 
+/** What a caller is told while migrations run, so that a long upgrade is not silent. */
+export interface MigrateProgress {
+  /** Before anything is done: the steps that are waiting, in the order they will run. */
+  onPending?(ids: readonly string[]): void
+  /** As each step finishes, with how long it took. */
+  onStep?(id: string, milliseconds: number): void
+}
+
 export interface MigrateResult {
   /** Ids of the migrations applied during this run. */
   applied: string[]
@@ -17,7 +25,11 @@ export interface MigrateResult {
  *
  * Safe to run repeatedly: already-applied migrations are skipped.
  */
-export async function migrate(db: Kysely<DB>, migrations: readonly Migration[]): Promise<MigrateResult> {
+export async function migrate(
+  db: Kysely<DB>,
+  migrations: readonly Migration[],
+  progress: MigrateProgress = {},
+): Promise<MigrateResult> {
   await db.schema
     .createTable('schema_migrations')
     .ifNotExists()
@@ -28,15 +40,21 @@ export async function migrate(db: Kysely<DB>, migrations: readonly Migration[]):
   const rows = await db.selectFrom('schema_migrations').select('id').execute()
   const done = new Set(rows.map((row) => row.id))
 
+  const pending = [...migrations]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .filter((migration) => !done.has(migration.id))
+  if (pending.length > 0) progress.onPending?.(pending.map((migration) => migration.id))
+
   const applied: string[] = []
-  for (const migration of [...migrations].sort((a, b) => a.id.localeCompare(b.id))) {
-    if (done.has(migration.id)) continue
+  for (const migration of pending) {
+    const started = performance.now()
     await migration.up(db)
     await db
       .insertInto('schema_migrations')
       .values({ id: migration.id, applied_at: new Date().toISOString() })
       .execute()
     applied.push(migration.id)
+    progress.onStep?.(migration.id, performance.now() - started)
   }
 
   return { applied }

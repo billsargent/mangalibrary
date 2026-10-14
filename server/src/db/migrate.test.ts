@@ -33,6 +33,26 @@ describe('migrate', () => {
     await database.close()
   })
 
+  it('says what is waiting and each step as it finishes, and nothing when there is none', async () => {
+    const database = createDatabase(':memory:')
+    const told: unknown[] = []
+    const progress = {
+      onPending: (ids: readonly string[]) => told.push(['pending', [...ids]]),
+      onStep: (id: string, milliseconds: number) => told.push(['step', id, milliseconds >= 0]),
+    }
+
+    await migrate(database.db, migrations, progress)
+    expect(told).toEqual([
+      ['pending', expectedMigrationIds()],
+      ...expectedMigrationIds().map((id) => ['step', id, true]),
+    ])
+
+    told.length = 0
+    await migrate(database.db, migrations, progress)
+    expect(told).toEqual([])
+    await database.close()
+  })
+
   it('records migration ids in order', async () => {
     const database = createDatabase(':memory:')
     await migrate(database.db, migrations)

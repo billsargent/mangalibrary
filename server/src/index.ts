@@ -22,8 +22,23 @@ async function main(): Promise<void> {
   config.uiDir ??= bundledUiDir()
   const database = createDatabase(config.databaseFile)
 
-  const { applied } = await migrate(database.db, migrations)
+  // An update can bring steps that rebuild indexes over every book, which on a large
+  // library takes minutes. The logger does not exist yet, and someone is watching a
+  // terminal that has gone quiet, so this is said in plain words as it happens.
+  const seconds = (milliseconds: number) => `${(milliseconds / 1000).toFixed(1)} s`
+  const { applied } = await migrate(database.db, migrations, {
+    onPending: (ids) =>
+      console.log(
+        `Upgrading the database: ${ids.length} step${ids.length === 1 ? '' : 's'}. On a large library this can take some minutes; please do not stop it.`,
+      ),
+    onStep: (id, milliseconds) => console.log(`  done: ${id} (${seconds(milliseconds)})`),
+  })
+  const analysing = performance.now()
   await refreshStatistics(database.db)
+  if (applied.length > 0) {
+    console.log(`  done: updating the database's statistics (${seconds(performance.now() - analysing)})`)
+    console.log('The database is up to date; starting.')
+  }
 
   const app = await buildServer({ config, database })
   if (applied.length > 0) app.log.info({ applied }, 'applied migrations')

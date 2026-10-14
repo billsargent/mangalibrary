@@ -42,7 +42,9 @@ npm run build          # builds the server and the web UI
 
 `npm start` does the same as `./scripts/start.sh`, on any system. Both rebuild first if
 the source is newer than what was built, so after `git pull` starting it again is all an
-update takes (`npm run install:all` first if dependencies changed).
+update takes (`npm run install:all` first if dependencies changed). The first start after
+an update may upgrade the database, which on a large library can take some minutes before
+it answers; it prints each step as it finishes. Let it finish.
 
 Open the address it prints. The first visit asks you to create the administrator; then
 add a library under _Libraries_ and let it scan. A large library takes a long time to
