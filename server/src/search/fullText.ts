@@ -94,9 +94,17 @@ export function matchFilter(db: Kysely<DB>, index: Index, term: string): RawBuil
   )`
 }
 
+/** What a relevance sort ranks by: the index, and the match it ranks. */
+const RANKED = new WeakMap<object, { index: Index; expression: string }>()
+
 /**
  * How well the entity matches, for ordering by relevance - or null when the term
  * cannot match, in which case there is nothing to order by.
+ *
+ * It is a column of the ranks `withRelevance` joins: every match ranked once, by
+ * `bm25`. Asked row by row instead - a subquery per entity - the database ran the
+ * whole search again for every match, and a search for a common word on a large
+ * library took 22 seconds (#162); ranked once and joined, 9 ms.
  *
  * `bm25` counts down: the best match is the most negative, so this is used in
  * ascending order, which is what the FTS5 documentation recommends. A row the term
@@ -106,11 +114,32 @@ export function relevanceSort(index: Index, term: string): RawBuilder<number> | 
   const expression = matchExpression(index.table, term)
   if (expression === null) return null
 
-  return sql<number>`(
-    select bm25(${sql.table(index.table)}) from ${sql.table(index.table)}
+  const column = sql<number>`relevance_rank.score`
+  RANKED.set(column, { index, expression })
+  return column
+}
+
+/**
+ * The query with the ranks a relevance sort orders by, when one of `sorts` is one;
+ * the query as it was otherwise. Only the entities the search matched have a rank,
+ * which the search's own filter has already narrowed the query to.
+ */
+export function withRelevance<QB>(query: QB, sorts: readonly { column: unknown }[]): QB {
+  const ranked = sorts
+    .map((sort) => (typeof sort.column === 'object' && sort.column !== null ? RANKED.get(sort.column) : undefined))
+    .find((entry) => entry !== undefined)
+  if (ranked === undefined) return query
+
+  const { index, expression } = ranked
+  const ranks = sql`(
+    select ${sql.id(index.table, index.id)} as id, bm25(${sql.table(index.table)}) as score
+    from ${sql.table(index.table)}
     where ${sql.table(index.table)} match ${expression}
-      and ${sql.id(index.table, index.id)} = ${sql.ref(`${index.entity}.id`)}
-  )`
+  )`.as('relevance_rank')
+  const joinable = query as unknown as {
+    innerJoin(table: unknown, on: (join: { onRef(a: string, op: '=', b: string): unknown }) => unknown): QB
+  }
+  return joinable.innerJoin(ranks, (join) => join.onRef('relevance_rank.id', '=', `${index.entity}.id`))
 }
 
 /** The ids a term matches, best first - for callers that page in memory. */

@@ -32,7 +32,7 @@ import {
   type SortSpec,
 } from './query.js'
 import { bookCondition, type ConditionFilter } from '../search/condition.js'
-import { INDEXES, matchFilter, relevanceSort } from '../search/fullText.js'
+import { INDEXES, matchFilter, relevanceSort, withRelevance } from '../search/fullText.js'
 
 /**
  * Book browsing, metadata, progression and progress.
@@ -388,9 +388,10 @@ export async function findBooks(
   const joins = new Set([...filterJoins, ...sortJoins])
 
   let idsQuery = applySort(
-    bookQuery(db, filters, onlySeries, joins, userId, driven?.drive ?? 'books', driven !== undefined).select(
-      'books.id',
-    ),
+    withRelevance(
+      bookQuery(db, filters, onlySeries, joins, userId, driven?.drive ?? 'books', driven !== undefined),
+      sorts,
+    ).select('books.id'),
     ordering,
   )
   // Read off an index, ties are broken the way the index runs - newest first means

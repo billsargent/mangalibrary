@@ -13,6 +13,7 @@
 import { createWriteStream } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
 import { isMainThread, threadId } from 'node:worker_threads'
+import Piscina from 'piscina'
 
 import { fileHash, koreaderHash, pageHash } from '../hashing/hashes.js'
 import { openBook } from '../media/index.js'
@@ -22,6 +23,7 @@ import { isbnBarcodePatch } from '../metadata/barcode.js'
 import { readBookDocuments, type BookDocumentsRead } from '../metadata/document.js'
 import { posterOf } from '../thumbnails/poster.js'
 import { zipStream } from '../zip.js'
+import { packPage } from './page-bytes.js'
 
 /** Describe what is inside a book. Never throws for a bad file. */
 export async function inspect(input: {
@@ -89,7 +91,7 @@ export async function poster(input: { path: string }): Promise<{ bytes: Uint8Arr
 export async function readPage(input: {
   path: string
   pageNumber: number
-}): Promise<{ bytes: Uint8Array; mediaType: string } | { failed: 'OPEN' | 'PAGE' }> {
+}): Promise<ArrayBuffer | { failed: 'OPEN' | 'PAGE' }> {
   let book
   try {
     book = await keptOpen(input.path)
@@ -98,11 +100,15 @@ export async function readPage(input: {
   }
   const page = book.pages[input.pageNumber - 1]
   if (page === undefined) return { failed: 'PAGE' }
+  let packed: ArrayBuffer
   try {
-    return { bytes: await book.readPage(input.pageNumber), mediaType: page.mediaType }
+    packed = packPage(await book.readPage(input.pageNumber), page.mediaType)
   } catch {
     return { failed: 'PAGE' }
   }
+  // Moved to the main thread rather than copied there (see `page-bytes.ts`). Run in
+  // place, with no threads, there is nothing to move it from.
+  return isMainThread ? packed : (Piscina.move(packed) as unknown as ArrayBuffer)
 }
 
 /**
