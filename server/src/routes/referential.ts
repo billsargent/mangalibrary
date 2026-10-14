@@ -40,6 +40,8 @@ interface Scope {
   books: Ids
   /** Whether that is every series and every book, so that nothing needs checking against it. */
   everything: boolean
+  /** Whether it is narrowed below whole libraries: a collection, a series, a read list. */
+  narrow: boolean
 }
 
 /** A list of ids as one parameter, however long it is. */
@@ -108,6 +110,7 @@ function scopeOf(db: Kysely<DB>, context: ContentContext, query: Query, libraryC
     series: series as unknown as Ids,
     books: books as unknown as Ids,
     everything: restricted === null && !narrowed && libraryIds.length === libraryCount,
+    narrow: narrowed,
   }
 }
 
@@ -116,10 +119,23 @@ interface Source {
   table: string
   column: string
   of: 'series' | 'books'
+  /**
+   * For what is kept a row to a book, the same values kept a row to a series: what
+   * analysis aggregates of each series' books (`metadata/aggregation.ts`). A
+   * library's worth of these is about a tenth of the rows, and found by series, so a
+   * list over whole libraries reads these; a series, a collection or a read list is
+   * few books, and is read from them.
+   */
+  aggregate?: { table: string; column: string }
 }
 
 const SERIES_TAGS: Source = { table: 'series_metadata_tag', column: 'tag', of: 'series' }
-const BOOK_TAGS: Source = { table: 'book_metadata_tag', column: 'tag', of: 'books' }
+const BOOK_TAGS: Source = {
+  table: 'book_metadata_tag',
+  column: 'tag',
+  of: 'books',
+  aggregate: { table: 'book_metadata_aggregation_tag', column: 'tag' },
+}
 const GENRES: Source = { table: 'series_metadata_genre', column: 'genre', of: 'series' }
 const SHARING_LABELS: Source = { table: 'series_metadata_sharing', column: 'label', of: 'series' }
 const PUBLISHERS: Source = { table: 'series_metadata', column: 'publisher', of: 'series' }
@@ -147,7 +163,8 @@ async function valuesOf(
 ): Promise<string[]> {
   const matches = matcher(search)
   const seen = new Set<string>()
-  for (const source of sources) {
+  for (const wanted of sources) {
+    const source = byLibraries(wanted, scope)
     // The table and its columns are constants of this file, never a request's words.
     let query = db
       .selectFrom(source.table as 'series_metadata_tag')
@@ -164,6 +181,12 @@ async function valuesOf(
   return [...seen].sort((left, right) => left.localeCompare(right))
 }
 
+/** Where to read a source from for this scope: a book source over whole libraries reads its per-series aggregate. */
+function byLibraries(source: Source, scope: Scope): Source {
+  if (source.of !== 'books' || source.aggregate === undefined || scope.everything || scope.narrow) return source
+  return { table: source.aggregate.table, column: source.aggregate.column, of: 'series' }
+}
+
 /** Who made the books and series in the scope, by name and what they did. */
 async function authorsOf(
   db: Kysely<DB>,
@@ -173,13 +196,17 @@ async function authorsOf(
 ): Promise<AuthorDto[]> {
   const matches = matcher(search)
   const unique = new Map<string, AuthorDto>()
+  // A library's worth of books' authors is read from the per-series aggregate, as tags are.
+  const bookAuthors = scope.everything || scope.narrow ? 'book_metadata_author' : 'book_metadata_aggregation_author'
   for (const of of ['series', 'books'] as const) {
+    const table = of === 'series' ? 'series_metadata_author' : bookAuthors
+    const owner = of === 'books' && table === 'book_metadata_author' ? 'book_id' : 'series_id'
     let query = db
-      .selectFrom((of === 'series' ? 'series_metadata_author' : 'book_metadata_author') as 'series_metadata_author')
+      .selectFrom(table as 'series_metadata_author')
       .select(['role', 'name'])
       .distinct()
     if (role) query = query.where('role', '=', role)
-    if (!scope.everything) query = query.where(sql.ref(of === 'series' ? 'series_id' : 'book_id'), 'in', scope[of])
+    if (!scope.everything) query = query.where(sql.ref(owner), 'in', owner === 'book_id' ? scope.books : scope.series)
     for (const author of await query.execute()) {
       if (matches(author.name)) {
         unique.set(`${author.name}\u0000${author.role}`, { name: author.name, role: author.role })
@@ -192,7 +219,12 @@ async function authorsOf(
 }
 
 const SERIES_ROLES: Source = { table: 'series_metadata_author', column: 'role', of: 'series' }
-const BOOK_ROLES: Source = { table: 'book_metadata_author', column: 'role', of: 'books' }
+const BOOK_ROLES: Source = {
+  table: 'book_metadata_author',
+  column: 'role',
+  of: 'books',
+  aggregate: { table: 'book_metadata_aggregation_author', column: 'role' },
+}
 
 const distinct = (values: readonly string[]): string[] =>
   [...new Set(values)].sort((left, right) => left.localeCompare(right))
