@@ -70,7 +70,7 @@ export function bookSorts(userId: string, readListId?: string): Record<string, S
         }),
     name: 'books.name',
     number: 'books.number',
-    series: 'series_metadata.title_sort',
+    series: 'series_metadata.title_sort_key',
     url: 'books.url',
     created: 'books.created_date',
     createdDate: 'books.created_date',
@@ -315,10 +315,10 @@ export function matchesReadStatus(status: ReadStatus, wanted: readonly string[],
 /**
  * Sorts a listing can be read in order for, off an index, when nothing narrows it
  * but the library: the table to start from, and the column that breaks ties in the
- * same index. Each has an index of exactly these two columns (migration 0023).
+ * same index. Each has an index of exactly these two columns (migrations 0023, 0027).
  */
 const DRIVEN: Record<string, { drive: BookDrive; tiebreak: string }> = {
-  'series_metadata.title_sort': { drive: 'series_metadata', tiebreak: 'books.id' },
+  'series_metadata.title_sort_key': { drive: 'series_metadata', tiebreak: 'books.id' },
   'book_metadata.number_sort': { drive: 'book_metadata', tiebreak: 'book_metadata.book_id' },
   'book_metadata.release_date': { drive: 'book_metadata', tiebreak: 'book_metadata.book_id' },
   'books.created_date': { drive: 'books', tiebreak: 'books.id' },
