@@ -108,6 +108,7 @@ describe('migrate', () => {
       '0024_referential_indexes',
       '0025_hashed_api_keys',
       '0026_schema_repairs',
+      '0027_title_sort_key',
     ])
 
     // One row per hash, keeping the largest size and the highest delete count, and
@@ -283,6 +284,66 @@ describe('the schema repairs', () => {
       ]),
     )
     expect(indexes).not.toContain('idx__thumbnails__owner')
+    await database.close()
+  })
+})
+
+describe('the key series are sorted by', () => {
+  it('ignores case and accents, follows every change of title, and leaves the search index whole', async () => {
+    const database = createDatabase(':memory:')
+    await migrate(database.db, migrations)
+    const db = database.db
+    const now = '2026-01-01T00:00:00.000Z'
+    await db
+      .insertInto('libraries')
+      .values({ id: 'L1', name: 'L', root: '/l', created_date: now, last_modified_date: now })
+      .execute()
+    const titles = ['Zed', 'alpha', 'Élan', 'Beta', 'eagle']
+    for (const [index, title] of titles.entries()) {
+      const id = `S${index}`
+      await db
+        .insertInto('series')
+        .values({
+          id,
+          library_id: 'L1',
+          name: title,
+          url: `file:///l/${index}`,
+          file_last_modified: now,
+          created_date: now,
+          last_modified_date: now,
+        })
+        .execute()
+      await db
+        .insertInto('series_metadata')
+        .values({ series_id: id, title, title_sort: title, created_date: now, last_modified_date: now })
+        .execute()
+    }
+    const order = async () =>
+      (
+        await db
+          .selectFrom('series_metadata')
+          .select('title_sort')
+          .orderBy('title_sort_key')
+          .orderBy('series_id')
+          .execute()
+      ).map((row) => row.title_sort)
+    expect(await order()).toEqual(['alpha', 'Beta', 'eagle', 'Élan', 'Zed'])
+
+    // A changed title moves, and the search finds it by its new name and not its old.
+    await db
+      .updateTable('series_metadata')
+      .set({ title_sort: 'Aardvark', title: 'Aardvark' })
+      .where('series_id', '=', 'S0')
+      .execute()
+    expect((await order())[0]).toBe('Aardvark')
+    const found = async (term: string) =>
+      (
+        await sql<{ series_id: string }>`select series_id from fts_series where fts_series match ${term}`.execute(db)
+      ).rows.map((row) => row.series_id)
+    expect(await found('aardvark')).toEqual(['S0'])
+    expect(await found('zed')).toEqual([])
+    expect(await found('beta')).toEqual(['S3'])
+    await sql`insert into fts_series(fts_series) values('integrity-check')`.execute(db)
     await database.close()
   })
 })
