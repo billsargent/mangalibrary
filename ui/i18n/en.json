@@ -7,6 +7,10 @@
     "defaultMessage": "No data found",
     "description": "Known Duplicate Page Table: shown when table has no data"
   },
+  "+71c26": {
+    "defaultMessage": "Show or hide the bars",
+    "description": "EPUB reader keyboard shortcuts: show or hide the bars"
+  },
   "+8++PW": {
     "defaultMessage": "Library created: {library}",
     "description": "Snackbar notification shown upon successful library creation"
@@ -262,6 +266,10 @@
   "2uUiqM": {
     "defaultMessage": "Series ordering",
     "description": "Form edit collection: General - series ordering"
+  },
+  "3/MRao": {
+    "defaultMessage": "Previous book",
+    "description": "EPUB reader: button that opens the previous book"
   },
   "38i8Bp": {
     "defaultMessage": "Animate page transitions",
@@ -767,6 +775,10 @@
     "defaultMessage": "Series only",
     "description": "Search page: heading of the filters that narrow only the series, not the books"
   },
+  "BxIGQ2": {
+    "defaultMessage": "Click or press next again to exit the reader.",
+    "description": "EPUB reader: how to leave after the last book"
+  },
   "ByRsV9": {
     "defaultMessage": "Required for the WebReader to detect landscape pages",
     "description": "Form add/edit library: Options - analyze page dimensions - information tooltip"
@@ -927,6 +939,10 @@
     "defaultMessage": "Restore defaults",
     "description": "Reorder sections: restore defaults button"
   },
+  "DpmZ6w": {
+    "defaultMessage": "Start of the book",
+    "description": "EPUB reader keyboard shortcuts: go to the start of the book"
+  },
   "DwDa04": {
     "defaultMessage": "Scan interval",
     "description": "Form add/edit library: Scanner - scan interval"
@@ -954,6 +970,10 @@
   "E5ZMyt": {
     "defaultMessage": "Analyze",
     "description": "Library menu: manage > analyze"
+  },
+  "EFtOqC": {
+    "defaultMessage": "Next book",
+    "description": "EPUB reader: button that opens the next book"
   },
   "EIYfj+": {
     "defaultMessage": "Number",
@@ -1363,6 +1383,10 @@
     "defaultMessage": "Overview",
     "description": "Library navigation: overview"
   },
+  "MLEhSf": {
+    "defaultMessage": "Navigation",
+    "description": "EPUB reader keyboard shortcuts: heading of the keys that move through the book"
+  },
   "MUl132": {
     "defaultMessage": "Welcome to Manga Library",
     "description": "No libraries view: title"
@@ -1499,6 +1523,10 @@
     "defaultMessage": "Deep scan",
     "description": "Library deep scan: confirm button"
   },
+  "P+BDaF": {
+    "defaultMessage": "You have reached the end of the book.",
+    "description": "EPUB reader: shown when going forward from the end of the book"
+  },
   "P+WI/K": {
     "defaultMessage": "Duplicate page",
     "description": "Known Duplicate Page Table: alt description for thumbnail"
@@ -1598,6 +1626,10 @@
   "RHJo8j": {
     "defaultMessage": "Import",
     "description": "Import books table: bottom bar: import button"
+  },
+  "RHkyzl": {
+    "defaultMessage": "You are at the beginning of the book.",
+    "description": "EPUB reader: shown when going back from the start of the book"
   },
   "RMHfEo": {
     "defaultMessage": "Any of",
@@ -1758,6 +1790,10 @@
   "UFZ+PY": {
     "defaultMessage": "Tags",
     "description": "Form edit book: Tags"
+  },
+  "UN2wPm": {
+    "defaultMessage": "Reader",
+    "description": "EPUB reader keyboard shortcuts: heading of the keys that work the reader"
   },
   "UPOAPc": {
     "defaultMessage": "Clear search",
@@ -2202,6 +2238,10 @@
   "aSDxrt": {
     "defaultMessage": "Series files deleted: {series}",
     "description": "Snackbar notification shown upon successful series files deletion"
+  },
+  "aSEdGB": {
+    "defaultMessage": "Click or press previous again to move to the previous book.",
+    "description": "EPUB reader: how to go to the previous book"
   },
   "aU1qcP": {
     "defaultMessage": "Delete",
@@ -3731,6 +3771,14 @@
     "defaultMessage": "Error",
     "description": "Import reading list table filter: Error"
   },
+  "trtpFp": {
+    "defaultMessage": "End of the book",
+    "description": "EPUB reader keyboard shortcuts: go to the end of the book"
+  },
+  "tzbGrj": {
+    "defaultMessage": "Click or press next again to move to the next book.",
+    "description": "EPUB reader: how to go to the next book"
+  },
   "u23YLt": {
     "defaultMessage": "Undo",
     "description": "Poster card: action - undo"
@@ -3914,6 +3962,10 @@
   "xjHL5K": {
     "defaultMessage": "Poster",
     "description": "Form edit book: Poster"
+  },
+  "xjnAdn": {
+    "defaultMessage": "Keyboard shortcuts",
+    "description": "EPUB reader: button and key that show the keyboard shortcuts"
   },
   "xpBvz8": {
     "defaultMessage": "Release year",

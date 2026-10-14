@@ -44,6 +44,11 @@
           @click="toggleFullscreen()"
         />
         <v-btn
+          icon="i-mdi:help-circle"
+          :aria-label="$formatMessage(messages.help)"
+          @click="showHelp = !showHelp"
+        />
+        <v-btn
           icon="i-mdi:cog"
           :aria-label="$formatMessage(messages.settings)"
           @click="showSettings = !showSettings"
@@ -73,11 +78,19 @@
         class="status"
       >
         <v-btn
+          icon="i-mdi:undo"
+          variant="text"
+          density="comfortable"
+          :aria-label="$formatMessage(messages.previousBook)"
+          :disabled="!previousBook"
+          @click="goToPreviousBook()"
+        />
+        <v-btn
           icon="i-mdi:chevron-left"
           variant="text"
           density="comfortable"
           :aria-label="$formatMessage(messages.previous)"
-          :disabled="atStart"
+          :disabled="atStart && !previousBook"
           @click="previous()"
         />
         <div class="status__text text-body-small">
@@ -99,8 +112,15 @@
           variant="text"
           density="comfortable"
           :aria-label="$formatMessage(messages.next)"
-          :disabled="atEnd"
           @click="next()"
+        />
+        <v-btn
+          icon="i-mdi:redo"
+          variant="text"
+          density="comfortable"
+          :aria-label="$formatMessage(messages.nextBook)"
+          :disabled="!nextBook"
+          @click="goToNextBook()"
         />
       </div>
 
@@ -116,11 +136,38 @@
             v-for="(entry, index) in toc"
             :key="index"
             :title="entry.title"
-            :active="entry.chapter === chapter"
+            :active="index === currentEntry"
+            :style="{ paddingInlineStart: `${16 + entry.depth * 16}px` }"
             @click="goToContents(entry)"
           />
         </v-list>
       </v-navigation-drawer>
+
+      <ReaderShortcutsHelp
+        v-model="showHelp"
+        :groups="shortcutGroups"
+      />
+
+      <v-snackbar
+        v-model="askPreviousBook"
+        :timeout="JUMP_CONFIRMATION_MS"
+        location="top"
+        multi-line
+      >
+        <p>{{ $formatMessage(messages.atStart) }}</p>
+        <p v-if="previousBook">{{ $formatMessage(messages.againForPrevious) }}</p>
+      </v-snackbar>
+
+      <v-snackbar
+        v-model="askNextBook"
+        :timeout="JUMP_CONFIRMATION_MS"
+        location="top"
+        multi-line
+      >
+        <p>{{ $formatMessage(messages.atEnd) }}</p>
+        <p v-if="nextBook">{{ $formatMessage(messages.againForNext) }}</p>
+        <p v-else>{{ $formatMessage(messages.againToLeave) }}</p>
+      </v-snackbar>
 
       <v-bottom-sheet
         v-model="showSettings"
@@ -213,8 +260,10 @@
  * a stylesheet, and the book cannot run script either way.
  */
 import { useQuery } from '@pinia/colada'
+import type { ShortcutGroup } from '@/components/reader/ShortcutsHelp.vue'
+import type { ReaderContext } from '@/types/reader'
 import { useDebounceFn, useEventListener, useFullscreen } from '@vueuse/core'
-import { defineMessages, type MessageDescriptor } from 'vue-intl'
+import { defineMessages, type MessageDescriptor, useIntl } from 'vue-intl'
 import { bookDetailQuery, QUERY_KEYS_BOOKS } from '@/colada/books'
 import {
   chapterIndexOf,
@@ -229,8 +278,13 @@ import {
 } from '@/functions/epub'
 import { EPUB_THEMES, epubStyle } from '@/functions/epub-style'
 import {
+  type BookDto,
   komgaGetBookPositions,
   komgaGetBookProgression,
+  komgaGetBookSiblingNext,
+  komgaGetBookSiblingNextInReadList,
+  komgaGetBookSiblingPrevious,
+  komgaGetBookSiblingPreviousInReadList,
   komgaGetBookWebPubManifest,
   komgaUpdateBookProgression,
 } from '@/generated/openapi'
@@ -248,9 +302,18 @@ import {
 const route = useRoute('/book.[id].read-epub')
 const router = useRouter()
 const store = useEpubReaderStore()
+const intl = useIntl()
 
 const bookId = computed(() => route.params.id)
 const incognito = computed(() => route.query.incognito === 'true')
+
+/** A book opened from a read list goes on to the next book of that list, not of its series. */
+const context = computed<ReaderContext>(() => {
+  const id = route.query.contextId
+  if (route.query.context === 'READLIST' && typeof id === 'string' && id !== '')
+    return { origin: 'READLIST', id }
+  return undefined
+})
 
 //region What the book is
 
@@ -280,17 +343,53 @@ const readingOrder = computed(() => manifest.value?.readingOrder ?? [])
 const positions = computed<EpubPosition[]>(() => positionList.value?.positions ?? [])
 const title = computed(() => book.value?.metadata.title ?? manifest.value?.metadata.title ?? '')
 
-/** The table of contents, each entry knowing which chapter it leads to. */
-const toc = computed(() =>
-  (manifest.value?.toc ?? [])
-    .filter((entry) => entry.href !== undefined)
-    .map((entry) => ({
-      title: entry.title ?? resourcePath(entry.href ?? ''),
-      href: entry.href ?? '',
-      chapter: chapterIndexOf(readingOrder.value, entry.href ?? ''),
-    }))
-    .filter((entry) => entry.chapter !== -1),
-)
+type TocLink = { title?: string; href?: string; children?: TocLink[] }
+
+/**
+ * The table of contents as one list, each entry knowing which chapter it leads to
+ * and how deep it sits: a part's chapters are listed under it, indented.
+ */
+const toc = computed(() => {
+  const entries: { title: string; href: string; chapter: number; depth: number }[] = []
+  const add = (links: TocLink[], depth: number) => {
+    for (const link of links) {
+      const chapter = link.href === undefined ? -1 : chapterIndexOf(readingOrder.value, link.href)
+      if (chapter !== -1)
+        entries.push({
+          title: link.title ?? resourcePath(link.href ?? ''),
+          href: link.href ?? '',
+          chapter,
+          depth,
+        })
+      add(link.children ?? [], chapter === -1 ? depth : depth + 1)
+    }
+  }
+  add(manifest.value?.toc ?? [], 0)
+  return entries
+})
+
+function siblingQuery(which: 'next' | 'previous') {
+  return () => ({
+    key: [...QUERY_KEYS_BOOKS.byId(bookId.value), 'reader', which, context.value?.id ?? 'series'],
+    query: (): Promise<BookDto> => {
+      const list = context.value
+      if (list) {
+        const path = { id: list.id, bookId: bookId.value }
+        return which === 'next'
+          ? komgaGetBookSiblingNextInReadList({ path })
+          : komgaGetBookSiblingPreviousInReadList({ path })
+      }
+      const path = { bookId: bookId.value }
+      return which === 'next'
+        ? komgaGetBookSiblingNext({ path })
+        : komgaGetBookSiblingPrevious({ path })
+    },
+  })
+}
+// The first and the last book have no neighbour on one side: the server answers
+// 404, and the query's data stays undefined.
+const { data: nextBook } = useQuery(siblingQuery('next'))
+const { data: previousBook } = useQuery(siblingQuery('previous'))
 
 const ready = computed(
   () =>
@@ -326,13 +425,11 @@ const chapterUrl = computed(() => readingOrder.value[chapter.value]?.href)
 const chapterPath = computed(() => resourcePath(chapterUrl.value ?? ''))
 // The entry that leads to this chapter, or failing that the one before it: a
 // chapter the contents do not list belongs to the part it sits in.
-const chapterTitle = computed(
-  () =>
-    (
-      toc.value.find((entry) => entry.chapter === chapter.value) ??
-      toc.value.findLast((entry) => entry.chapter < chapter.value)
-    )?.title,
-)
+const currentEntry = computed(() => {
+  const exact = toc.value.findIndex((entry) => entry.chapter === chapter.value)
+  return exact !== -1 ? exact : toc.value.findLastIndex((entry) => entry.chapter < chapter.value)
+})
+const chapterTitle = computed(() => toc.value[currentEntry.value]?.title)
 
 const place = computed(() =>
   positionAt(positions.value, { path: chapterPath.value, progression: progression.value }),
@@ -340,11 +437,6 @@ const place = computed(() =>
 
 const paginated = computed(() => store.layout === 'paginated')
 const atStart = computed(() => chapter.value === 0 && (paginated.value ? page.value === 0 : true))
-const atEnd = computed(
-  () =>
-    chapter.value === readingOrder.value.length - 1 &&
-    (paginated.value ? page.value === pages.value - 1 : true),
-)
 
 // Open the book where it was left, once everything about it is known.
 watch(
@@ -362,6 +454,18 @@ watch(
   },
   { immediate: true },
 )
+
+// Going on to another book keeps this page and changes its address: the new book
+// opens where it was left, as this one did.
+watch(bookId, () => {
+  opened = false
+  laidOut.value = false
+  target = { progression: 0 }
+  chapter.value = 0
+  page.value = 0
+  askNextBook.value = false
+  askPreviousBook.value = false
+})
 
 /** Show a chapter, and go to a place in it once it has loaded. */
 function showChapter(index: number, to: Target) {
@@ -554,8 +658,10 @@ function next() {
     turnTo(page.value + 1)
   } else if (chapter.value < readingOrder.value.length - 1) {
     showChapter(chapter.value + 1, { progression: 0 })
-  } else if (!paginated.value) {
+  } else if (canScroll(1)) {
     scrollByPage(1)
+  } else {
+    jumpToNext()
   }
 }
 
@@ -564,9 +670,20 @@ function previous() {
     turnTo(page.value - 1)
   } else if (chapter.value > 0) {
     showChapter(chapter.value - 1, 'end')
-  } else if (!paginated.value) {
+  } else if (canScroll(-1)) {
     scrollByPage(-1)
+  } else {
+    jumpToPrevious()
   }
+}
+
+/** Whether a scrolled chapter has further to go that way. */
+function canScroll(direction: 1 | -1) {
+  const window = frame.value?.contentWindow
+  const document = frameDocument()
+  if (paginated.value || !window || !document) return false
+  const height = document.documentElement.scrollHeight - window.innerHeight
+  return direction === 1 ? window.scrollY < height - 2 : window.scrollY > 2
 }
 
 function turnTo(newPage: number) {
@@ -586,14 +703,8 @@ function scrollByPage(direction: 1 | -1) {
 
 /** Forward or back the way a key or a click at the edge means it. */
 function step(direction: 1 | -1) {
-  const window = frame.value?.contentWindow
-  const document = frameDocument()
-  if (!paginated.value && window && document) {
-    // A scrolled chapter scrolls until it runs out, and only then changes chapter.
-    const height = document.documentElement.scrollHeight - window.innerHeight
-    const canScroll = direction === 1 ? window.scrollY < height - 2 : window.scrollY > 2
-    if (canScroll) return scrollByPage(direction)
-  }
+  // A scrolled chapter scrolls until it runs out, and only then changes chapter.
+  if (canScroll(direction)) return scrollByPage(direction)
   if (direction === 1) next()
   else previous()
 }
@@ -606,6 +717,51 @@ function goToContents(entry: { href: string; chapter: number }) {
 
 function closeBook() {
   void router.push({ name: '/book/[id]', params: { id: bookId.value } })
+}
+
+//endregion
+
+//region Moving between books
+
+/** How long the offer to go on to another book stands, as in the comic reader. */
+const JUMP_CONFIRMATION_MS = 3000
+const askNextBook = ref(false)
+const askPreviousBook = ref(false)
+
+/** A book is read in the reader made for it, and in the same read list. */
+function readRoute(target: BookDto) {
+  const epub =
+    target.media.mediaProfile.toLowerCase() === 'epub' && !target.media.epubDivinaCompatible
+  const query: Record<string, string> = { incognito: String(incognito.value) }
+  if (context.value) {
+    query.context = context.value.origin
+    query.contextId = context.value.id
+  }
+  return {
+    name: epub ? ('/book.[id].read-epub' as const) : ('/book.[id].read' as const),
+    params: { id: target.id },
+    query,
+  }
+}
+
+function goToPreviousBook() {
+  if (previousBook.value) void router.push(readRoute(previousBook.value))
+}
+
+function goToNextBook() {
+  if (nextBook.value) void router.push(readRoute(nextBook.value))
+  else closeBook()
+}
+
+// Turning past either end of a book asks first, and goes on the second time.
+function jumpToPrevious() {
+  if (askPreviousBook.value) goToPreviousBook()
+  else askPreviousBook.value = true
+}
+
+function jumpToNext() {
+  if (askNextBook.value) goToNextBook()
+  else askNextBook.value = true
 }
 
 /** A click in the chapter: a link is followed, an edge turns the page, the middle shows the bars. */
@@ -642,8 +798,11 @@ const keys: Record<string, () => void> = {
   s: () => (showSettings.value = !showSettings.value),
   f: () => void toggleFullscreen(),
   m: () => (showBars.value = !showBars.value),
+  h: () => (showHelp.value = !showHelp.value),
+  '?': () => (showHelp.value = !showHelp.value),
   Escape: () => {
-    if (showSettings.value) showSettings.value = false
+    if (showHelp.value) showHelp.value = false
+    else if (showSettings.value) showSettings.value = false
     else if (showContents.value) showContents.value = false
     else closeBook()
   },
@@ -702,9 +861,37 @@ const saveProgress = useDebounceFn(() => {
 const showBars = ref(true)
 const showContents = ref(false)
 const showSettings = ref(false)
+const showHelp = ref(false)
 const colours = computed(() => EPUB_THEMES[store.theme])
 
 const { isSupported: fullscreenSupported, isFullscreen, toggle: toggleFullscreen } = useFullscreen()
+
+/** What the keys do, for the help the reader shows on H or ?. */
+const shortcutGroups = computed<ShortcutGroup[]>(() => {
+  const format = intl.formatMessage
+  return [
+    {
+      title: format(messages.groupNavigation),
+      shortcuts: [
+        { keys: '← PageUp', description: format(messages.previous) },
+        { keys: '→ PageDown Space', description: format(messages.next) },
+        { keys: 'Home', description: format(messages.keyStart) },
+        { keys: 'End', description: format(messages.keyEnd) },
+      ],
+    },
+    {
+      title: format(messages.groupReader),
+      shortcuts: [
+        { keys: 'C', description: format(messages.contents) },
+        { keys: 'S', description: format(messages.settings) },
+        { keys: 'F', description: format(messages.fullscreen) },
+        { keys: 'M', description: format(messages.keyBars) },
+        { keys: 'H ?', description: format(messages.help) },
+        { keys: 'Esc', description: format(messages.close) },
+      ],
+    },
+  ]
+})
 
 const messages = defineMessages({
   close: {
@@ -741,6 +928,71 @@ const messages = defineMessages({
     description: 'EPUB reader: next page button',
     defaultMessage: 'Next page',
     id: 'aqD5OX',
+  },
+  previousBook: {
+    description: 'EPUB reader: button that opens the previous book',
+    defaultMessage: 'Previous book',
+    id: '3/MRao',
+  },
+  nextBook: {
+    description: 'EPUB reader: button that opens the next book',
+    defaultMessage: 'Next book',
+    id: 'EFtOqC',
+  },
+  help: {
+    description: 'EPUB reader: button and key that show the keyboard shortcuts',
+    defaultMessage: 'Keyboard shortcuts',
+    id: 'xjnAdn',
+  },
+  atStart: {
+    description: 'EPUB reader: shown when going back from the start of the book',
+    defaultMessage: 'You are at the beginning of the book.',
+    id: 'RHkyzl',
+  },
+  againForPrevious: {
+    description: 'EPUB reader: how to go to the previous book',
+    defaultMessage: 'Click or press previous again to move to the previous book.',
+    id: 'aSEdGB',
+  },
+  atEnd: {
+    description: 'EPUB reader: shown when going forward from the end of the book',
+    defaultMessage: 'You have reached the end of the book.',
+    id: 'P+BDaF',
+  },
+  againForNext: {
+    description: 'EPUB reader: how to go to the next book',
+    defaultMessage: 'Click or press next again to move to the next book.',
+    id: 'tzbGrj',
+  },
+  againToLeave: {
+    description: 'EPUB reader: how to leave after the last book',
+    defaultMessage: 'Click or press next again to exit the reader.',
+    id: 'BxIGQ2',
+  },
+  groupNavigation: {
+    description: 'EPUB reader keyboard shortcuts: heading of the keys that move through the book',
+    defaultMessage: 'Navigation',
+    id: 'MLEhSf',
+  },
+  groupReader: {
+    description: 'EPUB reader keyboard shortcuts: heading of the keys that work the reader',
+    defaultMessage: 'Reader',
+    id: 'UN2wPm',
+  },
+  keyStart: {
+    description: 'EPUB reader keyboard shortcuts: go to the start of the book',
+    defaultMessage: 'Start of the book',
+    id: 'DpmZ6w',
+  },
+  keyEnd: {
+    description: 'EPUB reader keyboard shortcuts: go to the end of the book',
+    defaultMessage: 'End of the book',
+    id: 'trtpFp',
+  },
+  keyBars: {
+    description: 'EPUB reader keyboard shortcuts: show or hide the bars',
+    defaultMessage: 'Show or hide the bars',
+    id: '+71c26',
   },
   theme: {
     description: 'EPUB reader settings: colour theme',
