@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest'
 import { createDatabase } from '../../server/src/db/index.js'
 import { importKomga, isoDate } from './import.js'
 import { komgaPath, parseMapping, type PathMapping } from './paths.js'
+import { createKomgaDatabase } from './testing/komga-database.js'
 import { createLegacyFixture } from './testing/legacy-fixture.js'
 
 /**
@@ -362,5 +363,81 @@ describe('dates', () => {
     expect(isoDate(1717000000000, fallback)).toBe('2024-05-29T16:26:40.000Z')
     expect(isoDate(null, fallback)).toBe(fallback)
     expect(isoDate('not a date', fallback)).toBe(fallback)
+  })
+})
+
+describe("a database with Komga's own schema", () => {
+  function komga(extra?: Parameters<typeof createKomgaDatabase>[1]) {
+    const dir = mkdtempSync(join(tmpdir(), 'ml-komga-'))
+    const from = join(dir, 'komga')
+    mkdirSync(from)
+    createKomgaDatabase(join(from, 'database.sqlite'), extra)
+    const books = join(dir, 'manga')
+    mkdirSync(join(books, 'One Piece'), { recursive: true })
+    return { from, to: join(dir, 'target'), map: [{ from: '/srv/manga', to: [books] }], books }
+  }
+
+  it('imports, with what Komga allows and this server does not settled on the way', async () => {
+    const { from, to, map, books } = komga()
+    const report = await importKomga({ from, to, map, timezone: 'Europe/Berlin' })
+    expect(report.libraries).toMatchObject([{ name: 'Manga', found: true }])
+
+    const database = createDatabase(join(to, 'database.sqlite'))
+    try {
+      const db = database.db
+      expect((await db.selectFrom('libraries').select(['root', 'scan_on_startup']).execute())[0]).toEqual({
+        root: books,
+        scan_on_startup: 1,
+      })
+      // Allowed and excluded in Komga; excluded here, as the server decides.
+      expect(await db.selectFrom('user_sharing').selectAll().execute()).toEqual([
+        { user_id: 'U1', allow: 0, label: 'mature' },
+      ])
+      expect(await db.selectFrom('user_api_keys').select('key').execute()).toEqual([{ key: 'f'.repeat(128) }])
+      expect(await db.selectFrom('series_metadata_alternate_title').selectAll().execute()).toEqual([
+        { series_id: 'S1', label: 'Japanese', title: 'ワンピース' },
+      ])
+      expect(await db.selectFrom('client_settings_global').selectAll().execute()).toEqual([
+        { key: 'WEBUI_LOGIN_BANNER', value: 'Hello', allow_unauthorized: 1 },
+      ])
+      // The EPUB is read again, for what Komga does not keep; the CBZ is as Komga had it.
+      const media = await db.selectFrom('media').select(['book_id', 'status']).orderBy('book_id').execute()
+      expect(media).toEqual([
+        { book_id: 'B1', status: 'READY' },
+        { book_id: 'B2', status: 'OUTDATED' },
+      ])
+      // Summer time in Berlin: two hours ahead of UTC.
+      const book = await db
+        .selectFrom('books')
+        .select(['url', 'file_last_modified'])
+        .where('id', '=', 'B1')
+        .executeTakeFirstOrThrow()
+      expect(book).toEqual({
+        url: pathToFileURL(join(books, 'One Piece', 'One Piece v01.cbz')).href,
+        file_last_modified: '2025-08-23T09:25:49.473Z',
+      })
+      expect(await db.selectFrom('read_progress').select(['book_id', 'completed']).execute()).toEqual([
+        { book_id: 'B1', completed: 1 },
+      ])
+    } finally {
+      await database.close()
+    }
+  })
+
+  it('refuses two accounts whose emails differ only in case, and writes nothing', async () => {
+    const { from, to, map } = komga((db) => {
+      db.prepare(
+        `insert into "USER" (ID, EMAIL, PASSWORD, CREATED_DATE, LAST_MODIFIED_DATE) values ('U2', 'Reader@Example.com', 'x', '2025-01-01 00:00:00', '2025-01-01 00:00:00')`,
+      ).run()
+    })
+    await expect(importKomga({ from, to, map })).rejects.toThrow(
+      /differ only in case.*reader@example\.com and Reader@Example\.com/,
+    )
+    const database = createDatabase(join(to, 'database.sqlite'))
+    try {
+      expect(await database.db.selectFrom('libraries').selectAll().execute()).toEqual([])
+    } finally {
+      await database.close()
+    }
   })
 })
