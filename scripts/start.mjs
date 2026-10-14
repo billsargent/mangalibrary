@@ -114,6 +114,8 @@ console.log(
 console.log('It will be at:')
 console.log(`  http://localhost:${port}   (this machine)`)
 for (const address of addresses) console.log(`  http://${address}:${port}   (other machines on the network)`)
+console.log('The first start after an update can take some minutes while the database is upgraded;')
+console.log('it says what it is doing, and when it is listening it is ready.')
 console.log('Press Ctrl+C to stop.\n')
 
 const child = spawn(process.execPath, [builtServer], { cwd: root, stdio: 'inherit' })
