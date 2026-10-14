@@ -12,6 +12,7 @@ import { bookCondition } from '../search/condition.js'
 import { bookSorts, findBooks, type BookQueryFilters } from './books.js'
 import type { ContentContext } from './context.js'
 import { parseSort } from './query.js'
+import { findSeries, SERIES_DEFAULT_SORT, type SeriesFilters } from './series.js'
 
 /**
  * A listing is found in more than one way - straight off an index when nothing
@@ -268,5 +269,45 @@ describe('a listing that something narrows', () => {
     const found = await listed(database, { ...context, restrictedSeriesIds: allowed }, {}, sort)
     const visible = rows.filter((row) => allowed.includes(row.seriesId))
     expect(found).toEqual({ ids: expected(visible, sort, 'asc'), total: 10 })
+  })
+})
+
+describe('a reader allowed more series than a statement can bind', () => {
+  it('lists books and series all the same', async () => {
+    const { database, rows, context } = await setup()
+    // 40,000 series ids, more than SQLite's 32,766 bound values; the real ones last.
+    const real = [...new Set(rows.map((row) => row.seriesId))]
+    const allowed = [...Array.from({ length: 40_000 }, (_, index) => `NOPE${index}`), ...real]
+
+    const books = await listed(database, { ...context, restrictedSeriesIds: allowed }, {}, ['metadata.numberSort,asc'])
+    expect(books.total).toBe(20)
+
+    const filters: SeriesFilters = {
+      libraryIds: ['L1'],
+      collectionIds: [],
+      statuses: [],
+      readStatuses: [],
+      publishers: [],
+      languages: [],
+      genres: [],
+      tags: [],
+      ageRatings: [],
+      releaseYears: [],
+      sharingLabels: [],
+      authors: [],
+      deleted: null,
+      complete: null,
+      oneshot: null,
+    }
+    const series = await findSeries(
+      database.db,
+      { ...context, restrictedSeriesIds: allowed },
+      filters,
+      SERIES_DEFAULT_SORT,
+      0,
+      20,
+      false,
+    )
+    expect(series.total).toBe(4)
   })
 })
