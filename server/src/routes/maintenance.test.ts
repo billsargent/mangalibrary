@@ -12,6 +12,7 @@ import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
 import type { DB } from '../db/schema.js'
 import { driveRoots } from './maintenance.js'
+import { hashApiKey } from '../auth/users.js'
 
 const ADMIN_KEY = 'admin-key'
 const READER_KEY = 'reader-key'
@@ -66,8 +67,22 @@ async function setup(): Promise<Fixture> {
   await db
     .insertInto('user_api_keys')
     .values([
-      { id: 'K1', user_id: 'U1', key: ADMIN_KEY, comment: 'admin', created_date: now, last_modified_date: now },
-      { id: 'K2', user_id: 'U2', key: READER_KEY, comment: 'reader', created_date: now, last_modified_date: now },
+      {
+        id: 'K1',
+        user_id: 'U1',
+        key: hashApiKey(ADMIN_KEY),
+        comment: 'admin',
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        id: 'K2',
+        user_id: 'U2',
+        key: hashApiKey(READER_KEY),
+        comment: 'reader',
+        created_date: now,
+        last_modified_date: now,
+      },
     ])
     .execute()
 

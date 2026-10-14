@@ -173,8 +173,9 @@ describe('komga-import', () => {
       await database.close()
     }
 
-    // What is not carried over is said, not left to be discovered.
-    expect(report.warnings.join('\n')).toMatch(/Not carried over: API keys.*\(1 rows of USER_API_KEY\)/)
+    // API keys come as Komga kept them - a hash - which is what this server keeps.
+    expect(report.tables).toContainEqual({ table: 'user_api_keys', rows: 1 })
+    expect(report.warnings.join('\n')).not.toMatch(/API keys/)
   })
 
   it('makes imported content searchable through FTS5', async () => {

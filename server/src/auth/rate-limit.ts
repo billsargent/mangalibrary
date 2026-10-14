@@ -43,6 +43,26 @@ export class RateLimiter {
     this.now = options.now ?? Date.now
   }
 
+  /** Whether the limit has been reached, without counting anything. */
+  reached(key: string): boolean {
+    const now = this.now()
+    return (this.attempts.get(key) ?? []).filter((at) => now - at < this.windowMs).length >= this.limit
+  }
+
+  /** Count an attempt, whether or not the limit allows more. */
+  record(key: string): void {
+    const now = this.now()
+    const recent = (this.attempts.get(key) ?? []).filter((at) => now - at < this.windowMs)
+    recent.push(now)
+    this.attempts.set(key, recent)
+    // A key nobody has used for a window is forgotten, so the map does not grow for ever.
+    if (this.attempts.size > 10_000) {
+      for (const [other, times] of this.attempts) {
+        if (times.every((at) => now - at >= this.windowMs)) this.attempts.delete(other)
+      }
+    }
+  }
+
   /** Whether an attempt may be made, counting it when it may. */
   allow(key: string): boolean {
     const now = this.now()

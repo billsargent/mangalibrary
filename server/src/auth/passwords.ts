@@ -3,13 +3,36 @@ import bcrypt from 'bcryptjs'
 /** Cost factor used for passwords we hash ourselves. */
 export const TARGET_ROUNDS = 12
 
+/** Hash a password here and now. For tests and fixtures: a request uses {@link hashPasswordAsync}. */
 export function hashPassword(password: string, rounds = TARGET_ROUNDS): string {
   return bcrypt.hashSync(password, rounds)
 }
 
+/** Check a password here and now. For tests: a request uses {@link verifyPasswordAsync}. */
 export function verifyPassword(password: string, hash: string): boolean {
   try {
     return bcrypt.compareSync(password, hash)
+  } catch {
+    return false
+  }
+}
+
+/*
+ * A bcrypt hash at cost 12 is about a quarter of a second of arithmetic. Done in one
+ * go it stops the server for that long, so a client that sends its password with
+ * every page stalls everybody. The asynchronous forms do the same work in small
+ * pieces, letting every other request through between them.
+ */
+
+/** Hash a password without holding up the server. */
+export function hashPasswordAsync(password: string, rounds = TARGET_ROUNDS): Promise<string> {
+  return bcrypt.hash(password, rounds)
+}
+
+/** Check a password without holding up the server. */
+export async function verifyPasswordAsync(password: string, hash: string): Promise<boolean> {
+  try {
+    return await bcrypt.compare(password, hash)
   } catch {
     return false
   }

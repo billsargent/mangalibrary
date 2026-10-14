@@ -52,21 +52,22 @@ be corrupted. Put it on a disk of the machine the server runs on.
 
 The key is the same in `mangalibrary.json` and in `config.json`.
 
-| Setting              | Environment variable                | Config file key                      | Default                                |
-| -------------------- | ----------------------------------- | ------------------------------------ | -------------------------------------- |
-| Config file          | `MANGALIBRARY_CONFIG_FILE`          | —                                    | `mangalibrary.json` beside the program |
-| Data folder          | `MANGALIBRARY_CONFIG_DIR`           | `dataDir` (`mangalibrary.json` only) | `~/.mangalibrary`                      |
-| Database file        | `MANGALIBRARY_DATABASE_FILE`        | `databaseFile`                       | `<configDir>/database.sqlite`          |
-| HTTP port            | `SERVER_PORT` (or `PORT`)           | `port`                               | `25600`                                |
-| Bind address         | `SERVER_HOST`                       | `host`                               | `0.0.0.0`                              |
-| Log level            | `LOG_LEVEL`                         | `logLevel`                           | `info`                                 |
-| Session lifetime     | `MANGALIBRARY_SESSION_TTL_MS`       | —                                    | `604800000` (7 days)                   |
-| Announcements feed   | `MANGALIBRARY_ANNOUNCEMENTS_URL`    | `announcementsUrl`                   | unset                                  |
-| Release notes        | `MANGALIBRARY_RELEASES_URL`         | `releasesUrl`                        | unset                                  |
-| Fonts directory      | `MANGALIBRARY_FONTS_DIR`            | `fontsDir`                           | `<configDir>/fonts`                    |
-| Cross-origin callers | `MANGALIBRARY_CORS_ALLOWED_ORIGINS` | `corsAllowedOrigins`                 | none                                   |
-| Web UI bundle        | `MANGALIBRARY_UI_DIR`               | `uiDir`                              | `ui/dist` beside the server            |
-| Worker threads       | `MANGALIBRARY_WORKER_THREADS`       | `workerThreads`                      | on                                     |
+| Setting                   | Environment variable                | Config file key                      | Default                                |
+| ------------------------- | ----------------------------------- | ------------------------------------ | -------------------------------------- |
+| Config file               | `MANGALIBRARY_CONFIG_FILE`          | —                                    | `mangalibrary.json` beside the program |
+| Data folder               | `MANGALIBRARY_CONFIG_DIR`           | `dataDir` (`mangalibrary.json` only) | `~/.mangalibrary`                      |
+| Database file             | `MANGALIBRARY_DATABASE_FILE`        | `databaseFile`                       | `<configDir>/database.sqlite`          |
+| HTTP port                 | `SERVER_PORT` (or `PORT`)           | `port`                               | `25600`                                |
+| Bind address              | `SERVER_HOST`                       | `host`                               | `0.0.0.0`                              |
+| Log level                 | `LOG_LEVEL`                         | `logLevel`                           | `info`                                 |
+| Session lifetime          | `MANGALIBRARY_SESSION_TTL_MS`       | —                                    | `604800000` (7 days)                   |
+| Announcements feed        | `MANGALIBRARY_ANNOUNCEMENTS_URL`    | `announcementsUrl`                   | unset                                  |
+| Release notes             | `MANGALIBRARY_RELEASES_URL`         | `releasesUrl`                        | unset                                  |
+| Fonts directory           | `MANGALIBRARY_FONTS_DIR`            | `fontsDir`                           | `<configDir>/fonts`                    |
+| Cross-origin callers      | `MANGALIBRARY_CORS_ALLOWED_ORIGINS` | `corsAllowedOrigins`                 | none                                   |
+| Trust a proxy's addresses | `MANGALIBRARY_TRUST_PROXY`          | `trustProxy`                         | off                                    |
+| Web UI bundle             | `MANGALIBRARY_UI_DIR`               | `uiDir`                              | `ui/dist` beside the server            |
+| Worker threads            | `MANGALIBRARY_WORKER_THREADS`       | `workerThreads`                      | on                                     |
 
 ## Where the data is kept
 
@@ -179,3 +180,13 @@ SQLite via `better-sqlite3`, queried with Kysely. On open, the connection sets:
 Schema changes are applied by the migration runner at startup, recorded in the
 `schema_migrations` table. Migrations are declared in `server/src/db/migrations/`
 and are idempotent.
+
+## Behind a reverse proxy
+
+A proxy in front of the server (for HTTPS, say) tells it the client's real address
+and protocol in `X-Forwarded-For` and `X-Forwarded-Proto`. Those headers are believed
+only when `trustProxy` is on (`MANGALIBRARY_TRUST_PROXY=true`). Turn it on only behind
+a proxy that sets them: believed from anybody, they let a client claim any address,
+and with it walk around the limit on failed sign-ins (ten per account and thirty per
+address in fifteen minutes). With it on behind HTTPS, the session cookies are also
+marked `Secure`.

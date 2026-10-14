@@ -13,6 +13,7 @@ import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
 import type { DB } from '../db/schema.js'
 import { MAX_UPLOAD_BYTES } from '../uploads.js'
+import { hashApiKey } from '../auth/users.js'
 
 const ADMIN_KEY = 'admin-key'
 const READER_KEY = 'reader-key'
@@ -71,8 +72,22 @@ async function setup(claimed = true): Promise<Fixture> {
     await db
       .insertInto('user_api_keys')
       .values([
-        { id: 'K1', user_id: 'U1', key: ADMIN_KEY, comment: 'admin', created_date: now, last_modified_date: now },
-        { id: 'K2', user_id: 'U2', key: READER_KEY, comment: 'reader', created_date: now, last_modified_date: now },
+        {
+          id: 'K1',
+          user_id: 'U1',
+          key: hashApiKey(ADMIN_KEY),
+          comment: 'admin',
+          created_date: now,
+          last_modified_date: now,
+        },
+        {
+          id: 'K2',
+          user_id: 'U2',
+          key: hashApiKey(READER_KEY),
+          comment: 'reader',
+          created_date: now,
+          last_modified_date: now,
+        },
       ])
       .execute()
   }
@@ -472,6 +487,33 @@ describe('actuator', () => {
     expect(body.runtime.name).toBe('Node.js')
     expect(body.runtime.version).toBe(process.version)
 
+    await app.close()
+  })
+})
+
+describe('two claims at once', () => {
+  it('lets one of them make an account, and refuses the other', async () => {
+    const { app, db } = await setup(false)
+    const claim = (email: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/claim',
+        headers: { 'x-komga-email': email, 'x-komga-password': 'a-good-password' },
+      })
+    const answers = await Promise.all([claim('one@example.com'), claim('two@example.com')])
+    expect(answers.map((answer) => answer.statusCode).sort()).toEqual([200, 400])
+    expect(await db.selectFrom('users').select('email').execute()).toHaveLength(1)
+    await app.close()
+  })
+})
+
+describe('security headers', () => {
+  it('are on every answer', async () => {
+    const { app } = await setup(false)
+    const res = await app.inject({ method: 'GET', url: '/api/v1/claim' })
+    expect(res.headers['x-content-type-options']).toBe('nosniff')
+    expect(res.headers['x-frame-options']).toBe('SAMEORIGIN')
+    expect(res.headers['strict-transport-security']).toBeUndefined()
     await app.close()
   })
 })

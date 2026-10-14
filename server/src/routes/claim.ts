@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { hashPassword } from '../auth/passwords.js'
+import { hashPasswordAsync } from '../auth/passwords.js'
 import { USER_ROLES } from '../auth/types.js'
 import { nextTsid } from '../tsid.js'
 import type { UserDto } from './dto.js'
@@ -20,6 +20,16 @@ const EMAIL = /.+@.+\..+/
 export async function registerClaimRoutes(app: FastifyInstance, opts: RouteOptions): Promise<void> {
   const db = opts.db
 
+  // Claims are taken one at a time. Checking that nobody has claimed the server and
+  // making the account are separate steps, with the password hashed in between, and
+  // two claims arriving together would otherwise both find the server unclaimed.
+  let claiming: Promise<unknown> = Promise.resolve()
+  const oneAtATime = <T>(work: () => Promise<T>): Promise<T> => {
+    const turn = claiming.then(work, work)
+    claiming = turn.catch(() => undefined)
+    return turn
+  }
+
   const userCount = async (): Promise<number> => {
     const rows = await db.selectFrom('users').select('id').execute()
     return rows.length
@@ -39,32 +49,38 @@ export async function registerClaimRoutes(app: FastifyInstance, opts: RouteOptio
     if (!EMAIL.test(email)) return reply.code(400).send({ message: 'X-Komga-Email must be a valid email address' })
     if (password.trim() === '') return reply.code(400).send({ message: 'X-Komga-Password must not be blank' })
 
-    // Checked before the insert and again by the unique index, so two claims
-    // racing each other cannot both win.
-    if ((await userCount()) > 0) {
-      return reply.code(400).send({ message: 'This server has already been claimed' })
-    }
+    const claimedAlready = () => reply.code(400).send({ message: 'This server has already been claimed' })
+    // Asked first so a claimed server costs nobody a password hash, and asked again
+    // in turn, so that of two claims arriving together only one makes an account.
+    if ((await userCount()) > 0) return claimedAlready()
+    const hashed = await hashPasswordAsync(password)
 
     const now = new Date().toISOString()
     const id = nextTsid()
+    let made: boolean
     try {
-      await db
-        .insertInto('users')
-        .values({
-          id,
-          email,
-          password: hashPassword(password),
-          roles: JSON.stringify(USER_ROLES),
-          shared_all_libraries: 1,
-          age_restriction: null,
-          age_restriction_allow_only: null,
-          created_date: now,
-          last_modified_date: now,
-        })
-        .execute()
+      made = await oneAtATime(async () => {
+        if ((await userCount()) > 0) return false
+        await db
+          .insertInto('users')
+          .values({
+            id,
+            email,
+            password: hashed,
+            roles: JSON.stringify(USER_ROLES),
+            shared_all_libraries: 1,
+            age_restriction: null,
+            age_restriction_allow_only: null,
+            created_date: now,
+            last_modified_date: now,
+          })
+          .execute()
+        return true
+      })
     } catch (err) {
       return reply.code(400).send({ message: (err as Error).message })
     }
+    if (!made) return claimedAlready()
 
     const row = await db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirstOrThrow()
     const created: UserDto = {

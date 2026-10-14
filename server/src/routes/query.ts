@@ -122,14 +122,58 @@ export function likeAny(column: string, value: string): RawBuilder<boolean> {
   return sql<boolean>`lower(${sql.ref(column)}) like ${pattern.toLowerCase()} escape '\\'`
 }
 
-/** Whether `value` is a regular expression SQLite's REGEXP implementation accepts. */
+/** The longest regular expression a search accepts. */
+export const MAX_REGEX_LENGTH = 200
+
+/**
+ * Whether `value` is a regular expression a search may run.
+ *
+ * It runs on the server, against every row, and JavaScript cannot stop a regular
+ * expression once it has started. One that repeats something that itself repeats -
+ * `(a+)+`, `(\w*)*` - can take longer than the universe has on a line that nearly
+ * matches, and would stop the server with it. So beyond being valid, a pattern must
+ * be short and must not put a quantifier on a group that holds one, or use a
+ * back-reference.
+ */
 export function isRegex(value: string): boolean {
+  if (value.length > MAX_REGEX_LENGTH) return false
   try {
     new RegExp(value)
-    return true
   } catch {
     return false
   }
+  return !catastrophic(value)
+}
+
+/** A group with a quantifier inside it that is itself quantified, or a back-reference. */
+function catastrophic(pattern: string): boolean {
+  if (/\\[1-9]|\\k</.test(pattern)) return true
+  // Each open group: whether a quantifier has been seen inside it.
+  const groups: boolean[] = []
+  let inClass = false
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index]
+    if (char === '\\') {
+      index += 1
+      continue
+    }
+    if (inClass) {
+      if (char === ']') inClass = false
+      continue
+    }
+    if (char === '[') inClass = true
+    else if (char === '(') groups.push(false)
+    else if (char === ')') {
+      const quantifiedInside = groups.pop() ?? false
+      const next = pattern[index + 1]
+      const quantified = next === '*' || next === '+' || next === '{' || next === '?'
+      if (quantifiedInside && quantified && next !== '?') return true
+      if (groups.length > 0 && (quantifiedInside || quantified)) groups[groups.length - 1] = true
+    } else if ((char === '*' || char === '+' || char === '{') && groups.length > 0) {
+      groups[groups.length - 1] = true
+    }
+  }
+  return false
 }
 
 export interface JsonSearch<T> {

@@ -9,6 +9,7 @@ import { loadConfig } from '../config.js'
 import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
+import { hashApiKey } from '../auth/users.js'
 
 /**
  * The lists a filter is picked from, asked the way the filter panels ask.
@@ -65,8 +66,8 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
   await db
     .insertInto('user_api_keys')
     .values([
-      { id: 'K1', user_id: 'U1', key: admin['x-api-key'], comment: 'admin', ...dates },
-      { id: 'K2', user_id: 'U2', key: reader['x-api-key'], comment: 'reader', ...dates },
+      { id: 'K1', user_id: 'U1', key: hashApiKey(admin['x-api-key']), comment: 'admin', ...dates },
+      { id: 'K2', user_id: 'U2', key: hashApiKey(reader['x-api-key']), comment: 'reader', ...dates },
     ])
     .execute()
   await db

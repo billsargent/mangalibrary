@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { sql, type Kysely } from 'kysely'
 import type { DB } from '../db/schema.js'
 import { isUserRole, type AuthUser, type ContentRestrictions, type UserRole } from './types.js'
@@ -74,12 +75,23 @@ export interface ApiKeyOwner {
   apiKeyId: string
 }
 
+/**
+ * What is stored for an API key: the hex SHA-512 of it, as the reference stores it.
+ *
+ * A key is shown once, when it is made, and only this is kept, so a copy of the
+ * database does not hand out working keys - and a key carried over from the
+ * reference's database works here unchanged.
+ */
+export function hashApiKey(key: string): string {
+  return createHash('sha512').update(key.trim(), 'utf8').digest('hex')
+}
+
 export async function findUserByApiKey(db: Kysely<DB>, key: string): Promise<ApiKeyOwner | undefined> {
   if (key.trim() === '') return undefined
   const row = await db
     .selectFrom('user_api_keys')
     .select(['id', 'user_id'])
-    .where('key', '=', key.trim())
+    .where('key', '=', hashApiKey(key))
     .executeTakeFirst()
   if (!row) return undefined
   const user = await findUserById(db, row.user_id)

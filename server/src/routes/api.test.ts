@@ -9,6 +9,7 @@ import { loadConfig } from '../config.js'
 import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
+import { hashApiKey } from '../auth/users.js'
 
 /** A folder that is really there, as a library's root has to be. */
 const folder = (): string => realpathSync.native(mkdtempSync(join(tmpdir(), 'ml-api-library-')))
@@ -59,8 +60,22 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
   await database.db
     .insertInto('user_api_keys')
     .values([
-      { id: 'K1', user_id: 'U1', key: ADMIN_KEY, comment: 'admin', created_date: now, last_modified_date: now },
-      { id: 'K2', user_id: 'U2', key: READER_KEY, comment: 'reader', created_date: now, last_modified_date: now },
+      {
+        id: 'K1',
+        user_id: 'U1',
+        key: hashApiKey(ADMIN_KEY),
+        comment: 'admin',
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        id: 'K2',
+        user_id: 'U2',
+        key: hashApiKey(READER_KEY),
+        comment: 'reader',
+        created_date: now,
+        last_modified_date: now,
+      },
     ])
     .execute()
 
@@ -517,7 +532,7 @@ describe('users', () => {
   })
 
   it('manages API keys for the current user', async () => {
-    const { app } = await setup()
+    const { app, database } = await setup()
     const list = await app.inject({ method: 'GET', url: '/api/v2/users/me/api-keys', headers: admin })
     expect(list.json()).toHaveLength(1)
 
@@ -532,6 +547,22 @@ describe('users', () => {
     expect(key.comment).toBe('test key')
     expect(key.userId).toBe('U1')
     expect(key.key.length).toBeGreaterThan(10)
+
+    // Shown once: what is kept is a hash, which is never handed out, and the key works.
+    const stored = await database.db
+      .selectFrom('user_api_keys')
+      .select('key')
+      .where('id', '=', key.id)
+      .executeTakeFirstOrThrow()
+    expect(stored.key).toBe(hashApiKey(key.key))
+    expect(stored.key).not.toBe(key.key)
+    const listed = (await app.inject({ method: 'GET', url: '/api/v2/users/me/api-keys', headers: admin })).json() as {
+      key: string
+    }[]
+    expect(listed.every((entry) => entry.key === '')).toBe(true)
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/v2/users/me', headers: { 'x-api-key': key.key } })).statusCode,
+    ).toBe(200)
 
     // A comment names one key of a user's. Another user may use the same one.
     const again = await app.inject({
@@ -784,6 +815,51 @@ describe('importing books', () => {
       destinationName: 'Volume 9',
       upgradeBookId: 'B1',
     })
+    await app.close()
+  })
+})
+
+describe('changing a password', () => {
+  const signIn = async (app: FastifyInstance, email: string, password: string) => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/login',
+      headers: { 'x-auth-token': '' },
+      payload: { email, password },
+    })
+    expect(res.statusCode).toBe(200)
+    return { 'x-auth-token': String(res.headers['x-auth-token']) }
+  }
+  const me = async (app: FastifyInstance, headers: Record<string, string>) =>
+    (await app.inject({ method: 'GET', url: '/api/v2/users/me', headers })).statusCode
+
+  it("ends the account's other sessions, and keeps the one it was changed from", async () => {
+    const { app } = await setup()
+    const here = await signIn(app, 'reader@example.com', 'reader-pass')
+    const elsewhere = await signIn(app, 'reader@example.com', 'reader-pass')
+    const changed = await app.inject({
+      method: 'PATCH',
+      url: '/api/v2/users/me/password',
+      headers: here,
+      payload: { password: 'a-new-one' },
+    })
+    expect(changed.statusCode).toBe(204)
+    expect(await me(app, here)).toBe(200)
+    expect(await me(app, elsewhere)).toBe(401)
+    await app.close()
+  })
+
+  it('by an administrator ends every session of the account', async () => {
+    const { app } = await setup()
+    const session = await signIn(app, 'reader@example.com', 'reader-pass')
+    const reset = await app.inject({
+      method: 'PATCH',
+      url: '/api/v2/users/U2/password',
+      headers: admin,
+      payload: { password: 'reset-by-admin' },
+    })
+    expect(reset.statusCode).toBe(204)
+    expect(await me(app, session)).toBe(401)
     await app.close()
   })
 })

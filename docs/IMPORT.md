@@ -83,7 +83,7 @@ first scan, as Komga would have done.
 
 ## What is carried over
 
-Libraries and their folder exclusions, users with roles, library sharing, age and
+Libraries and their folder exclusions, users with roles and API keys (kept as Komga keeps them, so a reader app holding one goes on working), library sharing, age and
 label restrictions, series and book metadata with every lock, authors, tags, genres,
 links and sharing labels, what Komga worked out of each series' books (summary,
 release date, authors, tags), media status and pages with their hashes, covers
@@ -95,8 +95,6 @@ hashes with their images.
 
 The report names each of these that the Komga database has:
 
-- **API keys.** Komga keeps only a hash of each key, so they cannot be used here. Make
-  new ones after signing in.
 - The history of scans and deletions, the record of sign-ins, which announcements
   were read, Kobo sync points, and alternate series titles.
 - The record of files beside books (sidecars): the first scan finds them again.

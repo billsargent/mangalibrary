@@ -1,3 +1,4 @@
+import { hashApiKey } from '../auth/users.js'
 import { sql } from 'kysely'
 import { describe, expect, it } from 'vitest'
 import { createDatabase } from './index.js'
@@ -105,6 +106,7 @@ describe('migrate', () => {
       '0022_job_queue_indexes',
       '0023_listing_indexes',
       '0024_referential_indexes',
+      '0025_hashed_api_keys',
     ])
 
     // One row per hash, keeping the largest size and the highest delete count, and
@@ -141,6 +143,37 @@ describe('migrate', () => {
     const columns = await sql<{ name: string }>`pragma table_info(media_page)`.execute(database.db)
     expect(columns.rows.map((row) => row.name)).toContain('file_hash')
 
+    await database.close()
+  })
+})
+
+describe('API keys kept as hashes', () => {
+  it('replaces each stored key by its hash, and leaves a hash as it is', async () => {
+    const database = createDatabase(':memory:')
+    await migrate(
+      database.db,
+      migrations.filter((migration) => migration.id < '0025_hashed_api_keys'),
+    )
+    const now = new Date().toISOString()
+    await database.db
+      .insertInto('users')
+      .values({ id: 'U1', email: 'a@example.com', password: 'x', created_date: now, last_modified_date: now } as never)
+      .execute()
+    const already = 'f'.repeat(128)
+    await database.db
+      .insertInto('user_api_keys')
+      .values([
+        { id: 'K1', user_id: 'U1', key: 'plain-key', comment: 'one', created_date: now, last_modified_date: now },
+        { id: 'K2', user_id: 'U1', key: already, comment: 'two', created_date: now, last_modified_date: now },
+      ])
+      .execute()
+
+    await migrate(database.db, migrations)
+    const keys = await database.db.selectFrom('user_api_keys').select(['id', 'key']).orderBy('id').execute()
+    expect(keys).toEqual([
+      { id: 'K1', key: hashApiKey('plain-key') },
+      { id: 'K2', key: already },
+    ])
     await database.close()
   })
 })

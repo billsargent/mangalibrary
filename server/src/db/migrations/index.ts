@@ -23,6 +23,7 @@ import { migration0021PagelessBooks } from './0021_pageless_books.js'
 import { migration0022JobQueueIndexes } from './0022_job_queue_indexes.js'
 import { migration0023ListingIndexes } from './0023_listing_indexes.js'
 import { migration0024ReferentialIndexes } from './0024_referential_indexes.js'
+import { migration0025HashedApiKeys } from './0025_hashed_api_keys.js'
 
 /**
  * Ordered migration registry, applied in id order by the runner.
@@ -56,4 +57,5 @@ export const migrations: Migration[] = [
   migration0022JobQueueIndexes,
   migration0023ListingIndexes,
   migration0024ReferentialIndexes,
+  migration0025HashedApiKeys,
 ]

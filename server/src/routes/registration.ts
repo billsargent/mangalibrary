@@ -17,7 +17,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { Kysely } from 'kysely'
 
-import { hashPassword } from '../auth/passwords.js'
+import { hashPasswordAsync } from '../auth/passwords.js'
 import { RateLimiter } from '../auth/rate-limit.js'
 import { recordActivity, requireAdmin } from '../auth/session.js'
 import { USER_ROLES, isUserRole, type UserRole } from '../auth/types.js'
@@ -143,7 +143,7 @@ export async function registerRegistrationRoutes(app: FastifyInstance, opts: Rou
         .values({
           id,
           email,
-          password: hashPassword(password),
+          password: await hashPasswordAsync(password),
           roles: JSON.stringify(await registrationRoles(db)),
           // Nothing is shared until an admin shares it, exactly as an admin-created
           // account starts with no libraries.
