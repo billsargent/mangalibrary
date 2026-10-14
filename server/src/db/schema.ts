@@ -201,6 +201,8 @@ export interface SeriesMetadataTable {
   title_lock: Generated<number>
   title_sort: string
   title_sort_lock: Generated<number>
+  /** `title_sort` folded - lower-case, without accents - to sort by; kept by triggers (migration 0027). */
+  title_sort_key: Generated<string>
   publisher: Generated<string>
   publisher_lock: Generated<number>
   language: Generated<string>

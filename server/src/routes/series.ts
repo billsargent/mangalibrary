@@ -66,7 +66,7 @@ export function seriesSorts(userId: string, collectionId?: string): Record<strin
     lastModifiedDate: 'series.last_modified_date',
     booksCount: 'series.book_count',
     'metadata.title': 'series_metadata.title',
-    'metadata.titleSort': 'series_metadata.title_sort',
+    'metadata.titleSort': 'series_metadata.title_sort_key',
     'metadata.lastModified': 'series_metadata.last_modified_date',
     'booksMetadata.releaseDate': 'book_metadata_aggregation.release_date',
     // When the caller last read any book of the series.
@@ -80,7 +80,7 @@ export function seriesSorts(userId: string, collectionId?: string): Record<strin
 }
 
 export const SERIES_DEFAULT_SORT: SortSpec[] = [
-  { column: 'series_metadata.title_sort', direction: 'asc' },
+  { column: 'series_metadata.title_sort_key', direction: 'asc' },
   { column: 'series.id', direction: 'asc' },
 ]
 
