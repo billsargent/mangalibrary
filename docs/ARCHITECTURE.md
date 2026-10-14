@@ -57,6 +57,19 @@ Komga's schema). Key groups:
 - Search: FTS5 tables `fts_books`, `fts_series`, `fts_collections`,
   `fts_readlists`, `fts_authors`
 
+Three things about the database worth knowing before touching it by hand:
+
+- **Upgrades run one migration per transaction** (`db/migrate.ts`): a migration
+  stopped part-way leaves nothing, and the next start runs it again.
+- **`synchronous = NORMAL`** under the write-ahead log: it cannot corrupt the database,
+  and gives up only the last moments of writing if the machine loses power, against
+  waiting for the disk at every commit.
+- **Do not `VACUUM` without rebuilding the search tables.** They are FTS5 tables with
+  external content, keyed on the rowid of tables whose primary key is text, and a
+  `VACUUM` may renumber those rowids. Nothing in the server runs one. If you do, run
+  `insert into fts_books(fts_books) values ('rebuild')` and the same for each `fts_*`
+  table afterwards.
+
 ## Request flow
 
 ```text

@@ -65,6 +65,11 @@ export function createDatabase(file: string): Database {
 
   const sqlite = new BetterSqlite3(file)
   sqlite.pragma('journal_mode = WAL')
+  // With a write-ahead log, NORMAL cannot corrupt the database: what it gives up is
+  // the last moments of writing if the machine itself loses power, against waiting
+  // for the disk at every commit. A scan commits per series, and on a hard disk that
+  // wait is most of its time. SQLite recommends it for WAL.
+  sqlite.pragma('synchronous = NORMAL')
   sqlite.pragma('foreign_keys = ON')
   sqlite.pragma('busy_timeout = 5000')
   installRegexp(sqlite)
