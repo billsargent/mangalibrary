@@ -16,7 +16,7 @@ export function createLegacyFixture(file: string): void {
       IMPORT_COMICINFO_BOOK integer not null default 1,
       IMPORT_COMICINFO_SERIES integer not null default 1,
       SCAN_INTERVAL text not null default 'EVERY_6H',
-      HASH_FILES integer not null default 1,
+      HASH_FILES integer not null default 1, SCAN_STARTUP integer not null default 0,
       CREATED_DATE datetime not null default current_timestamp,
       LAST_MODIFIED_DATE datetime not null default current_timestamp
     );
@@ -123,6 +123,25 @@ export function createLegacyFixture(file: string): void {
       LAST_MODIFIED_DATE datetime not null default current_timestamp
     );
     create table PAGE_HASH_THUMBNAIL (HASH text not null primary key, THUMBNAIL blob not null);
+    create table BOOK_METADATA_AGGREGATION (
+      SERIES_ID text primary key, RELEASE_DATE date null, SUMMARY text not null default '',
+      SUMMARY_NUMBER text not null default '',
+      CREATED_DATE datetime not null default current_timestamp,
+      LAST_MODIFIED_DATE datetime not null default current_timestamp
+    );
+    create table BOOK_METADATA_AGGREGATION_AUTHOR (SERIES_ID text not null, NAME text not null, ROLE text not null);
+    create table BOOK_METADATA_AGGREGATION_TAG (SERIES_ID text not null, TAG text not null);
+    create table READ_PROGRESS_SERIES (
+      SERIES_ID text not null, USER_ID text not null, READ_COUNT integer not null,
+      IN_PROGRESS_COUNT integer not null, MOST_RECENT_READ_DATE datetime null,
+      LAST_MODIFIED_DATE datetime not null default current_timestamp
+    );
+    create table MEDIA_FILE (FILE_NAME text not null, BOOK_ID text not null, MEDIA_TYPE text null, SUB_TYPE text null, FILE_SIZE integer null);
+    create table USER_API_KEY (
+      ID text primary key, USER_ID text not null, API_KEY text not null, COMMENT text not null,
+      CREATED_DATE datetime not null default current_timestamp,
+      LAST_MODIFIED_DATE datetime not null default current_timestamp
+    );
   `)
 
   const insert = (sql: string, rows: unknown[][]) => {
@@ -130,7 +149,11 @@ export function createLegacyFixture(file: string): void {
     for (const row of rows) statement.run(...row)
   }
 
-  insert('insert into LIBRARY (ID, NAME, ROOT) values (?, ?, ?)', [['L1', 'Library', '/library']])
+  // Komga keeps every location as a file: URL of its own machine, percent-encoded,
+  // with one slash after the scheme and a trailing one on folders.
+  insert('insert into LIBRARY (ID, NAME, ROOT, SCAN_STARTUP) values (?, ?, ?, ?)', [
+    ['L1', 'Library', 'file:/library/', 1],
+  ])
   insert('insert into LIBRARY_EXCLUSIONS (LIBRARY_ID, EXCLUSION) values (?, ?)', [['L1', '#recycle']])
   insert(
     'insert into USER (ID, EMAIL, PASSWORD, SHARED_ALL_LIBRARIES, AGE_RESTRICTION, AGE_RESTRICTION_ALLOW_ONLY) values (?, ?, ?, ?, ?, ?)',
@@ -150,7 +173,7 @@ export function createLegacyFixture(file: string): void {
     ['U2', 1, 'kids'],
   ])
   insert('insert into SERIES (ID, LIBRARY_ID, NAME, URL, FILE_LAST_MODIFIED) values (?, ?, ?, ?, ?)', [
-    ['S1', 'L1', 'Akira', 'akira', '2024-01-01 10:00:00'],
+    ['S1', 'L1', 'Akira', 'file:/library/Akira/', '2024-01-01 10:00:00'],
   ])
   insert(
     'insert into SERIES_METADATA (SERIES_ID, STATUS, TITLE, TITLE_LOCK, TITLE_SORT, PUBLISHER, LANGUAGE, SUMMARY, TAGS_LOCK) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -168,8 +191,9 @@ export function createLegacyFixture(file: string): void {
   insert(
     'insert into BOOK (ID, SERIES_ID, LIBRARY_ID, NAME, URL, FILE_LAST_MODIFIED, FILE_SIZE, NUMBER) values (?, ?, ?, ?, ?, ?, ?, ?)',
     [
-      ['B1', 'S1', 'L1', 'Volume 1', 'v1.cbz', '2024-01-01 10:00:00', 1024, 1],
-      ['B2', 'S1', 'L1', 'Volume 2', 'v2.cbz', '2024-01-02 10:00:00', 2048, 2],
+      ['B1', 'S1', 'L1', 'Volume 1', 'file:/library/Akira/Volume%201.cbz', '2024-01-01 10:00:00', 1024, 1],
+      // Komga writes most dates with nanoseconds, in UTC.
+      ['B2', 'S1', 'L1', 'Volume 2', 'file:/library/Akira/Volume%202.cbz', '2024-01-02 10:00:00.123456789', 2048, 2],
     ],
   )
   insert('insert into BOOK_METADATA (BOOK_ID, TITLE, NUMBER, NUMBER_SORT, LINKS_LOCK) values (?, ?, ?, ?, ?)', [
@@ -199,7 +223,7 @@ export function createLegacyFixture(file: string): void {
     [
       ['T1', 'B1', 'GENERATED', 1, 1, 'image/jpeg', 4, 4, 11, Buffer.from([0xff, 0xd8, 0xff, 0xd9]), null],
       // A cover found beside the book, which Komga stores as the file's URL.
-      ['T3', 'B1', 'SIDECAR', 0, 0, 'image/png', 40, 60, 128, null, 'file:/library/Akira/Volume 1.png'],
+      ['T3', 'B1', 'SIDECAR', 0, 0, 'image/png', 40, 60, 128, null, 'file:/library/Akira/Volume%201.png'],
     ],
   )
   insert(
@@ -226,6 +250,23 @@ export function createLegacyFixture(file: string): void {
   ])
   insert('insert into PAGE_HASH_THUMBNAIL (HASH, THUMBNAIL) values (?, ?)', [
     ['hash-1', Buffer.from([0xff, 0xd8, 0xff, 0xd9])],
+  ])
+
+  insert(
+    'insert into BOOK_METADATA_AGGREGATION (SERIES_ID, RELEASE_DATE, SUMMARY, SUMMARY_NUMBER) values (?, ?, ?, ?)',
+    [['S1', '1982-12-20', 'Neo-Tokyo, 2019.', '1']],
+  )
+  insert('insert into BOOK_METADATA_AGGREGATION_AUTHOR (SERIES_ID, NAME, ROLE) values (?, ?, ?)', [
+    ['S1', 'Katsuhiro Otomo', 'writer'],
+  ])
+  insert('insert into BOOK_METADATA_AGGREGATION_TAG (SERIES_ID, TAG) values (?, ?)', [['S1', 'cyberpunk']])
+  insert(
+    'insert into READ_PROGRESS_SERIES (SERIES_ID, USER_ID, READ_COUNT, IN_PROGRESS_COUNT, MOST_RECENT_READ_DATE) values (?, ?, ?, ?, ?)',
+    [['S1', 'U1', 0, 1, '2024-02-01 12:00:00.5']],
+  )
+  insert('insert into MEDIA_FILE (FILE_NAME, BOOK_ID) values (?, ?)', [['ComicInfo.xml', 'B1']])
+  insert('insert into USER_API_KEY (ID, USER_ID, API_KEY, COMMENT) values (?, ?, ?, ?)', [
+    ['K1', 'U1', 'hashed', 'phone'],
   ])
 
   db.close()
