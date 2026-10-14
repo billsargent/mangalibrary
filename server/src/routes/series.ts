@@ -612,36 +612,6 @@ export async function registerSeriesRoutes(app: FastifyInstance, opts: RouteOpti
   recent('/api/v1/series/new', { column: 'series.created_date', direction: 'desc' })
   recent('/api/v1/series/updated', { column: 'series.last_modified_date', direction: 'desc' })
 
-  const releaseDates = async (libraryIds: string[]) => {
-    if (libraryIds.length === 0) return []
-    const rows = await db
-      .selectFrom('book_metadata')
-      .innerJoin('books', 'books.id', 'book_metadata.book_id')
-      .innerJoin('series', 'series.id', 'books.series_id')
-      .select('book_metadata.release_date')
-      .where('series.library_id', 'in', libraryIds)
-      .where('book_metadata.release_date', 'is not', null)
-      .execute()
-
-    const years = new Set<number>()
-    for (const row of rows) {
-      const year = Number.parseInt((row.release_date ?? '').slice(0, 4), 10)
-      if (Number.isFinite(year)) years.add(year)
-    }
-    return [...years].sort((left, right) => left - right)
-  }
-
-  app.get('/api/v1/series/release-dates', { preHandler: requireAuth }, async (req) => {
-    const context = await contentContext(db, req)
-    const scoped = scopedLibraryIds(context, (req.query as Record<string, unknown>).library_id)
-    return (await releaseDates(scoped)).map(String)
-  })
-
-  app.get('/api/v2/series/release-years', { preHandler: requireAuth }, async (req) => {
-    const context = await contentContext(db, req)
-    return releaseDates(context.libraryIds)
-  })
-
   app.get<{ Params: { seriesId: string } }>(
     '/api/v1/series/:seriesId',
     { preHandler: requireAuth },

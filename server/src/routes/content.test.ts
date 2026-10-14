@@ -498,7 +498,8 @@ describe('series listing', () => {
     ])
 
     const dates = await app.inject({ method: 'GET', url: '/api/v1/series/release-dates', headers: admin })
-    expect(dates.json()).toEqual(['1982', '1985', '1989'])
+    // A series is dated by its earliest book, and it is series this list is for.
+    expect(dates.json()).toEqual(['1982'])
     await app.close()
   })
 

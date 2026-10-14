@@ -413,7 +413,8 @@ describe('referentials', () => {
     const get = async (url: string) => (await app.inject({ method: 'GET', url, headers: admin })).json()
 
     expect(await get('/api/v1/genres')).toEqual(['Science Fiction'])
-    expect(await get('/api/v1/tags')).toEqual(['cyberpunk'])
+    expect(await get('/api/v1/tags')).toEqual(['classic', 'cyberpunk'])
+    expect(await get('/api/v1/tags/series')).toEqual(['cyberpunk'])
     expect(await get('/api/v1/tags/book')).toEqual(['classic'])
     expect(await get('/api/v1/publishers')).toEqual(['Kodansha'])
     expect(await get('/api/v1/languages')).toEqual(['en'])
