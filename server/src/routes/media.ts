@@ -70,8 +70,8 @@ const PAGE_THUMBNAIL_SIZE = 300
  */
 const FONT_EXTENSIONS = ['otf', 'woff', 'woff2', 'eot', 'ttf', 'svg']
 
-/** A document loaded from inside a book must not be able to run script. */
-const RESOURCE_CSP = "script-src 'none'; object-src 'none';"
+/** A document loaded from inside a book must not be able to run script, submit a form or move its base. */
+const RESOURCE_CSP = "script-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none';"
 
 interface PageMeta {
   book: BookFileRecord

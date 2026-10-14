@@ -568,7 +568,9 @@ describe('book resources', () => {
     })
     expect(chapter.statusCode).toBe(200)
     expect(chapter.headers['content-type']).toBe('application/xhtml+xml')
-    expect(chapter.headers['content-security-policy']).toBe("script-src 'none'; object-src 'none';")
+    expect(chapter.headers['content-security-policy']).toBe(
+      "script-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none';",
+    )
     expect(chapter.headers['content-disposition']).toContain('chapter1.xhtml')
     expect(chapter.body).toContain('first chapter')
 
