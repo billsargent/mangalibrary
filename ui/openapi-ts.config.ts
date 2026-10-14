@@ -2,7 +2,7 @@ import { defineConfig } from '@hey-api/openapi-ts'
 import * as fs from 'node:fs'
 
 // 1. Load the spec manually
-const specRaw = fs.readFileSync('../komga/docs/openapi.json', 'utf-8')
+const specRaw = fs.readFileSync('../server/spec/komga-openapi.json', 'utf-8')
 const spec = JSON.parse(specRaw)
 
 // 2. Strip out the path-level strings that crash the MSW plugin

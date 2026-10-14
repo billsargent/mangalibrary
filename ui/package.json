@@ -5,9 +5,9 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "vite",
-    "build": "vite build --mode prod",
+    "build": "run-s i18n:compile build:vite",
     "build:mode-dev": "vite build --mode development",
-    "build:with-i18n": "run-s i18n:compile \"build {@}\" --",
+    "build:with-i18n": "npm run build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -28,8 +28,9 @@
     "formatjs:verify": "formatjs verify --missing-keys --source-locale=en \"i18n/*.json\"",
     "storybook:dev": "storybook dev -p 6006",
     "storybook:build": "storybook build",
-    "chromatic": "chromatic",
-    "chromatic:force-rebuild": "chromatic --force-rebuild"
+    "build:vite": "vite build --mode prod",
+    "pretest:unit": "npm run i18n:compile",
+    "pretype-check": "npm run i18n:compile"
   },
   "dependencies": {
     "@formatjs/intl-localematcher": "^0.9.0",
@@ -84,7 +85,6 @@
     "@vue/eslint-config-prettier": "^10.2.0",
     "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/tsconfig": "^0.9.1",
-    "chromatic": "^18.10.1",
     "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-formatjs": "^8.1.0",

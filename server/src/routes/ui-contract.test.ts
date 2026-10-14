@@ -168,3 +168,53 @@ describe('the search operators the forked UI sends', () => {
     expect([...sent].filter((operator) => !known.has(operator)).sort()).toEqual([])
   })
 })
+
+/**
+ * The addresses the UI builds by hand rather than through the generated client: images,
+ * downloads and the event stream. They are written as template strings, so nothing
+ * checks them against the contract - a typo in one is a broken image, not an error.
+ */
+const HAND_BUILT = ['api/images.ts', 'api/files.ts', 'composables/sse.ts']
+
+function handBuiltUrls(): string[] {
+  const urls = new Set<string>()
+  for (const file of HAND_BUILT) {
+    const source = readFileSync(join(UI_SRC, file), 'utf8')
+    // `${ApiBaseUrl.noSlash}/api/v1/books/${bookId}/thumbnail${version ? ... : ''}` and
+    // ApiBaseUrl.noSlash + '/sse/v1/events': the path, each interpolation a value.
+    for (const match of source.matchAll(/ApiBaseUrl\.noSlash\}(\/[^`]*)`/g)) {
+      const path = match[1]!
+        // A trailing interpolation that is only a query string adds nothing to the path.
+        .replace(/\$\{[^}]*\?[^}]*\}$/, '')
+        .replace(/\$\{[^}]+\}/g, 'x')
+      urls.add(path)
+    }
+    for (const match of source.matchAll(/ApiBaseUrl\.noSlash \+ '(\/[^']+)'/g)) urls.add(match[1]!)
+  }
+  return [...urls].sort()
+}
+
+describe('the addresses the forked UI builds by hand', () => {
+  it.skipIf(!existsSync(join(UI_SRC, 'api', 'images.ts')))('are all served', async () => {
+    const urls = handBuiltUrls()
+    expect(urls.length).toBeGreaterThan(15)
+
+    const config = loadConfig({ KOMGA_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'ml-ui-hand-')), LOG_LEVEL: 'silent' })
+    const database = createDatabase(':memory:')
+    await migrate(database.db, migrations)
+    const app = await buildServer({ config, database })
+
+    // Served means a route answered: most often that the caller is not signed in.
+    const missing: string[] = []
+    for (const url of urls) {
+      const response = await app.inject({ method: 'GET', url })
+      if (response.statusCode === 404 && response.body.includes('Route ') && response.body.includes(' not found')) {
+        missing.push(url)
+      }
+    }
+    expect(missing).toEqual([])
+
+    await database.close()
+    await app.close()
+  })
+})
