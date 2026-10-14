@@ -47,6 +47,13 @@
 
     <SearchBox class="mx-2" />
 
+    <v-btn
+      v-ktooltip:bottom="$formatMessage(tagsMessage)"
+      to="/tags"
+      icon="i-mdi:tag-multiple-outline"
+      :aria-label="$formatMessage(tagsMessage)"
+    />
+
     <template #append>
       <TaskIndicator />
       <LocaleSelector />
@@ -58,11 +65,17 @@
 <script setup lang="ts">
 import { useAppStore } from '@/stores/app'
 import { useAnnouncements } from '@/colada/announcements'
-import { useIntl } from 'vue-intl'
+import { defineMessage, useIntl } from 'vue-intl'
 import { useDisplay } from 'vuetify'
 
 const intl = useIntl()
 const display = useDisplay()
+
+const tagsMessage = defineMessage({
+  description: 'App bar: button to the page of every tag',
+  defaultMessage: 'Tags',
+  id: 'Puuxdq',
+})
 
 const appStore = useAppStore()
 const { unreadCount } = useAnnouncements()

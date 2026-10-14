@@ -7,6 +7,7 @@ import { contentContext, scopedLibraryIds, type ContentContext } from './context
 import { springPage, type SpringPage } from './dto.js'
 import type { RouteOptions } from './libraries.js'
 import { booleanParam, paging, toArray } from './query.js'
+import { groupOf } from './series.js'
 
 /**
  * The lists a filter is picked from: every tag, genre, publisher, author and so on
@@ -214,6 +215,47 @@ function paginated<T>(items: T[], query: Query, usePage: boolean): T[] | SpringP
   return springPage(items.slice(page * size, page * size + size), page, size, items.length)
 }
 
+/** One tag of the cloud: its name, the letter it is listed under, and how many series carry it. */
+export interface CloudTag {
+  tag: string
+  letter: string
+  count: number
+}
+
+/** The letter a tag is listed under: its first letter without accents, and `#` for anything not a letter. */
+export function cloudLetter(tag: string): string {
+  const letter = groupOf(tag)
+  return /^\p{L}$/u.test(letter) ? letter : '#'
+}
+
+/**
+ * Every tag in the scope, with the number of series it would list.
+ *
+ * A tag is followed to the series list, whose tag filter matches a series by its own
+ * tags or its books' (`search/condition.ts`), so that is what is counted: series
+ * carrying the tag either way, each once - the number the click then shows.
+ */
+async function tagCloud(db: Kysely<DB>, scope: Scope): Promise<CloudTag[]> {
+  const within = scope.everything ? sql`` : sql`where series_id in ${scope.series}`
+  const rows = await sql<{ tag: string; count: number }>`
+    select tag, count(*) as count from (
+      select series_id, tag from series_metadata_tag ${within}
+      union
+      select series_id, tag from book_metadata_aggregation_tag ${within}
+    )
+    group by tag
+  `.execute(db)
+  const tags = new Map<string, number>()
+  for (const row of rows.rows) {
+    // Tags differing only by spaces around them are one tag to a reader.
+    const tag = row.tag.trim()
+    if (tag !== '') tags.set(tag, (tags.get(tag) ?? 0) + Number(row.count))
+  }
+  return [...tags.entries()]
+    .map(([tag, count]) => ({ tag, letter: cloudLetter(tag), count }))
+    .sort((left, right) => left.tag.localeCompare(right.tag))
+}
+
 export async function registerReferentialRoutes(app: FastifyInstance, opts: RouteOptions): Promise<void> {
   const { db } = opts
 
@@ -275,4 +317,11 @@ export async function registerReferentialRoutes(app: FastifyInstance, opts: Rout
 
   register('/api/v1', false)
   register('/api/v2', true)
+
+  // Not the reference's: the page of every tag, sized by how much carries each.
+  app.get('/api/v1/tags/cloud', { preHandler: requireAuth }, async (req) => {
+    const query = (req.query ?? {}) as Query
+    const scope = scopeOf(db, await contentContext(db, req), query, (await allLibraryIds(db)).length)
+    return { tags: scope === null ? [] : await tagCloud(db, scope) }
+  })
 }
