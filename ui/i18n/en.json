@@ -59,6 +59,10 @@
     "defaultMessage": "Files over the size limit: {filenames}",
     "description": "Poster upload: error message when trying to upload file over the size limit"
   },
+  "/4lyfY": {
+    "defaultMessage": "No tags yet",
+    "description": "Tag cloud page: shown when no series has a tag"
+  },
   "/5Gb4y": {
     "defaultMessage": "Delete",
     "description": "Library delete dialog: confirm button"
@@ -154,6 +158,10 @@
   "0eIJ3K": {
     "defaultMessage": "Manual ordering",
     "description": "Collection view: manual ordering"
+  },
+  "0iKBbr": {
+    "defaultMessage": "Tags",
+    "description": "Tag cloud page: heading"
   },
   "0iT7Vf": {
     "defaultMessage": "Metadata",
@@ -534,6 +542,10 @@
   "8/BXfN": {
     "defaultMessage": "All",
     "description": "Library tab navigation: library selection: all"
+  },
+  "80TdU6": {
+    "defaultMessage": "Library",
+    "description": "Tag cloud page: label of the library selector"
   },
   "81BMAQ": {
     "defaultMessage": "Import book metadata",
@@ -1499,6 +1511,10 @@
     "defaultMessage": "Serif",
     "description": "EPUB reader font: serif"
   },
+  "Puuxdq": {
+    "defaultMessage": "Tags",
+    "description": "App bar: button to the page of every tag"
+  },
   "PvKF7E": {
     "defaultMessage": "Library deleted: {library}",
     "description": "Snackbar notification shown upon successful library deletion"
@@ -1510,6 +1526,10 @@
   "Q+DbYX": {
     "defaultMessage": "Drag a book, or use the arrows, to set the order.",
     "description": "Form edit read list: Contents - hint when the read list is ordered manually"
+  },
+  "Q4U1js": {
+    "defaultMessage": "All libraries",
+    "description": "Tag cloud page: the library selector choice that shows every library"
   },
   "Q7tJAG": {
     "defaultMessage": "Read list",
@@ -1782,6 +1802,10 @@
   "V3wgcu": {
     "defaultMessage": "Duplicate page",
     "description": "Duplicate Page Hash Matches Table: alt description for thumbnail"
+  },
+  "VBzAEk": {
+    "defaultMessage": "Tags beginning with {letter}",
+    "description": "Tag cloud page: accessible name of the tags of one letter"
   },
   "VHe28r": {
     "defaultMessage": "Date updated",

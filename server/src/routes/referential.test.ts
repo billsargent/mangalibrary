@@ -371,3 +371,68 @@ describe('a library with more series than a query has parameters', () => {
     await app.close()
   })
 })
+
+describe('the tag cloud', () => {
+  /** The series' books' tags, as aggregation keeps them, plus a few awkward names. */
+  async function withAggregates(database: Database) {
+    await database.db
+      .insertInto('book_metadata_aggregation_tag')
+      .values([
+        // Akira's books carry its own tag again, and two more.
+        { series_id: 'S1', tag: 'cyberpunk' },
+        { series_id: 'S1', tag: 'classic' },
+        { series_id: 'S1', tag: 'colour' },
+        // Berserk's book shares one with Akira's.
+        { series_id: 'S2', tag: 'gore' },
+        { series_id: 'S2', tag: 'classic' },
+        { series_id: 'S3', tag: 'buried' },
+        { series_id: 'S3', tag: 'Élan' },
+        { series_id: 'S3', tag: '9 lives' },
+      ])
+      .execute()
+  }
+
+  const cloud = async (app: FastifyInstance, headers: Record<string, string>, query = '') => {
+    const res = await app.inject({ method: 'GET', url: `/api/v1/tags/cloud${query}`, headers })
+    expect(res.statusCode).toBe(200)
+    return (res.json() as { tags: { tag: string; letter: string; count: number }[] }).tags
+  }
+
+  it('counts the series a tag would list, by their own tags or their books', async () => {
+    const { app, database } = await setup()
+    await withAggregates(database)
+
+    expect(await cloud(app, admin)).toEqual([
+      { tag: '9 lives', letter: '#', count: 1 },
+      { tag: 'buried', letter: 'b', count: 1 },
+      // On two series' books: two.
+      { tag: 'classic', letter: 'c', count: 2 },
+      { tag: 'colour', letter: 'c', count: 1 },
+      // On Akira itself and on its books: one series, counted once.
+      { tag: 'cyberpunk', letter: 'c', count: 1 },
+      { tag: 'dark fantasy', letter: 'd', count: 1 },
+      // Under its letter without the accent, as the series A-Z bar does it.
+      { tag: 'Élan', letter: 'e', count: 1 },
+      { tag: 'gore', letter: 'g', count: 1 },
+      { tag: 'hidden', letter: 'h', count: 1 },
+    ])
+    await app.close()
+  })
+
+  it('narrows to a library, and to what a reader may see', async () => {
+    const { app, database } = await setup()
+    await withAggregates(database)
+
+    const l2 = await cloud(app, admin, '?library_id=L2')
+    expect(l2.map((entry) => entry.tag)).toEqual(['9 lives', 'buried', 'Élan', 'hidden'])
+
+    // The reader sees L1 only, and not Berserk: classic is on one series they can open.
+    expect(await cloud(app, reader)).toEqual([
+      { tag: 'classic', letter: 'c', count: 1 },
+      { tag: 'colour', letter: 'c', count: 1 },
+      { tag: 'cyberpunk', letter: 'c', count: 1 },
+    ])
+    expect(await cloud(app, reader, '?library_id=L2')).toEqual([])
+    await app.close()
+  })
+})

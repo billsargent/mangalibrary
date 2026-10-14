@@ -316,6 +316,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/tags': RouteRecordInfo<
+      '/tags',
+      '/tags',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
   }
 
   /**
@@ -651,6 +658,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/startup.vue': {
       routes:
         | '/startup'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/tags.vue': {
+      routes:
+        | '/tags'
       views:
         | never
       pathParamNames:
