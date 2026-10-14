@@ -85,18 +85,29 @@ first scan, as Komga would have done.
 
 Libraries and their folder exclusions, users with roles and API keys (kept as Komga keeps them, so a reader app holding one goes on working), library sharing, age and
 label restrictions, series and book metadata with every lock, authors, tags, genres,
-links and sharing labels, what Komga worked out of each series' books (summary,
-release date, authors, tags), media status and pages with their hashes, covers
-(generated, uploaded, and the ones found beside books), read progress (per book and
-per series), collections, read lists, server and client settings, and duplicate page
-hashes with their images.
+links, alternate titles and sharing labels, what Komga worked out of each series'
+books (summary, release date, authors, tags), media status and pages with their
+hashes, covers (generated, uploaded, and the ones found beside books), read progress
+(per book and per series), collections, read lists, server and client settings, and
+duplicate page hashes with their images.
+
+Two things Komga allows and this server does not are settled on the way:
+
+- **A label both allowed and excluded** for one reader becomes excluded, which is how
+  this server would read it anyway.
+- **Two accounts whose emails differ only in case** (`Ann@…` and `ann@…`) stop the
+  import before anything is written: this server signs in by email whatever its case,
+  so it cannot tell them apart. Change one in Komga and import again.
+
+EPUBs come across marked to be read again: what this server keeps of one (its contents
+and reading positions) is not in Komga's tables. It is quick, and done once.
 
 ## What is not
 
 The report names each of these that the Komga database has:
 
 - The history of scans and deletions, the record of sign-ins, which announcements
-  were read, Kobo sync points, and alternate series titles.
+  were read, and Kobo sync points.
 - The record of files beside books (sidecars): the first scan finds them again.
 
 ## After importing

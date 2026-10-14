@@ -248,6 +248,23 @@ const users: Copy = {
   from: 'USER',
   map: () => null,
   prepare: ({ legacy }) => {
+    // Komga tells `Ann@example.com` and `ann@example.com` apart; this server signs in
+    // by email whatever its case, so two such accounts cannot both come across, and
+    // which one should is for a person to decide, before anything is written.
+    const byEmail = new Map<string, string[]>()
+    for (const row of legacy.iterate('USER')) {
+      const email = text(row.EMAIL)
+      byEmail.set(email.toLowerCase(), [...(byEmail.get(email.toLowerCase()) ?? []), email])
+    }
+    const clashes = [...byEmail.values()].filter((emails) => emails.length > 1)
+    if (clashes.length > 0) {
+      throw new Error(
+        `Komga has accounts whose emails differ only in case, which this server cannot tell apart: ${clashes
+          .map((emails) => emails.join(' and '))
+          .join('; ')}. Change one of each in Komga, then import again.`,
+      )
+    }
+
     const rolesByUser = new Map<string, string[]>()
     for (const row of legacy.iterate('USER_ROLE')) {
       const userId = text(row.USER_ID)
@@ -317,13 +334,31 @@ const apiKeys: Copy = {
   },
 }
 
+/**
+ * Labels a reader may or may not see. Komga keys these by label, allow and user, so a
+ * label can be both allowed and excluded for one reader; this server keeps one row a
+ * label, and - as it decides when it reads them - exclusion wins.
+ */
 const userSharing: Copy = {
   table: 'user_sharing',
   from: 'USER_SHARING',
-  map: (row) =>
-    text(row.USER_ID) === '' || text(row.LABEL) === ''
-      ? null
-      : { user_id: text(row.USER_ID), allow: bool(row.ALLOW, 1), label: text(row.LABEL) },
+  map: () => null,
+  prepare: ({ legacy }) => {
+    const excluded = new Set(
+      legacy
+        .rows('USER_SHARING')
+        .filter((row) => !bool(row.ALLOW, 1))
+        .map((row) => `${text(row.USER_ID)}\u0000${text(row.LABEL)}`),
+    )
+    const seen = new Set<string>()
+    return (row) => {
+      const key = `${text(row.USER_ID)}\u0000${text(row.LABEL)}`
+      if (text(row.USER_ID) === '' || text(row.LABEL) === '' || seen.has(key)) return null
+      const allow = excluded.has(key) ? 0 : bool(row.ALLOW, 1)
+      seen.add(key)
+      return { user_id: text(row.USER_ID), allow, label: text(row.LABEL) }
+    }
+  },
 }
 
 const series: Copy = {
@@ -477,13 +512,21 @@ const aggregation: Copy = {
   }),
 }
 
+/**
+ * What Komga made of each book. An EPUB's contents and reading positions are kept by
+ * this server in tables of its own that Komga's do not fill, so an analysed EPUB
+ * comes across as OUTDATED and is read again once - which is quick, and rare.
+ */
 const media: Copy = {
   table: 'media',
   from: 'MEDIA',
   map: (row, { timestamp, zone }) => ({
     book_id: text(row.BOOK_ID),
     media_type: nullableText(row.MEDIA_TYPE),
-    status: text(row.STATUS, 'UNKNOWN'),
+    status:
+      text(row.MEDIA_TYPE) === 'application/epub+zip' && text(row.STATUS) === 'READY'
+        ? 'OUTDATED'
+        : text(row.STATUS, 'UNKNOWN'),
     comment: nullableText(row.COMMENT),
     page_count: number(row.PAGE_COUNT, 0),
     created_date: isoDate(row.CREATED_DATE, timestamp, zone),
@@ -698,6 +741,14 @@ const CORE: Copy[] = [
     ['genre', 'GENRE'],
   ]),
   links('series_metadata_link', 'SERIES_METADATA_LINK', 'series_id'),
+  {
+    table: 'series_metadata_alternate_title',
+    from: 'SERIES_METADATA_ALTERNATE_TITLE',
+    map: (row) =>
+      text(row.SERIES_ID) === '' || text(row.TITLE) === ''
+        ? null
+        : { series_id: text(row.SERIES_ID), title: text(row.TITLE), label: text(row.LABEL) },
+  },
   pair('series_metadata_sharing', 'SERIES_METADATA_SHARING', [
     ['series_id', 'SERIES_ID'],
     ['label', 'LABEL'],
@@ -730,7 +781,12 @@ const CORE: Copy[] = [
   readLists,
   members('readlist_book', 'READLIST_BOOK', 'readlist_id', 'book_id'),
   keyValues('server_settings', 'SERVER_SETTINGS', false),
-  keyValues('client_settings_global', 'CLIENT_SETTINGS_GLOBAL', false),
+  {
+    table: 'client_settings_global',
+    from: 'CLIENT_SETTINGS_GLOBAL',
+    // Whether a setting may be read before signing in, as the login page needs some.
+    map: (row) => ({ key: text(row.KEY), value: text(row.VALUE), allow_unauthorized: bool(row.ALLOW_UNAUTHORIZED, 0) }),
+  },
   keyValues('client_settings_user', 'CLIENT_SETTINGS_USER', true),
   pageHashes,
   pageHashThumbnails,
@@ -751,7 +807,6 @@ const NOT_CARRIED: [string, string][] = [
   ['AUTHENTICATION_ACTIVITY', 'the record of sign-ins'],
   ['ANNOUNCEMENTS_READ', 'which announcements were read'],
   ['SIDECAR', 'the record of files beside books; the first scan finds them again'],
-  ['SERIES_METADATA_ALTERNATE_TITLE', 'alternate series titles'],
   ['SYNC_POINT', 'Kobo sync points'],
 ]
 
