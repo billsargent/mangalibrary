@@ -4,7 +4,7 @@ import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
 import { canAccessLibrary, contentRestrictionAllows, visibleLibraryIds } from './access.js'
-import { hashPassword, needsRehash, verifyPassword } from './passwords.js'
+import { hashPassword, needsRehash, TARGET_ROUNDS, verifyPassword } from './passwords.js'
 import {
   API_KEY_HEADER,
   AUTH_TOKEN_HEADER,
@@ -116,7 +116,7 @@ async function login(app: FastifyInstance, email: string, password: string, extr
 
 describe('password hashing', () => {
   it('verifies its own hashes and flags low-cost ones for rehash', () => {
-    const strong = hashPassword('secret')
+    const strong = hashPassword('secret', TARGET_ROUNDS)
     expect(verifyPassword('secret', strong)).toBe(true)
     expect(verifyPassword('wrong', strong)).toBe(false)
     expect(needsRehash(strong)).toBe(false)

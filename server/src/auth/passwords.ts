@@ -3,8 +3,17 @@ import bcrypt from 'bcryptjs'
 /** Cost factor used for passwords we hash ourselves. */
 export const TARGET_ROUNDS = 12
 
+/**
+ * The cost fixtures hash at: bcrypt's lowest when the test runner asks for it
+ * (`vitest.config.ts`), the real one otherwise.
+ */
+function fixtureRounds(): number {
+  const asked = Number(process.env.MANGALIBRARY_FIXTURE_BCRYPT_ROUNDS)
+  return Number.isInteger(asked) && asked >= 4 ? asked : TARGET_ROUNDS
+}
+
 /** Hash a password here and now. For tests and fixtures: a request uses {@link hashPasswordAsync}. */
-export function hashPassword(password: string, rounds = TARGET_ROUNDS): string {
+export function hashPassword(password: string, rounds = fixtureRounds()): string {
   return bcrypt.hashSync(password, rounds)
 }
 
