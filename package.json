@@ -15,12 +15,12 @@
     "start": "node scripts/start.mjs",
     "dev": "npm --prefix server run dev",
     "smoke": "node scripts/smoke.mjs",
-    "type-check": "npm --prefix server run type-check && npm --prefix importer run type-check",
-    "test": "npm --prefix server test && npm --prefix importer test",
-    "lint": "npm --prefix server run lint && npm --prefix importer run lint",
+    "type-check": "npm --prefix server run type-check && npm --prefix importer run type-check && npm --prefix ui run type-check",
+    "test": "npm --prefix server test && npm --prefix importer test && npm --prefix ui run test:unit",
+    "lint": "npm --prefix server run lint && npm --prefix importer run lint && npm --prefix ui run lint",
     "prettier": "prettier --check .",
     "prettier:fix": "prettier --write .",
-    "lint:fix": "npm --prefix server run lint:fix && npm --prefix importer run lint:fix"
+    "lint:fix": "npm --prefix server run lint:fix && npm --prefix importer run lint:fix && npm --prefix ui run lint:fix"
   },
   "devDependencies": {
     "prettier": "^3.3.3",
