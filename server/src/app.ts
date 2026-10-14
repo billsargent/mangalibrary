@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 import cors from '@fastify/cors'
+import helmet from '@fastify/helmet'
 import multipart from '@fastify/multipart'
 import { registerAuth, AUTH_TOKEN_HEADER } from './auth/session.js'
 import type { Config } from './config.js'
@@ -27,7 +28,21 @@ export interface AppDeps {
 export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: deps.config.logLevel },
-    trustProxy: true,
+    trustProxy: deps.config.trustProxy,
+  })
+
+  // The headers that keep a browser from being turned against the user: no sniffing
+  // a response into another type, no framing by another site, no referrer sent away.
+  // Left out: a content security policy (the reader and the UI load fonts, styles and
+  // blobs a strict one would have to list), cross-origin isolation (it would stop the
+  // UI's development server, which is another origin, reading pages), and HSTS (the
+  // server does not know whether HTTPS is in front of it).
+  await app.register(helmet, {
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: false,
+    crossOriginOpenerPolicy: false,
+    hsts: false,
   })
 
   await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES } })

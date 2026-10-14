@@ -10,18 +10,23 @@ import {
   AUTH_TOKEN_HEADER,
   REMEMBER_ME_COOKIE,
   SESSION_COOKIE,
+  SIGN_IN_FAILURES_PER_ACCOUNT,
+  SIGN_IN_WINDOW_MS,
   registerAuth,
+  signInThrottle,
+  type AuthPluginOptions,
   requireAdmin,
   requireRole,
 } from './session.js'
 import type { AuthUser } from './types.js'
+import { hashApiKey } from './users.js'
 
 interface Harness {
   app: FastifyInstance
   database: Database
 }
 
-async function setup(): Promise<Harness> {
+async function setup(options: Partial<AuthPluginOptions> = {}): Promise<Harness> {
   const database = createDatabase(':memory:')
   await migrate(database.db, migrations)
 
@@ -69,7 +74,7 @@ async function setup(): Promise<Harness> {
     .values({
       id: 'K1',
       user_id: 'U1',
-      key: 'the-api-key',
+      key: hashApiKey('the-api-key'),
       comment: 'test',
       created_date: now,
       last_modified_date: now,
@@ -77,7 +82,7 @@ async function setup(): Promise<Harness> {
     .execute()
 
   const app = Fastify({ logger: { level: 'silent' } })
-  await registerAuth(app, { db: database.db })
+  await registerAuth(app, { db: database.db, ...options })
   app.get('/api/v1/admin-only', { preHandler: requireAdmin }, async () => ({ ok: true }))
   app.get('/api/v1/stream-only', { preHandler: requireRole('PAGE_STREAMING') }, async () => ({ ok: true }))
   await app.ready()
@@ -558,5 +563,72 @@ describe('access helpers', () => {
       },
     }
     expect(contentRestrictionAllows(admin, { ageRating: 18, sharingLabels: ['mature'] })).toBe(true)
+  })
+})
+
+describe('hardening', () => {
+  it('refuses a password changed since a Basic sign-in was remembered', async () => {
+    const { app, database } = await setup()
+    const basic = (password: string) => ({
+      authorization: `Basic ${Buffer.from(`admin@example.com:${password}`).toString('base64')}`,
+    })
+    expect((await app.inject({ method: 'GET', url: '/api/v1/me', headers: basic('admin-pass') })).statusCode).toBe(200)
+    // Remembered now; the same request again is not checked against bcrypt.
+    expect((await app.inject({ method: 'GET', url: '/api/v1/me', headers: basic('admin-pass') })).statusCode).toBe(200)
+
+    await database.db
+      .updateTable('users')
+      .set({ password: hashPassword('new-pass') })
+      .where('id', '=', 'U1')
+      .execute()
+    expect((await app.inject({ method: 'GET', url: '/api/v1/me', headers: basic('admin-pass') })).statusCode).toBe(401)
+    expect((await app.inject({ method: 'GET', url: '/api/v1/me', headers: basic('new-pass') })).statusCode).toBe(200)
+    await app.close()
+  })
+
+  it('stops checking passwords for an account after too many failures, until the window passes', async () => {
+    let now = Date.now()
+    const { app, database } = await setup({ throttle: signInThrottle(() => now) })
+
+    for (let attempt = 0; attempt < SIGN_IN_FAILURES_PER_ACCOUNT; attempt += 1) {
+      expect((await login(app, 'admin@example.com', 'wrong')).statusCode).toBe(401)
+    }
+    // Even the right password is refused now, without being checked.
+    expect((await login(app, 'admin@example.com', 'admin-pass')).statusCode).toBe(429)
+    // Another account is not held up by it.
+    expect((await login(app, 'kid@example.com', 'kid-pass')).statusCode).toBe(200)
+    const refused = await database.db
+      .selectFrom('authentication_activity')
+      .select('error')
+      .where('error', '=', 'Too many failed sign-ins')
+      .execute()
+    expect(refused).toHaveLength(1)
+
+    now += SIGN_IN_WINDOW_MS
+    expect((await login(app, 'admin@example.com', 'admin-pass')).statusCode).toBe(200)
+    await app.close()
+    // Each refused attempt is a full bcrypt check, ten of them.
+  }, 30_000)
+
+  it('ends a remembered browser when the password changes', async () => {
+    const { app, database } = await setup()
+    const cookies = cookiesOf(await login(app, 'admin@example.com', 'admin-pass', { 'remember-me': true }))
+    const rememberOnly = { cookie: `${REMEMBER_ME_COOKIE}=${cookies[REMEMBER_ME_COOKIE]}` }
+    expect((await app.inject({ method: 'GET', url: '/api/v1/me', headers: rememberOnly })).statusCode).toBe(200)
+
+    await database.db
+      .updateTable('users')
+      .set({ password: hashPassword('new-pass') })
+      .where('id', '=', 'U1')
+      .execute()
+    expect((await app.inject({ method: 'GET', url: '/api/v1/me', headers: rememberOnly })).statusCode).toBe(401)
+    await app.close()
+  })
+
+  it('marks cookies secure over HTTPS, and only then', async () => {
+    const { app } = await setup()
+    const plain = await login(app, 'admin@example.com', 'admin-pass')
+    expect(String(plain.headers['set-cookie'])).not.toMatch(/Secure/i)
+    await app.close()
   })
 })

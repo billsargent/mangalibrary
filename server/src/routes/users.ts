@@ -1,11 +1,11 @@
 import { randomBytes } from 'node:crypto'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { Kysely } from 'kysely'
-import { hashPassword } from '../auth/passwords.js'
+import { hashPasswordAsync } from '../auth/passwords.js'
 import { isLastAdministrator } from '../auth/access.js'
 import { requireAdmin, requireAuth, requireRole } from '../auth/session.js'
 import { USER_ROLES, isUserRole, type AuthUser, type UserRole } from '../auth/types.js'
-import { findUserById } from '../auth/users.js'
+import { findUserById, hashApiKey } from '../auth/users.js'
 import type { DB } from '../db/schema.js'
 import { nextTsid } from '../tsid.js'
 import { springPage, toUserDto, REPORTED_ROLE_USER, type UserDto } from './dto.js'
@@ -213,7 +213,7 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
       .values({
         id,
         email,
-        password: hashPassword(password),
+        password: await hashPasswordAsync(password),
         roles: JSON.stringify(roles),
         shared_all_libraries: sharedAllLibrariesOnCreate(body.sharedLibraries),
         age_restriction: null,
@@ -320,11 +320,17 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
 
         await db
           .updateTable('users')
-          .set({ password: hashPassword(password), last_modified_date: new Date().toISOString() })
+          .set({ password: await hashPasswordAsync(password), last_modified_date: new Date().toISOString() })
           .where('id', '=', userId)
           .execute()
-        // An admin resetting somebody else's password ends that user's sessions;
-        // changing your own does not, which is what the reference does.
+        // A changed password ends the account's sessions: whoever knew the old one is
+        // signed out everywhere. Changing your own keeps the session you changed it
+        // from, as the reference does; a remembered browser is ended by the new hash
+        // its cookie no longer matches.
+        const keep = !adminOnly || userId === currentUser(req).id ? req.sessionId : undefined
+        let ended = db.deleteFrom('sessions').where('user_id', '=', userId)
+        if (keep !== undefined) ended = ended.where('id', '!=', keep)
+        await ended.execute()
         if (adminOnly && userId !== currentUser(req).id) {
           opts.events.publish({ name: 'SessionExpired', data: { userId }, userId })
         }
@@ -343,10 +349,12 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
       .where('user_id', '=', currentUser(req).id)
       .orderBy('created_date')
       .execute()
+    // Only a hash of each key is kept, and it is not handed out: a key is shown
+    // once, when it is made.
     return rows.map((row) => ({
       id: row.id,
       userId: row.user_id,
-      key: row.key,
+      key: '',
       comment: row.comment,
       createdDate: row.created_date,
       lastModifiedDate: row.last_modified_date,
@@ -378,7 +386,7 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
       .values({
         id,
         user_id: currentUser(req).id,
-        key,
+        key: hashApiKey(key),
         comment,
         created_date: now,
         last_modified_date: now,

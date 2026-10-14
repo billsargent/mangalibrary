@@ -9,6 +9,7 @@ import { loadConfig } from '../config.js'
 import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
+import { hashApiKey } from '../auth/users.js'
 
 const admin = { 'x-api-key': 'admin-key' }
 
@@ -58,7 +59,14 @@ async function setup(withFonts = true): Promise<Fixture> {
     .execute()
   await database.db
     .insertInto('user_api_keys')
-    .values({ id: 'K1', user_id: 'U1', key: 'admin-key', comment: 'admin', created_date: now, last_modified_date: now })
+    .values({
+      id: 'K1',
+      user_id: 'U1',
+      key: hashApiKey('admin-key'),
+      comment: 'admin',
+      created_date: now,
+      last_modified_date: now,
+    })
     .execute()
 
   return { app: await buildServer({ config, database }), database, fontsDir }

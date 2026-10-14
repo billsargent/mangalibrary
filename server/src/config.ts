@@ -39,6 +39,13 @@ export interface Config {
    */
   corsAllowedOrigins: string[]
   /**
+   * Whether the client address and protocol a proxy reports (`X-Forwarded-For`,
+   * `X-Forwarded-Proto`) are believed. Off unless the server is behind a proxy that
+   * sets them: believed from anybody, they let a client choose its own address, and
+   * with it walk around the limit on failed sign-ins.
+   */
+  trustProxy: boolean
+  /**
    * Directory holding the fonts offered to the EPUB reader.
    *
    * Each subdirectory is a font family and its files are the faces of that family,
@@ -82,6 +89,7 @@ interface FileConfig {
   announcementsUrl?: string
   releasesUrl?: string
   corsAllowedOrigins?: string[]
+  trustProxy?: boolean
   fontsDir?: string
   uiDir?: string
   workerThreads?: boolean
@@ -235,6 +243,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, programFile: st
     announcementsUrl: toUrl(setting(env, 'ANNOUNCEMENTS_URL') ?? fileConfig.announcementsUrl),
     releasesUrl: toUrl(setting(env, 'RELEASES_URL') ?? fileConfig.releasesUrl),
     corsAllowedOrigins: toList(setting(env, 'CORS_ALLOWED_ORIGINS') ?? fileConfig.corsAllowedOrigins),
+    trustProxy: toSwitch(setting(env, 'TRUST_PROXY'), fileConfig.trustProxy ?? false),
     fontsDir: resolve(setting(env, 'FONTS_DIR') ?? fileConfig.fontsDir ?? join(configDir, 'fonts')),
     uiDir: toDirectory(setting(env, 'UI_DIR') ?? fileConfig.uiDir),
     workerThreads: toSwitch(setting(env, 'WORKER_THREADS'), fileConfig.workerThreads ?? true),

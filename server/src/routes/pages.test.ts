@@ -14,6 +14,7 @@ import { migrations } from '../db/migrations/index.js'
 import { minimalPdf } from '../spikes/minimalPdf.js'
 import { extendedFileName } from '../testing/headers.js'
 import { writeZip } from '../testing/zip.js'
+import { hashApiKey } from '../auth/users.js'
 
 const READER_KEY = 'reader-key'
 const reader = { 'x-api-key': READER_KEY }
@@ -73,7 +74,14 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
     .execute()
   await db
     .insertInto('user_api_keys')
-    .values({ id: 'K1', user_id: 'U1', key: READER_KEY, comment: 'reader', created_date: now, last_modified_date: now })
+    .values({
+      id: 'K1',
+      user_id: 'U1',
+      key: hashApiKey(READER_KEY),
+      comment: 'reader',
+      created_date: now,
+      last_modified_date: now,
+    })
     .execute()
 
   await db

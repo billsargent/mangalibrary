@@ -9,6 +9,7 @@ import { loadConfig } from '../config.js'
 import { createDatabase } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
+import { hashApiKey } from '../auth/users.js'
 
 const admin = { 'x-api-key': 'admin-key' }
 const member = { 'x-api-key': 'member-key' }
@@ -67,8 +68,8 @@ async function setup(): Promise<FastifyInstance> {
   await db
     .insertInto('user_api_keys')
     .values([
-      { id: 'K1', user_id: 'U1', key: 'admin-key', comment: 'admin', ...dates },
-      { id: 'K2', user_id: 'U2', key: 'member-key', comment: 'member', ...dates },
+      { id: 'K1', user_id: 'U1', key: hashApiKey('admin-key'), comment: 'admin', ...dates },
+      { id: 'K2', user_id: 'U2', key: hashApiKey('member-key'), comment: 'member', ...dates },
     ])
     .execute()
 

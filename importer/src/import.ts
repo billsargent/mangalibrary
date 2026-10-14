@@ -296,6 +296,27 @@ const pair = (table: keyof DB, from: string, columns: [string, string][]): Copy 
   },
 })
 
+/**
+ * API keys, as Komga keeps them: the hex SHA-512 of each key, which is what this
+ * server keeps too, so a key a reader app already holds goes on working.
+ */
+const apiKeys: Copy = {
+  table: 'user_api_keys',
+  from: 'USER_API_KEY',
+  map: (row, { timestamp, zone }) => {
+    const key = text(row.API_KEY)
+    if (text(row.ID) === '' || text(row.USER_ID) === '' || key === '') return null
+    return {
+      id: text(row.ID),
+      user_id: text(row.USER_ID),
+      key,
+      comment: text(row.COMMENT),
+      created_date: isoDate(row.CREATED_DATE, timestamp, zone),
+      last_modified_date: isoDate(row.LAST_MODIFIED_DATE, timestamp, zone),
+    }
+  },
+}
+
 const userSharing: Copy = {
   table: 'user_sharing',
   from: 'USER_SHARING',
@@ -659,6 +680,7 @@ const CORE: Copy[] = [
   libraryCopy(),
   libraryExclusions,
   users,
+  apiKeys,
   userSharing,
   pair('user_library_sharing', 'USER_LIBRARY_SHARING', [
     ['user_id', 'USER_ID'],
@@ -725,7 +747,6 @@ const RESCAN_ONLY = new Set<keyof DB>([
 
 /** What Komga has that is not carried over, and why, said when there is some. */
 const NOT_CARRIED: [string, string][] = [
-  ['USER_API_KEY', 'API keys: Komga keeps only a hash of each key; make new ones after signing in'],
   ['HISTORICAL_EVENT', 'the history of scans and deletions'],
   ['AUTHENTICATION_ACTIVITY', 'the record of sign-ins'],
   ['ANNOUNCEMENTS_READ', 'which announcements were read'],

@@ -11,6 +11,7 @@ import { createDatabase, type Database } from '../db/index.js'
 import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
 import { extendedFileName } from '../testing/headers.js'
+import { hashApiKey } from '../auth/users.js'
 
 const ADMIN_KEY = 'admin-key'
 const READER_KEY = 'reader-key'
@@ -91,9 +92,30 @@ async function setup(): Promise<{ app: FastifyInstance; database: Database }> {
   await db
     .insertInto('user_api_keys')
     .values([
-      { id: 'K1', user_id: 'U1', key: ADMIN_KEY, comment: 'admin', created_date: now, last_modified_date: now },
-      { id: 'K2', user_id: 'U2', key: READER_KEY, comment: 'reader', created_date: now, last_modified_date: now },
-      { id: 'K3', user_id: 'U3', key: LIMITED_KEY, comment: 'limited', created_date: now, last_modified_date: now },
+      {
+        id: 'K1',
+        user_id: 'U1',
+        key: hashApiKey(ADMIN_KEY),
+        comment: 'admin',
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        id: 'K2',
+        user_id: 'U2',
+        key: hashApiKey(READER_KEY),
+        comment: 'reader',
+        created_date: now,
+        last_modified_date: now,
+      },
+      {
+        id: 'K3',
+        user_id: 'U3',
+        key: hashApiKey(LIMITED_KEY),
+        comment: 'limited',
+        created_date: now,
+        last_modified_date: now,
+      },
     ])
     .execute()
 

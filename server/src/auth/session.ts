@@ -1,11 +1,12 @@
 import cookie from '@fastify/cookie'
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { Kysely } from 'kysely'
 import type { DB } from '../db/schema.js'
 import { getOrCreateSetting, getRememberMeDurationDays } from '../settings.js'
 import { hasRole, isAdmin } from './access.js'
-import { hashPassword, needsRehash, verifyPassword } from './passwords.js'
+import { hashPasswordAsync, needsRehash, verifyPasswordAsync } from './passwords.js'
+import { RateLimiter } from './rate-limit.js'
 import { SqliteSessionStore, type SessionStore } from './session-store.js'
 import type { AuthUser, UserRole } from './types.js'
 import { findUserByApiKey, findUserByEmail, findUserById, getPasswordHash, setPasswordHash } from './users.js'
@@ -57,18 +58,89 @@ export interface AuthPluginOptions {
   sessionTtlMs?: number
   /** Injectable for tests. */
   store?: SessionStore
+  /** Injectable for tests: counts failed sign-ins. */
+  throttle?: SignInThrottle
 }
 
-async function authenticateCredentials(db: Kysely<DB>, email: string, password: string): Promise<AuthUser | undefined> {
-  const user = await findUserByEmail(db, email)
-  if (!user) return undefined
+/**
+ * Credentials checked recently, by a digest of the email, the password and the
+ * stored hash, to when the check stops counting.
+ *
+ * A client signing every request with HTTP Basic - a reader app fetching pages -
+ * would otherwise pay a bcrypt check for every page. The stored hash is part of
+ * what is remembered, so a changed password is checked afresh at once.
+ */
+const verified = new Map<string, number>()
+const VERIFIED_FOR_MS = 60_000
+const VERIFIED_AT_MOST = 1_000
 
+const credentialDigest = (email: string, password: string, hash: string) =>
+  createHash('sha256').update(`${email.toLowerCase()}\u0000${password}\u0000${hash}`).digest('hex')
+
+/** Forget every remembered check, which a test needs between cases. */
+export function forgetVerifiedCredentials(): void {
+  verified.clear()
+}
+
+/**
+ * Failed sign-ins, counted by account and by address. Past either limit, a sign-in
+ * is refused without checking the password at all - which is also what keeps a
+ * guessing client from costing a bcrypt check per guess.
+ */
+export const SIGN_IN_WINDOW_MS = 15 * 60 * 1000
+export const SIGN_IN_FAILURES_PER_ACCOUNT = 10
+export const SIGN_IN_FAILURES_PER_ADDRESS = 30
+
+export interface SignInThrottle {
+  account: RateLimiter
+  address: RateLimiter
+}
+
+export function signInThrottle(now?: () => number): SignInThrottle {
+  return {
+    account: new RateLimiter({ limit: SIGN_IN_FAILURES_PER_ACCOUNT, windowMs: SIGN_IN_WINDOW_MS, now }),
+    address: new RateLimiter({ limit: SIGN_IN_FAILURES_PER_ADDRESS, windowMs: SIGN_IN_WINDOW_MS, now }),
+  }
+}
+
+type CredentialsOutcome = { user: AuthUser } | { refused: 'BAD_CREDENTIALS' | 'THROTTLED' }
+
+async function authenticateCredentials(
+  db: Kysely<DB>,
+  throttle: SignInThrottle,
+  req: FastifyRequest,
+  email: string,
+  password: string,
+): Promise<CredentialsOutcome> {
+  const accountKey = email.trim().toLowerCase()
+  const addressKey = req.ip ?? 'unknown'
+  if (throttle.account.reached(accountKey) || throttle.address.reached(addressKey)) return { refused: 'THROTTLED' }
+
+  const failed = (): CredentialsOutcome => {
+    throttle.account.record(accountKey)
+    throttle.address.record(addressKey)
+    return { refused: 'BAD_CREDENTIALS' }
+  }
+
+  const user = await findUserByEmail(db, email)
+  if (!user) return failed()
   const hash = await getPasswordHash(db, user.id)
-  if (!hash || !verifyPassword(password, hash)) return undefined
+  if (!hash) return failed()
+
+  const digest = credentialDigest(email, password, hash)
+  const until = verified.get(digest)
+  if (until !== undefined && until > Date.now()) return { user }
+
+  if (!(await verifyPasswordAsync(password, hash))) return failed()
 
   // Upgrade legacy (lower-cost) hashes transparently on a successful login.
-  if (needsRehash(hash)) await setPasswordHash(db, user.id, hashPassword(password))
-  return user
+  if (needsRehash(hash)) {
+    await setPasswordHash(db, user.id, await hashPasswordAsync(password))
+  } else {
+    if (verified.size >= VERIFIED_AT_MOST) verified.clear()
+    verified.set(digest, Date.now() + VERIFIED_FOR_MS)
+  }
+  return { user }
 }
 
 function basicCredentials(header: string | undefined): { username: string; password: string } | undefined {
@@ -79,27 +151,49 @@ function basicCredentials(header: string | undefined): { username: string; passw
   return { username: decoded.slice(0, separator), password: decoded.slice(separator + 1) }
 }
 
-function signRememberMe(key: string, userId: string, expiresAt: number): string {
+/**
+ * The remember-me cookie: who, until when, and a signature over both and over the
+ * account's password hash. Signing the hash in means a changed password ends every
+ * remembered browser, without anything having to be stored about them.
+ */
+function signRememberMe(key: string, userId: string, expiresAt: number, passwordHash: string): string {
   const payload = `${userId}.${expiresAt}`
-  return `${payload}.${createHmac('sha256', key).update(payload).digest('base64url')}`
+  return `${payload}.${rememberMeMac(key, payload, passwordHash)}`
 }
 
-function verifyRememberMe(key: string, token: string): string | undefined {
+function rememberMeMac(key: string, payload: string, passwordHash: string): string {
+  return createHmac('sha256', key).update(`${payload}.${passwordHash}`).digest('base64url')
+}
+
+async function verifyRememberMe(key: string, token: string, db: Kysely<DB>): Promise<string | undefined> {
   const parts = token.split('.')
   if (parts.length !== 3) return undefined
   const [userId, expiresRaw, mac] = parts as [string, string, string]
   const expiresAt = Number(expiresRaw)
   if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return undefined
 
-  const expected = createHmac('sha256', key).update(`${userId}.${expiresAt}`).digest('base64url')
+  const passwordHash = await getPasswordHash(db, userId)
+  if (passwordHash === undefined) return undefined
+  const expected = rememberMeMac(key, `${userId}.${expiresAt}`, passwordHash)
   const provided = Buffer.from(mac)
   const wanted = Buffer.from(expected)
   if (provided.length !== wanted.length || !timingSafeEqual(provided, wanted)) return undefined
   return userId
 }
 
-function cookieOptions(maxAgeMs: number) {
-  return { path: '/', httpOnly: true, sameSite: 'lax' as const, maxAge: Math.floor(maxAgeMs / 1000) }
+/**
+ * The cookies' settings. `secure` when the request came over HTTPS - directly, or
+ * through a proxy the server is told to trust - so that behind TLS a browser never
+ * sends the session in the clear, while plain http on a home network still works.
+ */
+function cookieOptions(maxAgeMs: number, req: FastifyRequest) {
+  return {
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    secure: req.protocol === 'https',
+    maxAge: Math.floor(maxAgeMs / 1000),
+  }
 }
 
 function resolveSessionId(req: FastifyRequest): string | undefined {
@@ -171,6 +265,7 @@ export async function recordActivity(
 export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions): Promise<void> {
   const ttl = opts.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS
   const store = opts.store ?? new SqliteSessionStore(opts.db)
+  const throttle = opts.throttle ?? signInThrottle()
 
   await app.register(cookie)
   /**
@@ -211,21 +306,24 @@ export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions
 
     const sessionId = await store.create(user.id, ttl)
     req.sessionId = sessionId
-    reply.setCookie(SESSION_COOKIE, sessionId, cookieOptions(ttl))
+    reply.setCookie(SESSION_COOKIE, sessionId, cookieOptions(ttl, req))
     await recordActivity(opts.db, user.id, user.email, req, true, null)
     req.log.info(
       { email: user.email, session: sessionId.slice(0, 8), rememberMe: wantsRememberMe(req) },
       'sign-in: session created',
     )
 
-    if (wantsRememberMe(req)) {
-      const ttlMs = (await getRememberMeDurationDays(opts.db)) * DAY_MS
-      reply.setCookie(
-        REMEMBER_ME_COOKIE,
-        signRememberMe(await rememberMeKey(opts.db), user.id, Date.now() + ttlMs),
-        cookieOptions(ttlMs),
-      )
-    }
+    if (wantsRememberMe(req)) await setRememberMe(req, reply, user)
+  }
+
+  const setRememberMe = async (req: FastifyRequest, reply: FastifyReply, user: AuthUser): Promise<void> => {
+    const ttlMs = (await getRememberMeDurationDays(opts.db)) * DAY_MS
+    const passwordHash = (await getPasswordHash(opts.db, user.id)) ?? ''
+    reply.setCookie(
+      REMEMBER_ME_COOKIE,
+      signRememberMe(await rememberMeKey(opts.db), user.id, Date.now() + ttlMs, passwordHash),
+      cookieOptions(ttlMs, req),
+    )
   }
 
   app.addHook('onRequest', async (req, reply) => {
@@ -259,14 +357,23 @@ export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions
     }
 
     if (presentedBasic) {
-      const user = await authenticateCredentials(opts.db, presentedBasic.username, presentedBasic.password)
-      if (user) {
-        req.user = user
+      const outcome = await authenticateCredentials(
+        opts.db,
+        throttle,
+        req,
+        presentedBasic.username,
+        presentedBasic.password,
+      )
+      if ('user' in outcome) {
+        req.user = outcome.user
         req.authMethod = 'basic'
-        await startSession(req, reply, user)
+        await startSession(req, reply, outcome.user)
         return
       }
-      req.log.info({ email: presentedBasic.username }, 'authentication: Basic credentials refused')
+      req.log.info(
+        { email: presentedBasic.username, reason: outcome.refused },
+        'authentication: Basic credentials refused',
+      )
     }
 
     const sessionId = presentedSession
@@ -291,7 +398,7 @@ export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions
 
     const remember = req.cookies[REMEMBER_ME_COOKIE]
     if (remember) {
-      const userId = verifyRememberMe(await rememberMeKey(opts.db), remember)
+      const userId = await verifyRememberMe(await rememberMeKey(opts.db), remember, opts.db)
       if (userId) {
         const user = await findUserById(opts.db, userId)
         if (user) {
@@ -308,28 +415,26 @@ export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions
     const password = typeof body.password === 'string' ? body.password : undefined
     if (!email || !password) return reply.code(400).send({ message: 'Missing credentials' })
 
-    const user = await authenticateCredentials(opts.db, email, password)
-    if (!user) {
+    const outcome = await authenticateCredentials(opts.db, throttle, req, email, password)
+    if (!('user' in outcome)) {
       // Attribute the failure to the account when the email is known.
       const known = await findUserByEmail(opts.db, email)
+      if (outcome.refused === 'THROTTLED') {
+        await recordActivity(opts.db, known?.id ?? null, email, req, false, 'Too many failed sign-ins')
+        return reply.code(429).send({ message: 'Too many failed sign-ins, try again later' })
+      }
       await recordActivity(opts.db, known?.id ?? null, email, req, false, 'Bad credentials')
       return reply.code(401).send({ message: 'Invalid credentials' })
     }
+    const user = outcome.user
 
     await recordActivity(opts.db, user.id, user.email, req, true, null)
 
     const sessionId = await store.create(user.id, ttl)
     if (AUTH_TOKEN_HEADER in req.headers) reply.header('X-Auth-Token', sessionId)
-    reply.setCookie(SESSION_COOKIE, sessionId, cookieOptions(ttl))
+    reply.setCookie(SESSION_COOKIE, sessionId, cookieOptions(ttl, req))
 
-    if (wantsRememberMe(req)) {
-      const ttlMs = (await getRememberMeDurationDays(opts.db)) * DAY_MS
-      reply.setCookie(
-        REMEMBER_ME_COOKIE,
-        signRememberMe(await rememberMeKey(opts.db), user.id, Date.now() + ttlMs),
-        cookieOptions(ttlMs),
-      )
-    }
+    if (wantsRememberMe(req)) await setRememberMe(req, reply, user)
 
     return { user: { id: user.id, email: user.email, roles: user.roles } }
   })
@@ -341,7 +446,7 @@ export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions
     url: '/api/v1/login/set-cookie',
     handler: async (req, reply) => {
       if (!req.sessionId) return reply.code(401).send({ message: 'Unauthorized' })
-      reply.setCookie(SESSION_COOKIE, req.sessionId, cookieOptions(ttl))
+      reply.setCookie(SESSION_COOKIE, req.sessionId, cookieOptions(ttl, req))
       return reply.code(204).send()
     },
   })

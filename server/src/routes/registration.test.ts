@@ -13,6 +13,7 @@ import { migrate } from '../db/migrate.js'
 import { migrations } from '../db/migrations/index.js'
 import { SETTING_KEYS, setSetting } from '../settings.js'
 import { REGISTRATION_EMAIL_LIMIT } from './registration.js'
+import { hashApiKey } from '../auth/users.js'
 
 const ADMIN_KEY = 'admin-key'
 const admin = { 'x-api-key': ADMIN_KEY }
@@ -48,7 +49,14 @@ async function setup(claimed = true): Promise<{ app: FastifyInstance; database: 
       .execute()
     await database.db
       .insertInto('user_api_keys')
-      .values({ id: 'K1', user_id: 'U1', key: ADMIN_KEY, comment: 'admin', created_date: now, last_modified_date: now })
+      .values({
+        id: 'K1',
+        user_id: 'U1',
+        key: hashApiKey(ADMIN_KEY),
+        comment: 'admin',
+        created_date: now,
+        last_modified_date: now,
+      })
       .execute()
   }
 
