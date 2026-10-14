@@ -73,6 +73,29 @@ scan and analyse the first time; it can be used while that goes on.
 - **Keeping it running.** The start script runs until it is stopped. To have it start
   with the machine, run it from a systemd unit or a `tmux`/`screen` session.
 
+## Docker
+
+```bash
+docker build -t mangalibrary .
+docker run -d --name mangalibrary -p 25600:25600 --restart unless-stopped \
+  -v /srv/mangalibrary:/data -v /srv/manga:/books:ro mangalibrary
+```
+
+- **`/data`** holds everything the server keeps: the database, its settings, fonts. Back
+  it up. An upgrade is `git pull`, `docker build` again, and a new container on the same
+  `/data`.
+- **`/books`** is your library, read-only unless you want the server to delete, convert
+  or rename files for you. Add a library whose folder is `/books`, or one inside it.
+- **Permissions.** The server runs as uid 1000. If your folders belong to someone else,
+  add `--user $(id -u):$(id -g)` (and make `/srv/mangalibrary` theirs).
+- **Settings** go in as environment variables (`-e LOG_LEVEL=warn`;
+  [docs/CONFIGURATION.md](docs/CONFIGURATION.md)) or in `/data/config.json`.
+- **Importing from Komga**: run the importer from a checkout, with `--to` the folder you
+  mount as `/data` and `--map` from Komga's folders to `/books`
+  ([docs/IMPORT.md](docs/IMPORT.md)).
+
+CI builds the image and runs the install smoke test against it on every change.
+
 ## Development
 
 Each app (`server/`, `importer/`, `ui/`) installs its own dependencies as a

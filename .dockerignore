@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/coverage
+**/*.sqlite
+**/*.sqlite-*
+.git
+.github
+importer
+docs
+scripts
+ui/storybook-static
+mangalibrary.json

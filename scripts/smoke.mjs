@@ -9,6 +9,10 @@
  * server is reached from another machine.
  *
  * Run it after `npm run build`: `npm run smoke`. CI runs it on Linux.
+ *
+ * With `SMOKE_DOCKER_IMAGE` set to an image, it runs that image instead, with the
+ * library mounted at /books and the data folder at /data, and asks the same things
+ * of it: `docker build -t mangalibrary . && SMOKE_DOCKER_IMAGE=mangalibrary npm run smoke`.
  */
 
 import { spawn } from 'node:child_process'
@@ -23,12 +27,14 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const sharp = createRequire(join(root, 'server', 'package.json'))('sharp')
 
 const PORT = process.env.SMOKE_PORT ?? '25699'
+const DOCKER_IMAGE = process.env.SMOKE_DOCKER_IMAGE
 const EMAIL = 'admin@example.com'
 const PASSWORD = 'correct-horse-battery'
 const lan = Object.values(networkInterfaces())
   .flat()
   .find((address) => address && address.family === 'IPv4' && !address.internal)?.address
-const base = `http://${lan ?? '127.0.0.1'}:${PORT}`
+// A container's port is published on this machine, which is where it is asked.
+const base = DOCKER_IMAGE ? `http://127.0.0.1:${PORT}` : `http://${lan ?? '127.0.0.1'}:${PORT}`
 
 /** A zip of files stored as they are, which is all a CBZ has to be. */
 function zip(entries) {
@@ -114,12 +120,33 @@ writeFileSync(
   }),
 )
 
-// Started the way the README says to: through start.sh where there is a shell for it.
-const [command, script] =
-  process.platform === 'win32'
-    ? [process.execPath, join(root, 'scripts', 'start.mjs')]
-    : ['sh', join(root, 'scripts', 'start.sh')]
-const server = spawn(command, [script, '--no-build'], {
+// Started the way the README says to: through start.sh where there is a shell for it -
+// or as the image is run, with the library and the data folder mounted.
+const dataDir = join(work, 'data')
+mkdirSync(dataDir, { recursive: true })
+const user = process.getuid ? [`--user`, `${process.getuid()}:${process.getgid()}`] : []
+const [command, ...args] = DOCKER_IMAGE
+  ? [
+      'docker',
+      'run',
+      '--rm',
+      '--name',
+      'mangalibrary-smoke',
+      ...user,
+      '-p',
+      `${PORT}:25600`,
+      '-e',
+      'LOG_LEVEL=warn',
+      '-v',
+      `${library}:/books:ro`,
+      '-v',
+      `${dataDir}:/data`,
+      DOCKER_IMAGE,
+    ]
+  : process.platform === 'win32'
+    ? [process.execPath, join(root, 'scripts', 'start.mjs'), '--no-build']
+    : ['sh', join(root, 'scripts', 'start.sh'), '--no-build']
+const server = spawn(command, args, {
   cwd: root,
   env: { ...process.env, MANGALIBRARY_CONFIG_FILE: configFile },
   stdio: ['ignore', 'inherit', 'inherit'],
@@ -152,12 +179,16 @@ try {
       )
     )
       break
-    if (waited > 30_000) throw new Error('the server did not answer within 30 seconds')
+    if (waited > 60_000) throw new Error('the server did not answer within 60 seconds')
     await sleep(250)
   }
   check(true, 'the built server starts and answers on the network address')
-  check(existsSync(databaseFile), 'the database is where the config file put it')
-  check(!existsSync(join(work, 'data', 'database.sqlite')), 'and not in the data folder')
+  if (DOCKER_IMAGE) {
+    check(existsSync(join(dataDir, 'database.sqlite')), 'the database is in the data volume')
+  } else {
+    check(existsSync(databaseFile), 'the database is where the config file put it')
+    check(!existsSync(join(work, 'data', 'database.sqlite')), 'and not in the data folder')
+  }
 
   const page = await fetch(`${base}/`)
   check(page.ok && (await page.text()).includes('<div id="app"'), 'the web UI is served')
@@ -170,7 +201,7 @@ try {
 
   const created = await call('POST', '/api/v1/libraries', {
     name: 'Smoke',
-    root: library,
+    root: DOCKER_IMAGE ? '/books' : library,
     importComicInfoBook: true,
     importComicInfoSeries: true,
     scanCbx: true,

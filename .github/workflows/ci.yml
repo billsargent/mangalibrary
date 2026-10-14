@@ -90,3 +90,22 @@ jobs:
       - run: npm run install:all
       - run: npm run build
       - run: npm run smoke
+
+  # The image, built as a user would build it, then asked the same things as the
+  # install above: the library mounted at /books, the data folder at /data.
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: docker build -t mangalibrary:ci .
+      # The smoke test makes its books with sharp, from the server's dependencies.
+      - run: npm --prefix server ci
+      - run: npm run smoke
+        env:
+          SMOKE_DOCKER_IMAGE: mangalibrary:ci
