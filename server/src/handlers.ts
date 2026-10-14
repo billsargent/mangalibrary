@@ -32,6 +32,7 @@ import {
 import { JOB_PRIORITY, enqueueJob, enqueueJobs, type JobRecord } from './jobs.js'
 import { analyzeBook } from './media/analyze.js'
 import { booksToConvert, convertBookToCbz } from './media/convert.js'
+import { booksToRepair, repairExtension } from './media/repair.js'
 import { checkTouchedBook } from './scan/unchanged.js'
 import { COPY_MODES, ImportError, importBook, type CopyMode } from './media/import.js'
 import {
@@ -460,6 +461,20 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       const removals = await queueAutomaticRemovals(context, libraryId)
       if (removals > 0) log.info({ libraryId, removals }, 'queued duplicate pages to remove')
 
+      // A library that asks for its files' extensions to match what they are gets
+      // them renamed one at a time, at the lowest priority, as conversion is.
+      const repairs = await booksToRepair(db, libraryId)
+      await enqueueJobs(
+        db,
+        repairs.map((bookId) => ({
+          type: 'RepairExtension',
+          uniqueKey: `REPAIR_EXTENSION_${bookId}`,
+          priority: JOB_PRIORITY.LOWEST,
+          payload: { bookId },
+        })),
+      )
+      if (repairs.length > 0) log.info({ libraryId, repairs: repairs.length }, 'queued extensions to repair')
+
       // A library that asks for its CBRs as CBZs gets them one book at a time, at
       // the lowest priority: nothing a reader does waits on it. Only analysed books
       // are asked for, so one added by this scan is converted after the next.
@@ -751,6 +766,17 @@ export async function handleJob(context: JobContext, job: JobRecord): Promise<vo
       if (series) announceSeries(context.events, 'SeriesChanged', series)
       told(imported.bookId, null)
       return log.info({ sourceFile, bookId: imported.bookId, upgraded: imported.upgraded }, 'imported a book')
+    }
+
+    case 'RepairExtension': {
+      const bookId = text((job.payload as { bookId?: unknown }).bookId)
+      if (bookId === null) return log.warn({ job: job.id }, 'RepairExtension without a book')
+
+      const result = await repairExtension(db, bookId)
+      if (result.status !== 'REPAIRED') return log.info({ bookId, ...result }, 'did not repair an extension')
+      const ref = await bookRef(db, bookId)
+      if (ref) announceBook(context.events, 'BookChanged', ref)
+      return log.info({ bookId, from: result.from, to: result.to }, 'repaired an extension')
     }
 
     case 'ConvertBook': {
