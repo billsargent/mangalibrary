@@ -57,10 +57,12 @@
 
       <div class="stage">
         <!--
-          A chapter is a document out of the book, shown in a frame that may not
-          run script: the book is somebody else's file. The page reaches into the
-          frame to style it and to listen to it, which the frame being of the same
-          origin allows.
+          A chapter is a document out of the book, which is somebody else's file:
+          the server sends it with a content policy under which it runs no script
+          of its own. The page reaches into the frame to style it and to listen to
+          it, which the frame being of the same origin allows. The frame is not
+          sandboxed on top: Safari runs no listener at all - not even the page's -
+          in a frame that may not run script, and the reader could not be worked.
         -->
         <iframe
           ref="frame"
@@ -68,7 +70,6 @@
           :class="{ 'chapter--hidden': !laidOut, 'chapter--spread': paginated && columns === 2 }"
           :src="chapterUrl"
           :title="title"
-          sandbox="allow-same-origin"
           @load="chapterLoaded()"
         />
       </div>
