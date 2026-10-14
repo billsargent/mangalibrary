@@ -139,7 +139,7 @@ const RESCAN_ON_CHANGE = [
  * queued by the scan, for the books that still need it, so turning one on asks
  * for a scan - which over an unchanged library looks at folder dates and no more.
  */
-const WORK_WHEN_SWITCHED_ON = ['hash_files', 'hash_pages', 'hash_koreader', 'convert_to_cbz'] as const
+const WORK_WHEN_SWITCHED_ON = ['hash_files', 'hash_pages', 'hash_koreader', 'convert_to_cbz', 'repair_extensions'] as const
 
 function currentUser(req: FastifyRequest) {
   const user = req.user
