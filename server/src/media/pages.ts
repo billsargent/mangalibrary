@@ -7,16 +7,14 @@
  * until it was done. Those two are read on a reader thread.
  */
 
-import { basename } from 'node:path'
-
 import { onReader } from '../threads/index.js'
-import { containerFor, openBook } from './index.js'
+import { containerOf, openBook } from './index.js'
 
 /** A page's bytes, or why there are none: the file would not open, or has no such page. */
 export type PageRead = { bytes: Buffer; mediaType: string } | { failed: 'OPEN' | 'PAGE' }
 
 export async function readBookPage(path: string, pageNumber: number): Promise<PageRead> {
-  const kind = containerFor(basename(path))
+  const kind = await containerOf(path)
   if (kind === 'RAR' || kind === 'PDF') {
     const read = await onReader(path, 'readPage', { path, pageNumber })
     if ('failed' in read) return read

@@ -10,6 +10,7 @@ import type { DB } from '../db/schema.js'
 import { nextTsid } from '../tsid.js'
 import { springPage, toUserDto, REPORTED_ROLE_USER, type UserDto } from './dto.js'
 import type { RouteOptions } from './libraries.js'
+import { paging } from './query.js'
 
 interface AgeRestrictionBody {
   age?: number
@@ -439,9 +440,7 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
   })
 
   app.get('/api/v2/users/authentication-activity', { preHandler: requireAdmin }, async (req) => {
-    const query = (req.query ?? {}) as { page?: number; size?: number; unpaged?: boolean }
-    const page = Number.isFinite(query.page) ? Number(query.page) : 0
-    const size = Number.isFinite(query.size) ? Number(query.size) : 20
+    const { page, size } = paging(req.query)
 
     const total = await db
       .selectFrom('authentication_activity')
@@ -459,9 +458,7 @@ export async function registerUserRoutes(app: FastifyInstance, opts: RouteOption
   })
 
   app.get('/api/v2/users/me/authentication-activity', { preHandler: requireAuth }, async (req) => {
-    const query = (req.query ?? {}) as { page?: number; size?: number }
-    const page = Number.isFinite(query.page) ? Number(query.page) : 0
-    const size = Number.isFinite(query.size) ? Number(query.size) : 20
+    const { page, size } = paging(req.query)
     const userId = currentUser(req).id
 
     const total = await db

@@ -451,6 +451,20 @@ export async function registerAuth(app: FastifyInstance, opts: AuthPluginOptions
     },
   })
 
+  // The login page asks which OAuth2 providers it may offer. There are none: this
+  // server signs in with a password or a key.
+  app.get('/api/v1/oauth2/providers', async () => [])
+
+  // A 401 says how to sign in, as the reference's does: HTTP Basic. Not to a browser
+  // page's own requests, which say who they are - a browser seeing the challenge would
+  // put up its own sign-in box over the page's.
+  app.addHook('onSend', async (req, reply, payload) => {
+    if (reply.statusCode === 401 && !wantsSession(req) && !reply.hasHeader('www-authenticate')) {
+      reply.header('WWW-Authenticate', 'Basic realm="Realm"')
+    }
+    return payload
+  })
+
   // On either verb, as the reference signs out on either.
   app.route({
     method: ['GET', 'POST'],
