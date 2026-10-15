@@ -7,7 +7,7 @@
     <v-btn
       v-for="b in buttons"
       :key="b.value"
-      v-ktooltip:bottom="!text ? b.text : ''"
+      v-ktooltip:bottom="!text ? b.text : false"
       :icon="!text ? b.icon : undefined"
       :prepend-icon="text && icons ? b.icon : undefined"
       size="small"
