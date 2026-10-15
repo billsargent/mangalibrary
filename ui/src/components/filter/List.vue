@@ -1,12 +1,15 @@
 <template>
   <v-list v-if="items.length > 0">
-    <FilterAnyAll
+    <div
       v-if="showModeSelector"
-      v-model="modelMode"
-      class="position-absolute top-0 right-0 mt-2 mr-2 semi-transparent"
-      style="z-index: 999"
-      :props="{ color: color, density: 'comfortable', rounded: 'lg' }"
-    />
+      class="px-4 pb-2"
+    >
+      <FilterAnyAll
+        v-model="modelMode"
+        text
+        :props="{ color: color, density: 'compact', rounded: 'lg', mandatory: true }"
+      />
+    </div>
     <v-virtual-scroll :items="items">
       <template #default="{ item }">
         <FilterTriState
@@ -99,12 +102,4 @@ watchEffect(() => {
 
 <script lang="ts"></script>
 
-<style scoped>
-.semi-transparent {
-  opacity: 0.5;
-}
-
-.semi-transparent:hover {
-  opacity: 1;
-}
-</style>
+<style scoped></style>
